@@ -39,11 +39,11 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 
 ## Documentation
 
-- [Installation Guide](02-installation.md) - Detailed setup instructions
-- [Configuration Guide](03-configuration.md) - Configuration options
-- [Usage Guide](04-usage.md) - How to use WhatSignal
-- [Development Guide](05-development.md) - Contributing and development
-- [Technical Requirements](06-requirements.md) - Design specifications
+- [Installation Guide](docs/installation.md) - Detailed setup instructions
+- [Configuration Guide](docs/configuration.md) - Configuration options
+- [Usage Guide](docs/usage.md) - How to use WhatSignal
+- [Development Guide](docs/development.md) - Contributing and development
+- [Technical Requirements](docs/requirements.md) - Design specifications
 
 ## Contributing
 
@@ -53,7 +53,7 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 4. Update documentation
 5. Submit pull request
 
-See [Development Guide](05-development.md) for detailed instructions.
+See [Development Guide](docs/development.md) for detailed instructions.
 
 ## License
 

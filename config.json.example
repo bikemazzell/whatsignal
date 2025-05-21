@@ -1,0 +1,35 @@
+{
+  // WhatsApp configuration
+  // - apiBaseUrl: URL of your Waha instance (WhatsApp HTTP API)
+  // - webhookSecret: Secret for authenticating incoming webhooks
+  // - pollIntervalSec: How often to poll for messages if webhooks are not available
+  "whatsapp": {
+    "apiBaseUrl": "http://localhost:3000",
+    "webhookSecret": "your-webhook-secret",
+    "pollIntervalSec": 30
+  },
+
+  // Signal configuration
+  // - rpcUrl: URL of your signal-cli JSON-RPC daemon
+  // - authToken: Authentication token for Signal API access
+  "signal": {
+    "rpcUrl": "http://localhost:8080",
+    "authToken": "your-signal-auth-token"
+  },
+
+  // Message retry configuration
+  // - initialBackoffMs: Initial delay before first retry
+  // - maxBackoffMs: Maximum delay between retries
+  // - maxAttempts: Maximum number of retry attempts
+  "retry": {
+    "initialBackoffMs": 1000,
+    "maxBackoffMs": 60000,
+    "maxAttempts": 5
+  },
+
+  // Number of days to keep message history
+  "retentionDays": 30,
+
+  // Logging level (debug, info, warn, error)
+  "logLevel": "info"
+} 

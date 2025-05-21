@@ -56,6 +56,7 @@ Configuration options:
 - `signal.authToken`: Authentication token for Signal API
 - `retry`: Message delivery retry configuration
 - `retentionDays`: Number of days to retain message history
+- `logLevel`: Logging level (debug, info, warn, error)
 
 ## Running the Service
 
@@ -115,32 +116,6 @@ The project follows standard Go project layout:
 - `scripts/`: Database migrations and utility scripts
 - `docs/`: Documentation files
 
-### Running Tests
-
-Run all tests with coverage report:
-```bash
-go test -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
-```
-
-Current test coverage:
-- Overall: 68.3%
-- Key packages:
-  - config: 96.3%
-  - migrations: 100%
-  - signal: 80%
-  - whatsapp: 78%
-  - service: 74.4%
-
-### Code Quality
-
-The project maintains high code quality through:
-- Comprehensive test suite
-- Type-safe message handling
-- Proper error handling and logging
-- Clean separation of concerns
-- Interface-based design for testability
-- Consistent error messages and logging
 
 ## Contributing
 

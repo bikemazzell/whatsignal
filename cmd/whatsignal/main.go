@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,22 +13,13 @@ import (
 	signalapi "whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp"
 
-	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 )
 
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: .env file not found, using environment variables")
-	}
-
 	// Initialize logger
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
-	if os.Getenv("LOG_LEVEL") == "debug" {
-		logger.SetLevel(logrus.DebugLevel)
-	}
 
 	// Create context that listens for the interrupt signal
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -39,6 +29,16 @@ func main() {
 	cfg, err := config.LoadConfig("config.json")
 	if err != nil {
 		logger.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Set log level from config
+	if cfg.LogLevel != "" {
+		level, err := logrus.ParseLevel(cfg.LogLevel)
+		if err != nil {
+			logger.Warnf("Invalid log level %q, defaulting to info", cfg.LogLevel)
+		} else {
+			logger.SetLevel(level)
+		}
 	}
 
 	// Initialize database

@@ -18,7 +18,8 @@ type Config struct {
 		MaxAttempts      int `json:"maxAttempts"`
 	} `json:"retry"`
 
-	RetentionDays int `json:"retentionDays"`
+	RetentionDays int    `json:"retentionDays"`
+	LogLevel      string `json:"logLevel"`
 }
 
 type ConfigError struct {

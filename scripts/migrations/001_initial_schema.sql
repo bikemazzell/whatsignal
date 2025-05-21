@@ -1,3 +1,7 @@
+-- Initial schema for WhatsSignal
+-- Version: 1
+-- Created: 2024-05-21
+
 CREATE TABLE IF NOT EXISTS message_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     whatsapp_chat_id TEXT NOT NULL,

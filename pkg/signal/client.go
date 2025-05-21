@@ -7,9 +7,15 @@ import (
 	"net/http"
 )
 
-type Client struct {
-	rpcURL string
-	client *http.Client
+type Client interface {
+	SendMessage(recipient, message string, attachments []string) (*SendMessageResponse, error)
+	ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error)
+}
+
+type SignalClient struct {
+	rpcURL    string
+	authToken string
+	client    *http.Client
 }
 
 type SendMessageRequest struct {
@@ -36,14 +42,15 @@ type SendMessageResponse struct {
 	ID int `json:"id"`
 }
 
-func NewClient(rpcURL string) *Client {
-	return &Client{
-		rpcURL: rpcURL,
-		client: &http.Client{},
+func NewClient(rpcURL, authToken string) Client {
+	return &SignalClient{
+		rpcURL:    rpcURL,
+		authToken: authToken,
+		client:    &http.Client{},
 	}
 }
 
-func (c *Client) SendMessage(recipient, message string, attachments []string) (*SendMessageResponse, error) {
+func (c *SignalClient) SendMessage(recipient, message string, attachments []string) (*SendMessageResponse, error) {
 	request := SendMessageRequest{
 		Jsonrpc: "2.0",
 		Method:  "send",
@@ -64,6 +71,9 @@ func (c *Client) SendMessage(recipient, message string, attachments []string) (*
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -116,7 +126,7 @@ type ReceiveMessageResponse struct {
 	ID int `json:"id"`
 }
 
-func (c *Client) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error) {
+func (c *SignalClient) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error) {
 	request := ReceiveMessageRequest{
 		Jsonrpc: "2.0",
 		Method:  "receive",
@@ -135,6 +145,9 @@ func (c *Client) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {

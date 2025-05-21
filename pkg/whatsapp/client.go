@@ -11,7 +11,12 @@ import (
 	"path/filepath"
 )
 
-type Client struct {
+type Client interface {
+	SendText(chatID, text string) (*SendMessageResponse, error)
+	SendMedia(chatID, mediaPath, caption string) (*SendMessageResponse, error)
+}
+
+type WhatsAppClient struct {
 	baseURL string
 	client  *http.Client
 }
@@ -22,14 +27,14 @@ type SendMessageResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func NewClient(baseURL string) *Client {
-	return &Client{
+func NewClient(baseURL string) Client {
+	return &WhatsAppClient{
 		baseURL: baseURL,
 		client:  &http.Client{},
 	}
 }
 
-func (c *Client) SendText(chatID, message string) (*SendMessageResponse, error) {
+func (c *WhatsAppClient) SendText(chatID, message string) (*SendMessageResponse, error) {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 		"text":   message,
@@ -38,7 +43,7 @@ func (c *Client) SendText(chatID, message string) (*SendMessageResponse, error) 
 	return c.sendRequest("/api/sendText", payload)
 }
 
-func (c *Client) SendMedia(chatID, mediaPath, caption string) (*SendMessageResponse, error) {
+func (c *WhatsAppClient) SendMedia(chatID, mediaPath, caption string) (*SendMessageResponse, error) {
 	file, err := os.Open(mediaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open media file: %w", err)
@@ -91,7 +96,7 @@ func (c *Client) SendMedia(chatID, mediaPath, caption string) (*SendMessageRespo
 	return &result, nil
 }
 
-func (c *Client) sendRequest(endpoint string, payload interface{}) (*SendMessageResponse, error) {
+func (c *WhatsAppClient) sendRequest(endpoint string, payload interface{}) (*SendMessageResponse, error) {
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)

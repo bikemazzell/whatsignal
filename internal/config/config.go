@@ -3,49 +3,34 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"whatsignal/internal/models"
 )
 
-type Config struct {
-	WhatsApp struct {
-		APIBaseURL      string `json:"apiBaseUrl"`
-		WebhookSecret   string `json:"webhookSecret"`
-		PollIntervalSec int    `json:"pollIntervalSec"`
-	} `json:"whatsapp"`
+var (
+	ErrMissingWhatsAppURL = models.ConfigError{Message: "missing WhatsApp API URL"}
+	ErrMissingSignalURL   = models.ConfigError{Message: "missing Signal RPC URL"}
+)
 
-	Signal struct {
-		RPCURL    string `json:"rpcUrl"`
-		AuthToken string `json:"authToken"`
-	} `json:"signal"`
-
-	Retry struct {
-		InitialBackoffMs int `json:"initialBackoffMs"`
-		MaxBackoffMs     int `json:"maxBackoffMs"`
-		MaxAttempts      int `json:"maxAttempts"`
-	} `json:"retry"`
-
-	RetentionDays int `json:"retentionDays"`
-}
-
-func LoadConfig(path string) (*Config, error) {
+func LoadConfig(path string) (*models.Config, error) {
 	file, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var config Config
+	var config models.Config
 	if err := json.Unmarshal(file, &config); err != nil {
 		return nil, err
 	}
 
-	if err := config.validate(); err != nil {
+	if err := validate(&config); err != nil {
 		return nil, err
 	}
 
-	config.applyEnvironmentOverrides()
+	applyEnvironmentOverrides(&config)
 	return &config, nil
 }
 
-func (c *Config) validate() error {
+func validate(c *models.Config) error {
 	if c.WhatsApp.APIBaseURL == "" {
 		return ErrMissingWhatsAppURL
 	}
@@ -61,7 +46,7 @@ func (c *Config) validate() error {
 	return nil
 }
 
-func (c *Config) applyEnvironmentOverrides() {
+func applyEnvironmentOverrides(c *models.Config) {
 	if url := os.Getenv("WHATSAPP_API_URL"); url != "" {
 		c.WhatsApp.APIBaseURL = url
 	}
@@ -74,17 +59,4 @@ func (c *Config) applyEnvironmentOverrides() {
 	if token := os.Getenv("SIGNAL_AUTH_TOKEN"); token != "" {
 		c.Signal.AuthToken = token
 	}
-}
-
-var (
-	ErrMissingWhatsAppURL = ConfigError{"missing WhatsApp API URL"}
-	ErrMissingSignalURL   = ConfigError{"missing Signal RPC URL"}
-)
-
-type ConfigError struct {
-	msg string
-}
-
-func (e ConfigError) Error() string {
-	return e.msg
 }

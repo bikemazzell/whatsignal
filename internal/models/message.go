@@ -1,42 +1,37 @@
 package models
 
-import (
-	"time"
-)
+import "time"
 
-type DeliveryStatus string
+type MessageType string
 
 const (
-	DeliveryStatusSent      DeliveryStatus = "sent"
-	DeliveryStatusDelivered DeliveryStatus = "delivered"
-	DeliveryStatusRead      DeliveryStatus = "read"
-	DeliveryStatusFailed    DeliveryStatus = "failed"
+	TextMessage  MessageType = "text"
+	ImageMessage MessageType = "image"
+	VideoMessage MessageType = "video"
+	AudioMessage MessageType = "audio"
 )
 
-type MessageMapping struct {
-	ID              int64          `db:"id"`
-	WhatsAppChatID  string         `db:"whatsapp_chat_id"`
-	WhatsAppMsgID   string         `db:"whatsapp_msg_id"`
-	SignalMsgID     string         `db:"signal_msg_id"`
-	SignalTimestamp time.Time      `db:"signal_timestamp"`
-	ForwardedAt     time.Time      `db:"forwarded_at"`
-	DeliveryStatus  DeliveryStatus `db:"delivery_status"`
-	MediaPath       *string        `db:"media_path"`
-	CreatedAt       time.Time      `db:"created_at"`
-	UpdatedAt       time.Time      `db:"updated_at"`
-}
-
-type MessageMetadata struct {
-	Sender   string    `json:"sender"`
-	Chat     string    `json:"chat"`
-	Time     time.Time `json:"time"`
-	MsgID    string    `json:"msgId"`
-	ThreadID string    `json:"threadId"`
-}
-
+// Message represents a message in the system, either from WhatsApp or Signal
 type Message struct {
-	Metadata  MessageMetadata
-	Content   string
-	MediaType string
-	MediaURL  string
+	ID              string        `json:"id"`
+	ChatID          string        `json:"chatId"`
+	ThreadID        string        `json:"threadId"`
+	Sender          string        `json:"sender"`
+	Recipient       string        `json:"recipient"`
+	Content         string        `json:"content"`
+	Type            MessageType   `json:"type"`
+	Platform        string        `json:"platform"`
+	MediaURL        string        `json:"mediaUrl"`
+	MediaPath       string        `json:"mediaPath"`
+	MediaMetadata   MediaMetadata `json:"mediaMetadata"`
+	QuotedMessageID string        `json:"quotedMessageId"`
+	Timestamp       time.Time     `json:"timestamp"`
+	DeliveryStatus  string        `json:"deliveryStatus"`
+}
+
+type MediaMetadata struct {
+	Size      int64  `json:"size"`
+	MimeType  string `json:"mimeType"`
+	Filename  string `json:"filename"`
+	CachePath string `json:"cachePath"`
 }

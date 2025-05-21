@@ -1,22 +1,38 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/whatsignal/internal/database"
-	"github.com/whatsignal/internal/models"
-	"github.com/whatsignal/pkg/media"
-	"github.com/whatsignal/pkg/signal"
-	"github.com/whatsignal/pkg/whatsapp"
+	"whatsignal/internal/models"
+	"whatsignal/pkg/media"
+	"whatsignal/pkg/signal"
+	"whatsignal/pkg/whatsapp"
 )
 
-type Bridge struct {
-	db          *database.Database
-	whatsapp    *whatsapp.Client
-	signal      *signal.Client
-	media       *media.Handler
+type MessageBridge interface {
+	SendMessage(ctx context.Context, msg *models.Message) error
+	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
+	HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error
+	UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error
+	CleanupOldRecords(ctx context.Context, retentionDays int) error
+}
+
+type DatabaseService interface {
+	SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error
+	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
+	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
+	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
+	CleanupOldRecords(retentionDays int) error
+}
+
+type bridge struct {
+	waClient    whatsapp.Client
+	sigClient   signal.Client
+	db          DatabaseService
+	media       media.Handler
 	retryConfig RetryConfig
 }
 
@@ -26,17 +42,45 @@ type RetryConfig struct {
 	MaxAttempts    int
 }
 
-func NewBridge(db *database.Database, wa *whatsapp.Client, sig *signal.Client, mh *media.Handler, rc RetryConfig) *Bridge {
-	return &Bridge{
+func NewBridge(waClient whatsapp.Client, sigClient signal.Client, db DatabaseService, mh media.Handler, rc RetryConfig) MessageBridge {
+	return &bridge{
+		waClient:    waClient,
+		sigClient:   sigClient,
 		db:          db,
-		whatsapp:    wa,
-		signal:      sig,
 		media:       mh,
 		retryConfig: rc,
 	}
 }
 
-func (b *Bridge) HandleWhatsAppMessage(chatID, msgID, sender, content string, mediaPath string) error {
+func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
+	switch msg.Platform {
+	case "whatsapp":
+		resp, err := b.waClient.SendText(msg.ChatID, msg.Content)
+		if err != nil {
+			return fmt.Errorf("failed to send WhatsApp message: %w", err)
+		}
+		if resp.Status != "sent" {
+			return fmt.Errorf("WhatsApp message not sent: %s", resp.Error)
+		}
+		return nil
+
+	case "signal":
+		attachments := []string{}
+		if msg.MediaPath != "" {
+			attachments = append(attachments, msg.MediaPath)
+		}
+		_, err := b.sigClient.SendMessage(msg.ThreadID, msg.Content, attachments)
+		if err != nil {
+			return fmt.Errorf("failed to send Signal message: %w", err)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported platform: %s", msg.Platform)
+	}
+}
+
+func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
 	metadata := models.MessageMetadata{
 		Sender:   sender,
 		Chat:     chatID,
@@ -61,7 +105,7 @@ func (b *Bridge) HandleWhatsAppMessage(chatID, msgID, sender, content string, me
 		attachments = append(attachments, processedPath)
 	}
 
-	resp, err := b.signal.SendMessage(chatID, message, attachments)
+	resp, err := b.sigClient.SendMessage(chatID, message, attachments)
 	if err != nil {
 		return fmt.Errorf("failed to send signal message: %w", err)
 	}
@@ -79,19 +123,19 @@ func (b *Bridge) HandleWhatsAppMessage(chatID, msgID, sender, content string, me
 		mapping.MediaPath = &attachments[0]
 	}
 
-	if err := b.db.SaveMessageMapping(mapping); err != nil {
+	if err := b.db.SaveMessageMapping(ctx, mapping); err != nil {
 		return fmt.Errorf("failed to save message mapping: %w", err)
 	}
 
 	return nil
 }
 
-func (b *Bridge) HandleSignalMessage(msg *signal.SignalMessage) error {
+func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
 	if msg.QuotedMessage == nil {
 		return fmt.Errorf("message is not a reply, ignoring")
 	}
 
-	mapping, err := b.db.GetMessageMappingByWhatsAppID(msg.QuotedMessage.ID)
+	mapping, err := b.db.GetMessageMappingByWhatsAppID(ctx, msg.QuotedMessage.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get message mapping: %w", err)
 	}
@@ -115,9 +159,9 @@ func (b *Bridge) HandleSignalMessage(msg *signal.SignalMessage) error {
 	var sendErr error
 
 	if len(attachments) > 0 {
-		resp, sendErr = b.whatsapp.SendMedia(mapping.WhatsAppChatID, attachments[0], msg.Message)
+		resp, sendErr = b.waClient.SendMedia(mapping.WhatsAppChatID, attachments[0], msg.Message)
 	} else {
-		resp, sendErr = b.whatsapp.SendText(mapping.WhatsAppChatID, msg.Message)
+		resp, sendErr = b.waClient.SendText(mapping.WhatsAppChatID, msg.Message)
 	}
 
 	if sendErr != nil {
@@ -137,18 +181,18 @@ func (b *Bridge) HandleSignalMessage(msg *signal.SignalMessage) error {
 		newMapping.MediaPath = &attachments[0]
 	}
 
-	if err := b.db.SaveMessageMapping(newMapping); err != nil {
+	if err := b.db.SaveMessageMapping(ctx, newMapping); err != nil {
 		return fmt.Errorf("failed to save message mapping: %w", err)
 	}
 
 	return nil
 }
 
-func (b *Bridge) UpdateDeliveryStatus(msgID string, status models.DeliveryStatus) error {
-	return b.db.UpdateDeliveryStatus(msgID, status)
+func (b *bridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error {
+	return b.db.UpdateDeliveryStatus(ctx, msgID, string(status))
 }
 
-func (b *Bridge) CleanupOldRecords(retentionDays int) error {
+func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error {
 	if err := b.db.CleanupOldRecords(retentionDays); err != nil {
 		return fmt.Errorf("failed to cleanup old records: %w", err)
 	}

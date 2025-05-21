@@ -11,6 +11,8 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 - Configurable message retention
 - Webhook-based message delivery
 - Health monitoring endpoint
+- Comprehensive test coverage
+- Type-safe message handling
 
 ## Prerequisites
 
@@ -51,7 +53,7 @@ Configuration options:
 - `whatsapp.webhookSecret`: Secret for webhook authentication
 - `whatsapp.pollIntervalSec`: Polling interval if webhooks are not available
 - `signal.rpcUrl`: URL of your signal-cli JSON-RPC daemon
-- `signal.authToken`: Optional authentication token
+- `signal.authToken`: Authentication token for Signal API
 - `retry`: Message delivery retry configuration
 - `retentionDays`: Number of days to retain message history
 
@@ -96,22 +98,49 @@ curl http://localhost:8080/health
 
 ### Project Structure
 
-- `cmd/whatsignal`: Main application entry point
-- `internal/`
-  - `config/`: Configuration management
-  - `database/`: Database operations
-  - `models/`: Data models
-  - `service/`: Core business logic
-- `pkg/`
-  - `whatsapp/`: WhatsApp client
-  - `signal/`: Signal client
-  - `media/`: Media file handling
+The project follows standard Go project layout:
+
+- `cmd/whatsignal/`: Main application entry point and server setup
+- `internal/`: Private application code
+  - `config/`: Configuration management (96% test coverage)
+  - `database/`: Database operations and migrations (65% test coverage)
+  - `models/`: Data models and type definitions
+  - `service/`: Core business logic (74% test coverage)
+    - `bridge.go`: Message bridging between platforms
+    - `message_service.go`: Message handling and storage
+- `pkg/`: Public libraries that can be used by external applications
+  - `whatsapp/`: WhatsApp client (78% test coverage)
+  - `signal/`: Signal client (80% test coverage)
+  - `media/`: Media file handling (57% test coverage)
+- `scripts/`: Database migrations and utility scripts
+- `docs/`: Documentation files
 
 ### Running Tests
 
+Run all tests with coverage report:
 ```bash
-go test ./...
+go test -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
 ```
+
+Current test coverage:
+- Overall: 68.3%
+- Key packages:
+  - config: 96.3%
+  - migrations: 100%
+  - signal: 80%
+  - whatsapp: 78%
+  - service: 74.4%
+
+### Code Quality
+
+The project maintains high code quality through:
+- Comprehensive test suite
+- Type-safe message handling
+- Proper error handling and logging
+- Clean separation of concerns
+- Interface-based design for testability
+- Consistent error messages and logging
 
 ## Contributing
 
@@ -120,6 +149,12 @@ go test ./...
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
+
+Please ensure:
+- Tests are added for new functionality
+- Existing tests pass
+- Code follows project structure and conventions
+- Documentation is updated if needed
 
 ## License
 

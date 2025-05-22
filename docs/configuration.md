@@ -8,13 +8,46 @@ This document describes all configuration options available in `config.json`.
   - Default: `http://localhost:3000`
   - Example: `https://waha.your-domain.com`
 
+- `whatsapp.apiKey`: API key for authenticating with WAHA
+  - Required if WAHA is configured with `WHATSAPP_API_KEY`
+  - Must match WAHA's `WHATSAPP_API_KEY` setting
+  - Used in `X-Api-Key` header for all requests
+
+- `whatsapp.sessionName`: Name of the WhatsApp session
+  - Default: `default`
+  - Used in API endpoints as `/api/{sessionName}/...`
+  - Must be unique if running multiple instances
+
 - `whatsapp.webhookSecret`: Secret for authenticating incoming webhooks
   - Must be set to a secure random string
   - Used to verify that webhook calls are coming from your Waha instance
 
+- `whatsapp.messageTypingDelay`: Controls typing simulation delay
+  - Default: `50` (milliseconds per character)
+  - Maximum: `3000` (3 seconds)
+  - Set to `0` to disable typing simulation
+
 - `whatsapp.pollIntervalSec`: How often to poll for messages if webhooks are not available
   - Default: `30` seconds
   - Set to `0` to disable polling
+
+- `whatsapp.mediaConfig`: Media handling configuration
+  ```json
+  {
+    "maxSizeMB": {
+      "image": 5,
+      "video": 100,
+      "document": 100,
+      "voice": 16
+    },
+    "allowedTypes": {
+      "image": ["jpg", "jpeg", "png"],
+      "video": ["mp4"],
+      "document": ["pdf", "doc", "docx"],
+      "voice": ["ogg"]
+    }
+  }
+  ```
 
 ## Signal Configuration
 
@@ -25,6 +58,14 @@ This document describes all configuration options available in `config.json`.
 - `signal.authToken`: Authentication token for Signal API access
   - Required if your signal-cli daemon requires authentication
   - Leave empty if authentication is not enabled
+
+- `signal.phoneNumber`: Your Signal phone number
+  - Required for registration and message sending
+  - Format: International format with country code (e.g., "+1234567890")
+
+- `signal.deviceName`: Name for this Signal device
+  - Default: "whatsignal-bridge"
+  - Used during registration to identify this device
 
 ## Retry Configuration
 
@@ -62,8 +103,25 @@ This document describes all configuration options available in `config.json`.
 {
   "whatsapp": {
     "apiBaseUrl": "http://localhost:3000",
+    "apiKey": "your-api-key",
+    "sessionName": "default",
     "webhookSecret": "your-webhook-secret",
-    "pollIntervalSec": 30
+    "messageTypingDelay": 50,
+    "pollIntervalSec": 30,
+    "mediaConfig": {
+      "maxSizeMB": {
+        "image": 5,
+        "video": 100,
+        "document": 100,
+        "voice": 16
+      },
+      "allowedTypes": {
+        "image": ["jpg", "jpeg", "png"],
+        "video": ["mp4"],
+        "document": ["pdf", "doc", "docx"],
+        "voice": ["ogg"]
+      }
+    }
   },
   "signal": {
     "rpcUrl": "http://localhost:8080",

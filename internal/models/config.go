@@ -1,15 +1,23 @@
 package models
 
+import "time"
+
 type Config struct {
 	WhatsApp struct {
-		APIBaseURL      string `json:"apiBaseUrl"`
-		WebhookSecret   string `json:"webhookSecret"`
-		PollIntervalSec int    `json:"pollIntervalSec"`
+		APIBaseURL      string        `json:"apiBaseUrl"`
+		APIKey          string        `json:"apiKey"`
+		SessionName     string        `json:"sessionName"`
+		Timeout         time.Duration `json:"timeout"`
+		RetryCount      int           `json:"retryCount"`
+		WebhookSecret   string        `json:"webhookSecret"`
+		PollIntervalSec int           `json:"pollIntervalSec"`
 	} `json:"whatsapp"`
 
 	Signal struct {
-		RPCURL    string `json:"rpcUrl"`
-		AuthToken string `json:"authToken"`
+		RPCURL      string `json:"rpcUrl"`
+		AuthToken   string `json:"authToken"`
+		PhoneNumber string `json:"phoneNumber"`
+		DeviceName  string `json:"deviceName"`
 	} `json:"signal"`
 
 	Retry struct {

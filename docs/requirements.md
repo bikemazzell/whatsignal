@@ -132,8 +132,14 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
 - Endpoints: `/api/sendText`, `/api/sendMedia`, webhook receiver at `/webhook/whatsapp`  
 
 ### 6.2 Signal-CLI JSON-RPC  
-- Methods: `send`, `receive`, `event subscribe`  
-- Persistent daemon running locally on configurable port/socket  
+- Methods: `send`, `receive`, `register`, `event subscribe`  
+- Persistent daemon running locally on configurable port/socket
+- Support for device registration and management
+- Proper session handling and persistence
+- Media type validation and conversion
+- Size limit enforcement per platform
+- Reply correlation with metadata
+- Group message support (planned)
 
 ## 7. Data Model  
 

@@ -44,8 +44,12 @@ docker pull devlikeapro/whatsapp-http-api
 # Using Docker (recommended)
 docker pull registry.gitlab.com/packaging/signal-cli/signal-cli:latest
 
-# Create a directory for Signal data
+# Create directories for Signal data and config
 mkdir -p ~/.local/share/signal-cli
+mkdir -p ~/.config/signal-cli
+
+# Set proper permissions
+chmod 700 ~/.local/share/signal-cli ~/.config/signal-cli
 ```
 
 ### 2. Install WhatSignal
@@ -70,16 +74,24 @@ mkdir -p ~/.local/share/signal-cli
 
 1. Start the signal-cli daemon:
    ```bash
-   # Run signal-cli in Docker
+   # Run signal-cli in Docker with JSON-RPC enabled
    docker run -d \
      --name signal-cli \
      -p 8080:8080 \
      -v ~/.local/share/signal-cli:/home/.local/share/signal-cli \
+     -v ~/.config/signal-cli:/home/.config/signal-cli \
      registry.gitlab.com/packaging/signal-cli/signal-cli:latest \
-     jsonRpc
+     --config /home/.config/signal-cli \
+     daemon --socket 0.0.0.0:8080 --json-rpc
    ```
 
-2. Start the Waha service:
+2. Register your Signal account (if not already registered):
+   ```bash
+   # First time setup only
+   ./whatsignal -register
+   ```
+
+3. Start the Waha service:
    ```bash
    docker run -d -p 3000:3000 \
      -v $(pwd)/data:/app/data \

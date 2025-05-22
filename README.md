@@ -5,14 +5,31 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 ## Features
 
 - One-to-one chat bridging between WhatsApp and Signal
-- Support for text messages, images, videos, and audio files
-- Media file caching and size limit enforcement
-- Reply correlation between platforms
-- Configurable message retention
-- Webhook-based message delivery
-- Health monitoring endpoint
-- Comprehensive test coverage
-- Type-safe message handling
+- Full WAHA API compliance with best practices:
+  - Natural typing simulation
+  - Message seen status
+  - Proper message flow handling
+- Comprehensive media support:
+  - Images (JPEG, PNG)
+  - Videos (MP4)
+  - Documents (PDF, DOC, etc.)
+  - Voice messages (OGG)
+- Message Features:
+  - Text with formatting
+  - URL previews
+  - Reply context preservation
+  - Media in replies
+- Platform Integration:
+  - Webhook-based message delivery
+  - Session management
+  - Delivery status tracking
+- System Features:
+  - Media file caching
+  - Size limit enforcement
+  - Configurable message retention
+  - Health monitoring endpoint
+  - Comprehensive test coverage
+  - Type-safe message handling
 
 ## Quick Start
 

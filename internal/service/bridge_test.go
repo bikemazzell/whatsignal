@@ -10,7 +10,7 @@ import (
 	"whatsignal/internal/database"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
-	"whatsignal/pkg/whatsapp"
+	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,33 +18,96 @@ import (
 )
 
 type mockWhatsAppClient struct {
-	sendTextResp  *whatsapp.SendMessageResponse
+	mock.Mock
+	sendTextResp  *types.SendMessageResponse
 	sendTextErr   error
-	sendMediaResp *whatsapp.SendMessageResponse
-	sendMediaErr  error
+	sendImageResp *types.SendMessageResponse
+	sendImageErr  error
 }
 
-func (m *mockWhatsAppClient) SendText(chatID, text string) (*whatsapp.SendMessageResponse, error) {
+func (m *mockWhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
 	return m.sendTextResp, m.sendTextErr
 }
 
-func (m *mockWhatsAppClient) SendMedia(chatID, mediaPath, caption string) (*whatsapp.SendMessageResponse, error) {
-	return m.sendMediaResp, m.sendMediaErr
+func (m *mockWhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
+	return m.sendImageResp, m.sendImageErr
+}
+
+func (m *mockWhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
+	return m.sendImageResp, m.sendImageErr
+}
+
+func (m *mockWhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
+	return m.sendImageResp, m.sendImageErr
+}
+
+func (m *mockWhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
+	return m.sendImageResp, m.sendImageErr
+}
+
+func (m *mockWhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
+	return m.sendImageResp, m.sendImageErr
+}
+
+func (m *mockWhatsAppClient) CreateSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWhatsAppClient) StartSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWhatsAppClient) StopSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Session), args.Error(1)
+}
+
+func (m *mockWhatsAppClient) SendSeen(ctx context.Context, chatID string) error {
+	args := m.Called(ctx, chatID)
+	return args.Error(0)
+}
+
+func (m *mockWhatsAppClient) StartTyping(ctx context.Context, chatID string) error {
+	args := m.Called(ctx, chatID)
+	return args.Error(0)
+}
+
+func (m *mockWhatsAppClient) StopTyping(ctx context.Context, chatID string) error {
+	args := m.Called(ctx, chatID)
+	return args.Error(0)
 }
 
 type mockSignalClient struct {
+	mock.Mock
 	sendMessageResp *signal.SendMessageResponse
 	sendMessageErr  error
-	receiveMsgs     []signal.SignalMessage
-	receiveErr      error
 }
 
-func (m *mockSignalClient) SendMessage(threadID, text string, attachments []string) (*signal.SendMessageResponse, error) {
+func (m *mockSignalClient) SendMessage(recipient, message string, attachments []string) (*signal.SendMessageResponse, error) {
 	return m.sendMessageResp, m.sendMessageErr
 }
 
 func (m *mockSignalClient) ReceiveMessages(timeoutSeconds int) ([]signal.SignalMessage, error) {
-	return m.receiveMsgs, m.receiveErr
+	args := m.Called(timeoutSeconds)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]signal.SignalMessage), args.Error(1)
+}
+
+func (m *mockSignalClient) Register() error {
+	args := m.Called()
+	return args.Error(0)
 }
 
 // Mock media handler
@@ -150,15 +213,23 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 
 	// Create mock clients with default responses
 	waClient := &mockWhatsAppClient{
-		sendTextResp: &whatsapp.SendMessageResponse{
+		sendTextResp: &types.SendMessageResponse{
 			MessageID: "test-wa-msg-id",
 			Status:    "sent",
 		},
-		sendMediaResp: &whatsapp.SendMessageResponse{
-			MessageID: "test-wa-media-msg-id",
+		sendImageResp: &types.SendMessageResponse{
+			MessageID: "test-wa-image-msg-id",
 			Status:    "sent",
 		},
 	}
+
+	// Mock session methods
+	waClient.On("CreateSession", mock.Anything).Return(nil)
+	waClient.On("StartSession", mock.Anything).Return(nil)
+	waClient.On("StopSession", mock.Anything).Return(nil)
+	waClient.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Status: types.SessionStatusRunning,
+	}, nil)
 
 	sigClient := &mockSignalClient{
 		sendMessageResp: &signal.SendMessageResponse{
@@ -195,7 +266,7 @@ func TestBridgeSendMessage(t *testing.T) {
 	// Override mock clients for error cases
 	bridge.waClient = &mockWhatsAppClient{
 		sendTextErr:  assert.AnError,
-		sendMediaErr: assert.AnError,
+		sendImageErr: assert.AnError,
 	}
 	bridge.sigClient = &mockSignalClient{
 		sendMessageErr: assert.AnError,

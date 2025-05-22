@@ -22,6 +22,7 @@ type MessageMapping struct {
 	ForwardedAt     time.Time      `json:"forwardedAt"`
 	DeliveryStatus  DeliveryStatus `json:"deliveryStatus"`
 	MediaPath       *string        `json:"mediaPath,omitempty"`
+	MediaType       string         `json:"mediaType"`
 	CreatedAt       time.Time      `json:"createdAt"`
 	UpdatedAt       time.Time      `json:"updatedAt"`
 }

@@ -32,28 +32,90 @@ WhatSignal operates as a bridge service that:
 
 1. Ensure your signal-cli daemon is running and accessible
 2. Verify the RPC URL and auth token in `config.json`
+3. Register your device if not already registered:
+   ```bash
+   ./whatsignal -register
+   ```
+4. Follow the registration prompts:
+   - Enter your phone number
+   - Enter the verification code received via SMS
+   - Device will be registered as "whatsignal-bridge"
 
-## Message Types
+## Message Flow
 
-WhatSignal supports the following message types:
+### WhatsApp Message Processing
+
+WhatSignal follows WAHA's best practices for message handling:
+
+1. **Message Receipt**
+   - Receives message via webhook
+   - Marks message as seen using `/api/sendSeen`
+   - Processes message content and media
+
+2. **Message Sending**
+   - Indicates typing status with `/api/startTyping`
+   - Simulates natural typing delay based on message length
+   - Stops typing with `/api/stopTyping`
+   - Sends the actual message
+
+3. **Media Handling**
+   - Images: `/api/sendImage` (JPEG, PNG)
+   - Documents: `/api/sendFile` (PDF, etc.)
+   - Voice Messages: `/api/sendVoice` (OGG)
+   - Videos: `/api/sendVideo` (MP4)
+   - Size limits:
+     - Images: 5MB
+     - Videos: 100MB
+     - Documents: 100MB
+     - Voice Messages: 16MB
+
+### Message Types
+
+WhatSignal supports all WAHA message types:
 
 1. **Text Messages**
    - Plain text
-   - URLs
+   - URLs with preview
    - Emojis
+   - Formatted text
 
 2. **Media Messages**
    - Images (JPEG, PNG)
    - Videos (MP4)
-   - Audio files
-   - Size limits:
-     - Images: 5MB
-     - Videos: 100MB
-     - GIFs: 25MB
+   - Documents (PDF, DOC, etc.)
+   - Voice messages (OGG)
+   - Size limits enforced per platform
 
 3. **Reply Messages**
-   - Replies maintain context across platforms
-   - Original message reference is preserved
+   - Maintains context across platforms
+   - Original message reference preserved
+   - Supports media in replies
+
+### Signal Message Flow
+
+1. **Message Receipt**
+   - Receives message via signal-cli JSON-RPC
+   - Processes message content and attachments
+   - Extracts reply context if present
+
+2. **Message Processing**
+   - Validates message format and size
+   - Processes media attachments
+   - Correlates replies with original messages
+   - Handles group messages (if supported)
+
+3. **Media Handling**
+   - Images: Supported formats (JPEG, PNG)
+   - Documents: PDF, DOC, etc.
+   - Voice Messages: OGG format
+   - Videos: MP4 format
+   - Size limits enforced per platform
+
+4. **Reply Handling**
+   - Maintains context across platforms
+   - Preserves original message references
+   - Supports media in replies
+   - Handles failed correlations gracefully
 
 ## Message Flow Examples
 

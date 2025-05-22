@@ -361,3 +361,97 @@ func TestDeleteMessage(t *testing.T) {
 	err := service.DeleteMessage(ctx, "msg1")
 	assert.NoError(t, err)
 }
+
+func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	service := NewMessageService(bridge, db, mediaCache)
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		chatID    string
+		msgID     string
+		sender    string
+		content   string
+		mediaPath string
+		wantError bool
+		setup     func()
+	}{
+		{
+			name:    "new text message",
+			chatID:  "chat123",
+			msgID:   "msg123",
+			sender:  "sender123",
+			content: "Hello, World!",
+			setup: func() {
+				// Check if message exists
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(nil, nil).Once()
+
+				// Called by ReceiveMessage
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(nil, nil).Once()
+				bridge.On("SendMessage", ctx, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.ID == "msg123" &&
+						msg.ChatID == "chat123" &&
+						msg.Content == "Hello, World!" &&
+						msg.Type == models.TextMessage
+				})).Return(nil).Once()
+				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+			},
+		},
+		{
+			name:      "new media message",
+			chatID:    "chat124",
+			msgID:     "msg124",
+			sender:    "sender123",
+			content:   "Check this out!",
+			mediaPath: "http://example.com/image.jpg",
+			setup: func() {
+				// Check if message exists
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg124").Return(nil, nil).Once()
+
+				// Called by ReceiveMessage
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg124").Return(nil, nil).Once()
+				mediaCache.On("ProcessMedia", "http://example.com/image.jpg").Return("/cache/image.jpg", nil).Once()
+				bridge.On("SendMessage", ctx, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.ID == "msg124" &&
+						msg.ChatID == "chat124" &&
+						msg.Content == "Check this out!" &&
+						msg.Type == models.ImageMessage &&
+						msg.MediaPath == "/cache/image.jpg"
+				})).Return(nil).Once()
+				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+			},
+		},
+		{
+			name:    "duplicate message",
+			chatID:  "chat125",
+			msgID:   "msg125",
+			sender:  "sender123",
+			content: "Duplicate message",
+			setup: func() {
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg125").Return(&models.MessageMapping{
+					WhatsAppMsgID:  "msg125",
+					DeliveryStatus: "delivered",
+				}, nil).Once()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			err := service.HandleWhatsAppMessage(ctx, tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			bridge.AssertExpectations(t)
+			db.AssertExpectations(t)
+			mediaCache.AssertExpectations(t)
+		})
+	}
+}

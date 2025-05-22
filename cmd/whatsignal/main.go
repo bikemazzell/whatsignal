@@ -12,6 +12,7 @@ import (
 	"whatsignal/pkg/media"
 	signalapi "whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp"
+	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -48,8 +49,19 @@ func main() {
 	}
 
 	// Initialize clients
-	waClient := whatsapp.NewClient(cfg.WhatsApp.APIBaseURL)
-	sigClient := signalapi.NewClient(cfg.Signal.RPCURL, cfg.Signal.AuthToken)
+	waClient := whatsapp.NewClient(types.ClientConfig{
+		BaseURL:     cfg.WhatsApp.APIBaseURL,
+		APIKey:      cfg.WhatsApp.APIKey,
+		SessionName: cfg.WhatsApp.SessionName,
+		Timeout:     cfg.WhatsApp.Timeout,
+		RetryCount:  cfg.WhatsApp.RetryCount,
+	})
+	sigClient := signalapi.NewClient(
+		cfg.Signal.RPCURL,
+		cfg.Signal.AuthToken,
+		cfg.Signal.PhoneNumber,
+		"whatsignal-bridge", // Default device name
+	)
 
 	// Initialize media handler
 	mediaHandler, err := media.NewHandler("cache")

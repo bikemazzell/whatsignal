@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
 	"whatsignal/internal/service"
+	"whatsignal/pkg/signal"
+	"whatsignal/pkg/whatsapp"
+	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -17,6 +21,7 @@ type Server struct {
 	router     *mux.Router
 	logger     *logrus.Logger
 	msgService service.MessageService
+	waWebhook  whatsapp.WebhookHandler
 	server     *http.Server
 }
 
@@ -25,9 +30,11 @@ func NewServer(msgService service.MessageService, logger *logrus.Logger) *Server
 		router:     mux.NewRouter(),
 		logger:     logger,
 		msgService: msgService,
+		waWebhook:  whatsapp.NewWebhookHandler(),
 	}
 
 	s.setupRoutes()
+	s.setupWebhookHandlers()
 	return s
 }
 
@@ -42,6 +49,25 @@ func (s *Server) setupRoutes() {
 	// Signal webhook
 	signal := s.router.PathPrefix("/webhook/signal").Subrouter()
 	signal.HandleFunc("", s.handleSignalWebhook()).Methods(http.MethodPost)
+}
+
+func (s *Server) setupWebhookHandlers() {
+	// Register WhatsApp webhook handlers
+	s.waWebhook.RegisterEventHandler("message.any", func(ctx context.Context, payload json.RawMessage) error {
+		var msg types.MessagePayload
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			return fmt.Errorf("failed to unmarshal message payload: %w", err)
+		}
+
+		s.logger.WithFields(logrus.Fields{
+			"messageId": msg.ID,
+			"chatId":    msg.ChatID,
+			"sender":    msg.Sender,
+			"type":      msg.Type,
+		}).Info("Received WhatsApp message")
+
+		return s.msgService.HandleWhatsAppMessage(ctx, msg.ChatID, msg.ID, msg.Sender, msg.Content, msg.MediaURL)
+	})
 }
 
 func (s *Server) Start() error {
@@ -76,16 +102,56 @@ func (s *Server) handleHealth() http.HandlerFunc {
 
 func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Implement WhatsApp webhook handler
-		s.logger.Info("WhatsApp webhook received")
+		var event types.WebhookEvent
+		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+			s.logger.WithError(err).Error("Failed to decode webhook payload")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		if err := s.waWebhook.Handle(r.Context(), &event); err != nil {
+			s.logger.WithError(err).Error("Failed to handle webhook event")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(http.StatusOK)
 	}
 }
 
 func (s *Server) handleSignalWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Implement Signal webhook handler
-		s.logger.Info("Signal webhook received")
+		// Verify webhook signature if configured
+		if err := s.verifySignalWebhookSignature(r); err != nil {
+			s.logger.WithError(err).Error("Invalid Signal webhook signature")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		var msg signal.SignalMessage
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+			s.logger.WithError(err).Error("Failed to decode Signal webhook payload")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		s.logger.WithFields(logrus.Fields{
+			"messageId": msg.MessageID,
+			"sender":    msg.Sender,
+			"timestamp": msg.Timestamp,
+		}).Info("Received Signal message")
+
+		if err := s.msgService.HandleSignalMessage(r.Context(), &msg); err != nil {
+			s.logger.WithError(err).Error("Failed to handle Signal message")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (s *Server) verifySignalWebhookSignature(r *http.Request) error {
+	// TODO: Implement webhook signature verification when Signal-CLI supports it
+	return nil
 }

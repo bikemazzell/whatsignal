@@ -10,12 +10,15 @@ import (
 type Client interface {
 	SendMessage(recipient, message string, attachments []string) (*SendMessageResponse, error)
 	ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error)
+	Register() error
 }
 
 type SignalClient struct {
-	rpcURL    string
-	authToken string
-	client    *http.Client
+	rpcURL      string
+	authToken   string
+	client      *http.Client
+	phoneNumber string
+	deviceName  string
 }
 
 type SendMessageRequest struct {
@@ -42,11 +45,13 @@ type SendMessageResponse struct {
 	ID int `json:"id"`
 }
 
-func NewClient(rpcURL, authToken string) Client {
+func NewClient(rpcURL, authToken, phoneNumber, deviceName string) Client {
 	return &SignalClient{
-		rpcURL:    rpcURL,
-		authToken: authToken,
-		client:    &http.Client{},
+		rpcURL:      rpcURL,
+		authToken:   authToken,
+		phoneNumber: phoneNumber,
+		deviceName:  deviceName,
+		client:      &http.Client{},
 	}
 }
 
@@ -165,4 +170,49 @@ func (c *SignalClient) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, err
 	}
 
 	return result.Result, nil
+}
+
+func (c *SignalClient) Register() error {
+	request := struct {
+		Jsonrpc string `json:"jsonrpc"`
+		Method  string `json:"method"`
+		Params  struct {
+			PhoneNumber string `json:"phone"`
+			DeviceName  string `json:"deviceName"`
+		} `json:"params"`
+		ID int `json:"id"`
+	}{
+		Jsonrpc: "2.0",
+		Method:  "register",
+		ID:      1,
+	}
+	request.Params.PhoneNumber = c.phoneNumber
+	request.Params.DeviceName = c.deviceName
+
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("failed to marshal register request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.rpcURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create register request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send register request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("registration failed with status: %d", resp.StatusCode)
+	}
+
+	return nil
 }

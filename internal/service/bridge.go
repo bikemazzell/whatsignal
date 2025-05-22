@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"whatsignal/internal/models"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp"
+	"whatsignal/pkg/whatsapp/types"
 )
 
 type MessageBridge interface {
@@ -29,7 +32,7 @@ type DatabaseService interface {
 }
 
 type bridge struct {
-	waClient    whatsapp.Client
+	waClient    whatsapp.WAClient
 	sigClient   signal.Client
 	db          DatabaseService
 	media       media.Handler
@@ -42,7 +45,7 @@ type RetryConfig struct {
 	MaxAttempts    int
 }
 
-func NewBridge(waClient whatsapp.Client, sigClient signal.Client, db DatabaseService, mh media.Handler, rc RetryConfig) MessageBridge {
+func NewBridge(waClient whatsapp.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc RetryConfig) MessageBridge {
 	return &bridge{
 		waClient:    waClient,
 		sigClient:   sigClient,
@@ -55,7 +58,7 @@ func NewBridge(waClient whatsapp.Client, sigClient signal.Client, db DatabaseSer
 func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 	switch msg.Platform {
 	case "whatsapp":
-		resp, err := b.waClient.SendText(msg.ChatID, msg.Content)
+		resp, err := b.waClient.SendText(ctx, msg.ChatID, msg.Content)
 		if err != nil {
 			return fmt.Errorf("failed to send WhatsApp message: %w", err)
 		}
@@ -131,10 +134,18 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 }
 
 func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
-	if msg.QuotedMessage == nil {
-		return fmt.Errorf("message is not a reply, ignoring")
+	// Handle group messages
+	if strings.HasPrefix(msg.Sender, "group.") {
+		return b.handleSignalGroupMessage(ctx, msg)
 	}
 
+	// Handle direct messages
+	if msg.QuotedMessage == nil {
+		// For messages without quotes, create a new thread
+		return b.handleNewSignalThread(ctx, msg)
+	}
+
+	// Handle replies
 	mapping, err := b.db.GetMessageMappingByWhatsAppID(ctx, msg.QuotedMessage.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get message mapping: %w", err)
@@ -144,24 +155,25 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMess
 		return fmt.Errorf("no mapping found for quoted message")
 	}
 
-	var attachments []string
-	if len(msg.Attachments) > 0 {
-		for _, attachment := range msg.Attachments {
-			processedPath, err := b.media.ProcessMedia(attachment)
-			if err != nil {
-				return fmt.Errorf("failed to process media: %w", err)
-			}
-			attachments = append(attachments, processedPath)
-		}
+	// Process attachments
+	attachments, err := b.processSignalAttachments(msg.Attachments)
+	if err != nil {
+		return fmt.Errorf("failed to process attachments: %w", err)
 	}
 
-	var resp *whatsapp.SendMessageResponse
+	var resp *types.SendMessageResponse
 	var sendErr error
 
-	if len(attachments) > 0 {
-		resp, sendErr = b.waClient.SendMedia(mapping.WhatsAppChatID, attachments[0], msg.Message)
-	} else {
-		resp, sendErr = b.waClient.SendText(mapping.WhatsAppChatID, msg.Message)
+	// Handle different message types
+	switch {
+	case len(attachments) > 0 && isImageAttachment(attachments[0]):
+		resp, sendErr = b.waClient.SendImage(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
+	case len(attachments) > 0 && isVideoAttachment(attachments[0]):
+		resp, sendErr = b.waClient.SendVideo(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
+	case len(attachments) > 0 && isDocumentAttachment(attachments[0]):
+		resp, sendErr = b.waClient.SendDocument(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
+	default:
+		resp, sendErr = b.waClient.SendText(ctx, mapping.WhatsAppChatID, msg.Message)
 	}
 
 	if sendErr != nil {
@@ -179,6 +191,7 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMess
 
 	if len(attachments) > 0 {
 		newMapping.MediaPath = &attachments[0]
+		newMapping.MediaType = getMediaType(attachments[0])
 	}
 
 	if err := b.db.SaveMessageMapping(ctx, newMapping); err != nil {
@@ -186,6 +199,50 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMess
 	}
 
 	return nil
+}
+
+func (b *bridge) processSignalAttachments(attachments []string) ([]string, error) {
+	if len(attachments) == 0 {
+		return nil, nil
+	}
+
+	var processed []string
+	for _, attachment := range attachments {
+		processedPath, err := b.media.ProcessMedia(attachment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process media %s: %w", attachment, err)
+		}
+		processed = append(processed, processedPath)
+	}
+	return processed, nil
+}
+
+func isImageAttachment(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".jpg" || ext == ".jpeg" || ext == ".png"
+}
+
+func isVideoAttachment(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".mp4" || ext == ".mov"
+}
+
+func isDocumentAttachment(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".pdf" || ext == ".doc" || ext == ".docx"
+}
+
+func getMediaType(path string) string {
+	switch {
+	case isImageAttachment(path):
+		return "image"
+	case isVideoAttachment(path):
+		return "video"
+	case isDocumentAttachment(path):
+		return "document"
+	default:
+		return "unknown"
+	}
 }
 
 func (b *bridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error {
@@ -202,4 +259,14 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 	}
 
 	return nil
+}
+
+func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signal.SignalMessage) error {
+	// For now, we'll just log group messages as they require special handling
+	return fmt.Errorf("group messages are not supported yet")
+}
+
+func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signal.SignalMessage) error {
+	// For now, we'll just log new threads as they require special handling
+	return fmt.Errorf("new thread creation is not supported yet")
 }

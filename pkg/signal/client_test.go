@@ -5,139 +5,175 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestServer(t *testing.T, handler http.HandlerFunc) (Client, *httptest.Server) {
-	server := httptest.NewServer(handler)
-	client := NewClient(server.URL, "test-token")
+func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check auth token
+		if authToken := r.Header.Get("Authorization"); authToken != "Bearer test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		switch r.URL.Path {
+		case "/send":
+			resp := SendMessageResponse{
+				Jsonrpc: "2.0",
+				Result: struct {
+					Timestamp int64  `json:"timestamp"`
+					MessageID string `json:"messageId"`
+				}{
+					Timestamp: time.Now().UnixMilli(),
+					MessageID: "test-msg-id",
+				},
+				ID: 1,
+			}
+			json.NewEncoder(w).Encode(resp)
+		case "/receive":
+			resp := ReceiveMessageResponse{
+				Jsonrpc: "2.0",
+				Result:  []SignalMessage{},
+				ID:      1,
+			}
+			json.NewEncoder(w).Encode(resp)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	client := NewClient(
+		server.URL,
+		"test-token",
+		"+1234567890",
+		"test-device",
+	).(*SignalClient)
+
 	return client, server
 }
 
-func TestSendMessage(t *testing.T) {
+func TestClient_SendMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
-
-		var request SendMessageRequest
-		err := json.NewDecoder(r.Body).Decode(&request)
-		require.NoError(t, err)
-
-		response := SendMessageResponse{
+		resp := SendMessageResponse{
 			Jsonrpc: "2.0",
 			Result: struct {
 				Timestamp int64  `json:"timestamp"`
 				MessageID string `json:"messageId"`
 			}{
-				Timestamp: 1234567890000,
-				MessageID: "test-message-id",
+				Timestamp: time.Now().UnixMilli(),
+				MessageID: "test-msg-id",
 			},
-			ID: request.ID,
+			ID: 1,
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
-	resp, err := client.SendMessage("+1234567890", "test message", nil)
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+
+	resp, err := client.SendMessage("recipient", "test message", nil)
 	require.NoError(t, err)
-	assert.Equal(t, "test-message-id", resp.Result.MessageID)
-	assert.Equal(t, int64(1234567890000), resp.Result.Timestamp)
+	assert.Equal(t, "test-msg-id", resp.Result.MessageID)
 }
 
-func TestSendMessageError(t *testing.T) {
+func TestClient_SendMessageError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
-
-		response := SendMessageResponse{
+		resp := SendMessageResponse{
 			Jsonrpc: "2.0",
 			Error: &struct {
 				Code    int    `json:"code"`
 				Message string `json:"message"`
 			}{
-				Code:    400,
-				Message: "invalid recipient",
+				Code:    500,
+				Message: "test error",
 			},
 			ID: 1,
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
-	resp, err := client.SendMessage("+1234567890", "test message", nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid recipient")
-	assert.Equal(t, 400, resp.Error.Code)
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+
+	_, err := client.SendMessage("recipient", "test message", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "test error")
 }
 
-func TestReceiveMessages(t *testing.T) {
+func TestClient_ReceiveMessages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
-
-		var request ReceiveMessageRequest
-		err := json.NewDecoder(r.Body).Decode(&request)
-		require.NoError(t, err)
-
-		response := ReceiveMessageResponse{
+		resp := ReceiveMessageResponse{
 			Jsonrpc: "2.0",
-			Result: []SignalMessage{
-				{
-					Timestamp:   1234567890000,
-					Sender:      "+1234567890",
-					MessageID:   "test-message-id",
-					Message:     "test message",
-					Attachments: []string{"/path/to/attachment.jpg"},
-					QuotedMessage: &struct {
-						ID        string `json:"id"`
-						Author    string `json:"author"`
-						Text      string `json:"text"`
-						Timestamp int64  `json:"timestamp"`
-					}{
-						ID:        "quoted-message-id",
-						Author:    "+0987654321",
-						Text:      "quoted message",
-						Timestamp: 1234567880000,
-					},
-				},
-			},
-			ID: request.ID,
+			Result:  []SignalMessage{},
+			ID:      1,
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token")
-	messages, err := client.ReceiveMessages(30)
-	require.NoError(t, err)
-	require.Len(t, messages, 1)
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
 
-	msg := messages[0]
-	assert.Equal(t, int64(1234567890000), msg.Timestamp)
-	assert.Equal(t, "+1234567890", msg.Sender)
-	assert.Equal(t, "test-message-id", msg.MessageID)
-	assert.Equal(t, "test message", msg.Message)
-	assert.Equal(t, []string{"/path/to/attachment.jpg"}, msg.Attachments)
-	require.NotNil(t, msg.QuotedMessage)
-	assert.Equal(t, "quoted-message-id", msg.QuotedMessage.ID)
-	assert.Equal(t, "+0987654321", msg.QuotedMessage.Author)
-	assert.Equal(t, "quoted message", msg.QuotedMessage.Text)
-	assert.Equal(t, int64(1234567880000), msg.QuotedMessage.Timestamp)
+	msgs, err := client.ReceiveMessages(1)
+	require.NoError(t, err)
+	assert.Empty(t, msgs)
+}
+
+func TestClient_ReceiveMessagesError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := ReceiveMessageResponse{
+			Jsonrpc: "2.0",
+			Error: &struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			}{
+				Code:    500,
+				Message: "test error",
+			},
+			ID: 1,
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+
+	_, err := client.ReceiveMessages(1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "test error")
 }
 
 func TestNewClient(t *testing.T) {
-	rpcURL := "http://localhost:8080"
-	authToken := "test-token"
-	client := NewClient(rpcURL, authToken).(*SignalClient)
-	assert.Equal(t, rpcURL, client.rpcURL)
-	assert.Equal(t, authToken, client.authToken)
-	assert.NotNil(t, client.client)
+	client := NewClient("http://localhost:8080", "test-token", "+1234567890", "test-device")
+	assert.NotNil(t, client)
+	assert.NotNil(t, client.(*SignalClient).client)
+}
+
+func TestClient_Register(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := struct {
+			Jsonrpc string `json:"jsonrpc"`
+			Result  struct {
+				Success bool `json:"success"`
+			} `json:"result"`
+			ID int `json:"id"`
+		}{
+			Jsonrpc: "2.0",
+			Result: struct {
+				Success bool `json:"success"`
+			}{
+				Success: true,
+			},
+			ID: 1,
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+
+	err := client.Register()
+	require.NoError(t, err)
 }

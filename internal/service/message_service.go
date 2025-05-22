@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"whatsignal/internal/models"
+	"whatsignal/pkg/signal"
 
 	"github.com/sirupsen/logrus"
 )
@@ -33,6 +35,9 @@ type MessageService interface {
 	GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error)
 	MarkMessageDelivered(ctx context.Context, id string) error
 	DeleteMessage(ctx context.Context, id string) error
+	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
+	HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error
+	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
 }
 
 type messageService struct {
@@ -92,9 +97,6 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 }
 
 func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Check if message already processed
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msg.ID)
 	if err == nil && existingMapping != nil {
@@ -124,7 +126,10 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		SignalTimestamp: msg.Timestamp,
 		ForwardedAt:     msg.Timestamp,
 		DeliveryStatus:  "received",
-		MediaPath:       &msg.MediaPath,
+	}
+
+	if msg.MediaPath != "" {
+		mapping.MediaPath = &msg.MediaPath
 	}
 
 	return s.db.SaveMessageMapping(ctx, mapping)
@@ -193,4 +198,44 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 
 	// TODO: Implement message deletion
 	return nil
+}
+
+func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if message already processed
+	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msgID)
+	if err == nil && existingMapping != nil {
+		return nil // Already processed
+	}
+
+	msg := &models.Message{
+		ID:        msgID,
+		ChatID:    chatID,
+		Content:   content,
+		Platform:  "whatsapp",
+		Type:      models.TextMessage,
+		Timestamp: time.Now(),
+		Sender:    sender,
+	}
+
+	if mediaPath != "" {
+		msg.Type = models.ImageMessage
+		msg.MediaURL = mediaPath
+	}
+
+	return s.ReceiveMessage(ctx, msg)
+}
+
+func (s *messageService) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
+	// Implementation of HandleSignalMessage method
+	return nil
+}
+
+func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.db.UpdateDeliveryStatus(ctx, msgID, status)
 }

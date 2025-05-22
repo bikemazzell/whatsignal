@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  signal-cli:
+    image: registry.gitlab.com/packaging/signal-cli/signal-cli:latest
+    container_name: signal-cli
+    command: jsonRpc
+    ports:
+      - "8080:8080"
+    volumes:
+      - ~/.local/share/signal-cli:/home/.local/share/signal-cli
+    restart: unless-stopped
+
+  waha:
+    image: devlikeapro/whatsapp-http-api
+    container_name: waha
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - WEBHOOK_URL=http://host.docker.internal:8082/webhook/whatsapp  # Default WhatSignal webhook
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret}  # Set this in your .env file 

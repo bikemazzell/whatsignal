@@ -41,8 +41,11 @@ docker pull devlikeapro/whatsapp-http-api
 
 #### signal-cli Installation
 ```bash
-# For detailed instructions, visit:
-# https://github.com/AsamK/signal-cli#installation
+# Using Docker (recommended)
+docker pull registry.gitlab.com/packaging/signal-cli/signal-cli:latest
+
+# Create a directory for Signal data
+mkdir -p ~/.local/share/signal-cli
 ```
 
 ### 2. Install WhatSignal
@@ -67,7 +70,13 @@ docker pull devlikeapro/whatsapp-http-api
 
 1. Start the signal-cli daemon:
    ```bash
-   signal-cli daemon --json-rpc
+   # Run signal-cli in Docker
+   docker run -d \
+     --name signal-cli \
+     -p 8080:8080 \
+     -v ~/.local/share/signal-cli:/home/.local/share/signal-cli \
+     registry.gitlab.com/packaging/signal-cli/signal-cli:latest \
+     jsonRpc
    ```
 
 2. Start the Waha service:

@@ -19,6 +19,7 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 1. Install prerequisites:
    - Go 1.22 or later
    - SQLite 3
+   - Docker (for running Waha and Signal-CLI)
    - [Waha](https://github.com/devlikeapro/waha) - WhatsApp HTTP API
    - [signal-cli](https://github.com/AsamK/signal-cli) - Signal CLI daemon
 
@@ -33,7 +34,10 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
    cp config.json.example config.json
    nano config.json  # Edit configuration
 
-   # Run
+   # Start dependencies (Waha and Signal-CLI)
+   docker-compose up -d  # Or follow manual setup in Installation Guide
+
+   # Run WhatSignal
    ./whatsignal -config config.json -db whatsignal.db -cache ./cache
    ```
 

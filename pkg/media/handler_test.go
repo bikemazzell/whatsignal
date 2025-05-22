@@ -173,3 +173,224 @@ func TestProcessMediaWithUnsupportedType(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, cachedPath)
 }
+
+func TestProcessMediaSizeLimits(t *testing.T) {
+	handler, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	tests := []struct {
+		name      string
+		filename  string
+		size      int64
+		wantError bool
+	}{
+		{
+			name:      "image within limit",
+			filename:  "test.jpg",
+			size:      MaxSignalImageSize - 1024,
+			wantError: false,
+		},
+		{
+			name:      "image exceeds limit",
+			filename:  "test.png",
+			size:      MaxSignalImageSize + 1024,
+			wantError: true,
+		},
+		{
+			name:      "video within limit",
+			filename:  "test.mp4",
+			size:      MaxSignalVideoSize - 1024,
+			wantError: false,
+		},
+		{
+			name:      "video exceeds limit",
+			filename:  "test.mov",
+			size:      MaxSignalVideoSize + 1024,
+			wantError: true,
+		},
+		{
+			name:      "gif within limit",
+			filename:  "test.gif",
+			size:      MaxSignalGifSize - 1024,
+			wantError: false,
+		},
+		{
+			name:      "gif exceeds limit",
+			filename:  "test.gif",
+			size:      MaxSignalGifSize + 1024,
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourcePath := createTestFile(t, tmpDir, tt.filename, tt.size)
+			cachedPath, err := handler.ProcessMedia(sourcePath)
+			if tt.wantError {
+				assert.Error(t, err)
+				assert.Empty(t, cachedPath)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, cachedPath)
+
+				// Verify file exists in cache
+				_, err := os.Stat(cachedPath)
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCleanupOldFilesWithReadOnlyError(t *testing.T) {
+	handler, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Create test files
+	files := []struct {
+		name    string
+		age     time.Duration
+		content string
+	}{
+		{
+			name:    "old.jpg",
+			age:     -8 * 24 * time.Hour,
+			content: "old content",
+		},
+		{
+			name:    "new.jpg",
+			age:     -1 * time.Hour,
+			content: "new content",
+		},
+	}
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+	for _, f := range files {
+		path := filepath.Join(cacheDir, f.name)
+		err := os.WriteFile(path, []byte(f.content), 0644)
+		require.NoError(t, err)
+
+		modTime := time.Now().Add(f.age)
+		err = os.Chtimes(path, modTime, modTime)
+		require.NoError(t, err)
+	}
+
+	// Make the directory unwritable
+	err := os.Chmod(cacheDir, 0555)
+	require.NoError(t, err)
+	defer os.Chmod(cacheDir, 0755)
+
+	err = handler.CleanupOldFiles(7 * 24 * 60 * 60)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to remove old file")
+
+	// Verify old file still exists (due to permission error)
+	oldPath := filepath.Join(cacheDir, "old.jpg")
+	_, err = os.Stat(oldPath)
+	assert.NoError(t, err)
+}
+
+func TestCleanupOldFilesWithNonExistentDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	nonExistentDir := filepath.Join(tmpDir, "nonexistent")
+	handler, err := NewHandler(nonExistentDir)
+	require.NoError(t, err)
+
+	// Remove the directory after creating the handler
+	err = os.RemoveAll(nonExistentDir)
+	require.NoError(t, err)
+
+	err = handler.CleanupOldFiles(7 * 24 * 60 * 60)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read cache directory")
+}
+
+func TestProcessMediaCopyFallback(t *testing.T) {
+	handler, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Create source file on a different path
+	sourceDir := filepath.Join(tmpDir, "source")
+	err := os.MkdirAll(sourceDir, 0755)
+	require.NoError(t, err)
+
+	sourcePath := filepath.Join(sourceDir, "test.jpg")
+	err = os.WriteFile(sourcePath, []byte("test content"), 0644)
+	require.NoError(t, err)
+
+	// Process the file
+	cachedPath, err := handler.ProcessMedia(sourcePath)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, cachedPath)
+
+	// Verify content was copied correctly
+	sourceContent, err := os.ReadFile(sourcePath)
+	require.NoError(t, err)
+	cachedContent, err := os.ReadFile(cachedPath)
+	require.NoError(t, err)
+	assert.Equal(t, sourceContent, cachedContent)
+}
+
+func TestCopyFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Test successful copy
+	srcPath := filepath.Join(tmpDir, "source.txt")
+	dstPath := filepath.Join(tmpDir, "dest.txt")
+	content := []byte("test content")
+	err = os.WriteFile(srcPath, content, 0644)
+	require.NoError(t, err)
+
+	err = copyFile(srcPath, dstPath)
+	assert.NoError(t, err)
+
+	// Verify content
+	copiedContent, err := os.ReadFile(dstPath)
+	require.NoError(t, err)
+	assert.Equal(t, content, copiedContent)
+
+	// Test source file not found
+	err = copyFile("/nonexistent/source.txt", dstPath)
+	assert.Error(t, err)
+
+	// Test destination directory not found
+	err = copyFile(srcPath, "/nonexistent/dir/dest.txt")
+	assert.Error(t, err)
+
+	// Test source file not readable
+	unreadablePath := filepath.Join(tmpDir, "unreadable.txt")
+	err = os.WriteFile(unreadablePath, content, 0644)
+	require.NoError(t, err)
+	err = os.Chmod(unreadablePath, 0000)
+	require.NoError(t, err)
+	defer os.Chmod(unreadablePath, 0644)
+
+	err = copyFile(unreadablePath, dstPath)
+	assert.Error(t, err)
+}
+
+func TestNewHandlerErrors(t *testing.T) {
+	// Test with unwritable parent directory
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Make parent directory unwritable
+	err = os.Chmod(tmpDir, 0555)
+	require.NoError(t, err)
+	defer os.Chmod(tmpDir, 0755)
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+	_, err = NewHandler(cacheDir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create cache directory")
+
+	// Test with invalid path characters (Windows-specific, but should be tested)
+	invalidPath := filepath.Join(tmpDir, "invalid\x00path")
+	_, err = NewHandler(invalidPath)
+	assert.Error(t, err)
+}

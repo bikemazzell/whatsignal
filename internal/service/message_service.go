@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"whatsignal/internal/models"
-	"whatsignal/pkg/signal"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,7 +36,7 @@ type MessageService interface {
 	MarkMessageDelivered(ctx context.Context, id string) error
 	DeleteMessage(ctx context.Context, id string) error
 	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
-	HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error
+	HandleSignalMessage(ctx context.Context, msg *models.Message) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
 }
 
@@ -228,8 +228,46 @@ func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgI
 	return s.ReceiveMessage(ctx, msg)
 }
 
-func (s *messageService) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
-	// Implementation of HandleSignalMessage method
+func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Handle group messages
+	if strings.HasPrefix(msg.Sender, "group.") {
+		return fmt.Errorf("group messages are not supported yet")
+	}
+
+	// Process media if present
+	if msg.MediaURL != "" {
+		msg.Type = models.ImageMessage
+		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
+		if err != nil {
+			return fmt.Errorf("failed to process media: %w", err)
+		}
+		msg.MediaPath = cachePath
+	}
+
+	// Forward message through bridge
+	if err := s.bridge.SendMessage(ctx, msg); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Save message mapping
+	mapping := &models.MessageMapping{
+		SignalMsgID:     msg.ID,
+		SignalTimestamp: msg.Timestamp,
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	if msg.MediaPath != "" {
+		mapping.MediaPath = &msg.MediaPath
+	}
+
+	if err := s.db.SaveMessageMapping(ctx, mapping); err != nil {
+		return fmt.Errorf("failed to save message mapping: %w", err)
+	}
+
 	return nil
 }
 

@@ -169,3 +169,89 @@ func TestCleanupOldRecords(t *testing.T) {
 	assert.NotNil(t, retrieved, "New record should still exist")
 	assert.Equal(t, "msg124", retrieved.WhatsAppMsgID)
 }
+
+func TestGetMessageMapping(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create test message mapping
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "msg123",
+		SignalMsgID:     "sig123",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	err := db.SaveMessageMapping(ctx, mapping)
+	require.NoError(t, err)
+
+	// Test getting by WhatsApp ID
+	retrieved, err := db.GetMessageMapping(ctx, "msg123")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, mapping.WhatsAppChatID, retrieved.WhatsAppChatID)
+	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
+	assert.Equal(t, mapping.SignalMsgID, retrieved.SignalMsgID)
+
+	// Test getting by Signal ID
+	retrieved, err = db.GetMessageMapping(ctx, "sig123")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, mapping.WhatsAppChatID, retrieved.WhatsAppChatID)
+	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
+	assert.Equal(t, mapping.SignalMsgID, retrieved.SignalMsgID)
+
+	// Test non-existent message
+	retrieved, err = db.GetMessageMapping(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Nil(t, retrieved)
+
+	// Test with invalid SQL (to trigger error)
+	_, err = db.db.ExecContext(ctx, "DROP TABLE message_mappings")
+	require.NoError(t, err)
+
+	retrieved, err = db.GetMessageMapping(ctx, "msg123")
+	assert.Error(t, err)
+	assert.Nil(t, retrieved)
+}
+
+func TestClose(t *testing.T) {
+	db, tmpDir, _ := setupTestDB(t)
+
+	// Test normal close
+	err := db.Close()
+	assert.NoError(t, err)
+
+	// Test double close by trying to use the closed database
+	err = db.db.Ping()
+	assert.Error(t, err, "Expected error on using closed database")
+
+	// Cleanup
+	os.RemoveAll(tmpDir)
+}
+
+func TestNewDatabaseErrors(t *testing.T) {
+	// Test with invalid path
+	db, err := New("\x00invalid")
+	assert.Error(t, err, "Expected error with invalid path")
+	assert.Nil(t, db)
+
+	// Test with unwritable directory
+	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Make parent directory read-only
+	err = os.Chmod(tmpDir, 0444)
+	require.NoError(t, err)
+	defer os.Chmod(tmpDir, 0755)
+
+	dbPath := filepath.Join(tmpDir, "test.db")
+	db, err = New(dbPath)
+	assert.Error(t, err, "Expected error with unwritable directory")
+	assert.Nil(t, db)
+}

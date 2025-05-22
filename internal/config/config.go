@@ -9,6 +9,8 @@ import (
 var (
 	ErrMissingWhatsAppURL = models.ConfigError{Message: "missing WhatsApp API URL"}
 	ErrMissingSignalURL   = models.ConfigError{Message: "missing Signal RPC URL"}
+	ErrMissingDBPath      = models.ConfigError{Message: "missing database path"}
+	ErrMissingMediaDir    = models.ConfigError{Message: "missing media cache directory"}
 )
 
 func LoadConfig(path string) (*models.Config, error) {
@@ -37,6 +39,12 @@ func validate(c *models.Config) error {
 	if c.Signal.RPCURL == "" {
 		return ErrMissingSignalURL
 	}
+	if c.Database.Path == "" {
+		return ErrMissingDBPath
+	}
+	if c.Media.CacheDir == "" {
+		return ErrMissingMediaDir
+	}
 	if c.RetentionDays <= 0 {
 		c.RetentionDays = 30
 	}
@@ -58,5 +66,11 @@ func applyEnvironmentOverrides(c *models.Config) {
 	}
 	if token := os.Getenv("SIGNAL_AUTH_TOKEN"); token != "" {
 		c.Signal.AuthToken = token
+	}
+	if path := os.Getenv("DB_PATH"); path != "" {
+		c.Database.Path = path
+	}
+	if dir := os.Getenv("MEDIA_DIR"); dir != "" {
+		c.Media.CacheDir = dir
 	}
 }

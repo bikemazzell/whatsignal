@@ -26,6 +26,14 @@ type Config struct {
 		MaxAttempts      int `json:"maxAttempts"`
 	} `json:"retry"`
 
+	Database struct {
+		Path string `json:"path"`
+	} `json:"database"`
+
+	Media struct {
+		CacheDir string `json:"cacheDir"`
+	} `json:"media"`
+
 	RetentionDays int    `json:"retentionDays"`
 	LogLevel      string `json:"logLevel"`
 }

@@ -455,3 +455,152 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestMessageService_HandleSignalMessageDetailed(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	service := NewMessageService(bridge, db, mediaCache)
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		msg       *models.Message
+		wantError bool
+		setup     func()
+	}{
+		{
+			name: "text message",
+			msg: &models.Message{
+				ID:        "sig123",
+				Sender:    "sender123",
+				Content:   "Hello, Signal!",
+				Timestamp: time.UnixMilli(time.Now().UnixMilli()),
+				Type:      models.TextMessage,
+				Platform:  "signal",
+			},
+			setup: func() {
+				bridge.On("SendMessage", ctx, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.ID == "sig123" &&
+						msg.Content == "Hello, Signal!" &&
+						msg.Type == models.TextMessage
+				})).Return(nil).Once()
+				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+			},
+		},
+		{
+			name: "media message",
+			msg: &models.Message{
+				ID:        "sig124",
+				Sender:    "sender123",
+				Content:   "Check this out!",
+				Timestamp: time.UnixMilli(time.Now().UnixMilli()),
+				Type:      models.ImageMessage,
+				Platform:  "signal",
+				MediaURL:  "http://example.com/image.jpg",
+			},
+			setup: func() {
+				mediaCache.On("ProcessMedia", "http://example.com/image.jpg").Return("/cache/image.jpg", nil).Once()
+				bridge.On("SendMessage", ctx, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.ID == "sig124" &&
+						msg.Content == "Check this out!" &&
+						msg.Type == models.ImageMessage &&
+						msg.MediaPath == "/cache/image.jpg"
+				})).Return(nil).Once()
+				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+			},
+		},
+		{
+			name: "group message",
+			msg: &models.Message{
+				ID:        "sig125",
+				Sender:    "group.123",
+				Content:   "Group message",
+				Timestamp: time.UnixMilli(time.Now().UnixMilli()),
+				Type:      models.TextMessage,
+				Platform:  "signal",
+			},
+			wantError: true,
+			setup: func() {
+				// No expectations needed as group messages are not supported yet
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
+			err := service.HandleSignalMessage(ctx, tt.msg)
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			bridge.AssertExpectations(t)
+			db.AssertExpectations(t)
+			mediaCache.AssertExpectations(t)
+		})
+	}
+}
+
+func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	service := NewMessageService(bridge, db, mediaCache)
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		msgID     string
+		status    string
+		wantError bool
+		setup     func()
+	}{
+		{
+			name:   "successful update",
+			msgID:  "msg123",
+			status: "delivered",
+			setup: func() {
+				db.On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(nil).Once()
+			},
+		},
+		{
+			name:      "non-existent message",
+			msgID:     "msg124",
+			status:    "delivered",
+			wantError: true,
+			setup: func() {
+				db.On("UpdateDeliveryStatus", ctx, "msg124", "delivered").Return(assert.AnError).Once()
+			},
+		},
+		{
+			name:      "invalid status",
+			msgID:     "msg125",
+			status:    "invalid",
+			wantError: true,
+			setup: func() {
+				db.On("UpdateDeliveryStatus", ctx, "msg125", "invalid").Return(assert.AnError).Once()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
+			err := service.UpdateDeliveryStatus(ctx, tt.msgID, tt.status)
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			db.AssertExpectations(t)
+		})
+	}
+}

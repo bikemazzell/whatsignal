@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
@@ -16,22 +17,37 @@ type Database struct {
 }
 
 func New(dbPath string) (*Database, error) {
+	// Check if path is valid
+	if len(dbPath) == 0 || dbPath[0] == '\x00' {
+		return nil, fmt.Errorf("invalid database path")
+	}
+
+	// Try to create the database file to check permissions
+	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database file: %w", err)
+	}
+	file.Close()
+
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	// Initialize schema
 	schema, err := migrations.GetInitialSchema()
 	if err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to read schema: %w", err)
 	}
 
 	if _, err := db.Exec(schema); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 

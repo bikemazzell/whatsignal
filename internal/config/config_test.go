@@ -32,6 +32,12 @@ func TestLoadConfig(t *testing.T) {
 			"maxBackoffMs": 5000,
 			"maxAttempts": 3
 		},
+		"database": {
+			"path": "/path/to/db.sqlite"
+		},
+		"media": {
+			"cacheDir": "/path/to/cache"
+		},
 		"retentionDays": 30
 	}`
 
@@ -43,7 +49,9 @@ func TestLoadConfig(t *testing.T) {
 	invalidConfig := `{
 		"whatsapp": {},
 		"signal": {},
-		"retry": {}
+		"retry": {},
+		"database": {},
+		"media": {}
 	}`
 
 	invalidConfigPath := filepath.Join(tmpDir, "invalid_config.json")
@@ -70,6 +78,8 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, 1000, config.Retry.InitialBackoffMs)
 				assert.Equal(t, 5000, config.Retry.MaxBackoffMs)
 				assert.Equal(t, 3, config.Retry.MaxAttempts)
+				assert.Equal(t, "/path/to/db.sqlite", config.Database.Path)
+				assert.Equal(t, "/path/to/cache", config.Media.CacheDir)
 				assert.Equal(t, 30, config.RetentionDays)
 			},
 		},
@@ -81,6 +91,8 @@ func TestLoadConfig(t *testing.T) {
 				"WHATSAPP_WEBHOOK_SECRET": "override_secret",
 				"SIGNAL_RPC_URL":          "https://signal.override.com",
 				"SIGNAL_AUTH_TOKEN":       "override_token",
+				"DB_PATH":                 "/override/path/to/db.sqlite",
+				"MEDIA_DIR":               "/override/path/to/cache",
 			},
 			validate: func(t *testing.T, cfg interface{}) {
 				config := cfg.(*models.Config)
@@ -88,6 +100,8 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, "override_secret", config.WhatsApp.WebhookSecret)
 				assert.Equal(t, "https://signal.override.com", config.Signal.RPCURL)
 				assert.Equal(t, "override_token", config.Signal.AuthToken)
+				assert.Equal(t, "/override/path/to/db.sqlite", config.Database.Path)
+				assert.Equal(t, "/override/path/to/cache", config.Media.CacheDir)
 			},
 		},
 		{
@@ -144,6 +158,16 @@ func TestValidateDefaults(t *testing.T) {
 	assert.Equal(t, ErrMissingSignalURL, err)
 
 	config.Signal.RPCURL = "https://signal.example.com"
+	err = validate(config)
+	assert.Error(t, err)
+	assert.Equal(t, ErrMissingDBPath, err)
+
+	config.Database.Path = "/path/to/db.sqlite"
+	err = validate(config)
+	assert.Error(t, err)
+	assert.Equal(t, ErrMissingMediaDir, err)
+
+	config.Media.CacheDir = "/path/to/cache"
 	err = validate(config)
 	assert.NoError(t, err)
 	assert.Equal(t, 30, config.RetentionDays)            // Default value

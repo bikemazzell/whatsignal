@@ -346,3 +346,54 @@ func TestClient_Authentication(t *testing.T) {
 	_, err = invalidClient.SendText(ctx, "123456", "test")
 	assert.Error(t, err)
 }
+
+func TestSendDocument(t *testing.T) {
+	// Create a temporary file
+	tmpFile, err := os.CreateTemp("", "test-doc-*.pdf")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	// Write some test data
+	_, err = tmpFile.Write([]byte("test document content"))
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/test-session/sendFile", r.URL.Path)
+
+		// Check request body
+		err := r.ParseMultipartForm(10 << 20)
+		require.NoError(t, err)
+
+		// Verify form fields
+		assert.Equal(t, "chat123", r.FormValue("chatId"))
+		assert.Equal(t, "Check this document", r.FormValue("caption"))
+
+		// Send response
+		resp := types.SendMessageResponse{
+			MessageID: "msg123",
+			Status:    "sent",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-token",
+		SessionName: "test-session",
+		Timeout:     10 * time.Second,
+	})
+
+	// Test successful send
+	resp, err := client.SendDocument(context.Background(), "chat123", tmpFile.Name(), "Check this document")
+	require.NoError(t, err)
+	assert.Equal(t, "msg123", resp.MessageID)
+	assert.Equal(t, "sent", resp.Status)
+
+	// Test error case
+	resp, err = client.SendDocument(context.Background(), "chat123", "", "Check this document")
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+}

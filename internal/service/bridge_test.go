@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"whatsignal/internal/database"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp/types"
@@ -112,57 +111,20 @@ func (m *mockSignalClient) Register() error {
 
 // Mock media handler
 type mockMediaHandler struct {
-	cacheDir string
+	mock.Mock
 }
 
 func (h *mockMediaHandler) ProcessMedia(sourcePath string) (string, error) {
-	// Simple mock that just copies the file to the cache directory
-	fileName := filepath.Base(sourcePath)
-	destPath := filepath.Join(h.cacheDir, fileName)
-
-	if err := os.MkdirAll(h.cacheDir, 0755); err != nil {
-		return "", err
-	}
-
-	input, err := os.ReadFile(sourcePath)
-	if err != nil {
-		return "", err
-	}
-
-	err = os.WriteFile(destPath, input, 0644)
-	if err != nil {
-		return "", err
-	}
-
-	return destPath, nil
+	args := h.Called(sourcePath)
+	return args.String(0), args.Error(1)
 }
 
 func (h *mockMediaHandler) CleanupOldFiles(maxAge int64) error {
-	entries, err := os.ReadDir(h.cacheDir)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now().Unix()
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		path := filepath.Join(h.cacheDir, entry.Name())
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		if now-info.ModTime().Unix() > maxAge {
-			os.Remove(path)
-		}
-	}
-
-	return nil
+	args := h.Called(maxAge)
+	return args.Error(0)
 }
 
+// Mock database
 type mockDatabase struct {
 	mock.Mock
 }
@@ -199,62 +161,37 @@ func (m *mockDatabase) CleanupOldRecords(retentionDays int) error {
 }
 
 func setupTestBridge(t *testing.T) (*bridge, string, func()) {
-	// Create a temporary directory for the test
 	tmpDir, err := os.MkdirTemp("", "whatsignal-bridge-test")
 	require.NoError(t, err)
 
-	// Create a temporary database
-	dbPath := filepath.Join(tmpDir, "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
+	// Create mock database
+	mockDB := &mockDatabase{}
+
+	// Create mock clients
+	mockWAClient := &mockWhatsAppClient{}
+	mockSignalClient := &mockSignalClient{}
 
 	// Create media handler with temp directory
-	mediaHandler := &mockMediaHandler{cacheDir: filepath.Join(tmpDir, "media")}
+	mediaHandler := &mockMediaHandler{}
 
-	// Create mock clients with default responses
-	waClient := &mockWhatsAppClient{
-		sendTextResp: &types.SendMessageResponse{
-			MessageID: "test-wa-msg-id",
-			Status:    "sent",
-		},
-		sendImageResp: &types.SendMessageResponse{
-			MessageID: "test-wa-image-msg-id",
-			Status:    "sent",
-		},
-	}
-
-	// Mock session methods
-	waClient.On("CreateSession", mock.Anything).Return(nil)
-	waClient.On("StartSession", mock.Anything).Return(nil)
-	waClient.On("StopSession", mock.Anything).Return(nil)
-	waClient.On("GetSessionStatus", mock.Anything).Return(&types.Session{
-		Status: types.SessionStatusRunning,
-	}, nil)
-
-	sigClient := &mockSignalClient{
-		sendMessageResp: &signal.SendMessageResponse{
-			Result: struct {
-				Timestamp int64  `json:"timestamp"`
-				MessageID string `json:"messageId"`
-			}{
-				MessageID: "test-sig-msg-id",
-				Timestamp: time.Now().UnixMilli(),
-			},
+	// Create bridge with mocks
+	bridge := &bridge{
+		db:        mockDB,
+		waClient:  mockWAClient,
+		sigClient: mockSignalClient,
+		media:     mediaHandler,
+		retryConfig: RetryConfig{
+			InitialBackoff: 1,
+			MaxBackoff:     5,
+			MaxAttempts:    3,
 		},
 	}
-
-	b := NewBridge(waClient, sigClient, db, mediaHandler, RetryConfig{
-		InitialBackoff: 1,
-		MaxBackoff:     5,
-		MaxAttempts:    3,
-	}).(*bridge)
 
 	cleanup := func() {
-		db.Close()
 		os.RemoveAll(tmpDir)
 	}
 
-	return b, tmpDir, cleanup
+	return bridge, tmpDir, cleanup
 }
 
 func TestBridgeSendMessage(t *testing.T) {
@@ -344,6 +281,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 		content   string
 		mediaPath string
 		wantErr   bool
+		setup     func()
 	}{
 		{
 			name:    "text message",
@@ -352,6 +290,23 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			sender:  "sender123",
 			content: "Hello, World!",
 			wantErr: false,
+			setup: func() {
+				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signal.SendMessageResponse{
+					Result: struct {
+						Timestamp int64  `json:"timestamp"`
+						MessageID string `json:"messageId"`
+					}{
+						MessageID: "sig123",
+						Timestamp: time.Now().UnixMilli(),
+					},
+				}
+				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg123" &&
+						m.SignalMsgID == "sig123" &&
+						m.DeliveryStatus == models.DeliveryStatusSent
+				})).Return(nil).Once()
+			},
 		},
 		{
 			name:      "media message",
@@ -361,11 +316,45 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			content:   "Check this out!",
 			mediaPath: mediaPath,
 			wantErr:   false,
+			setup: func() {
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
+				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signal.SendMessageResponse{
+					Result: struct {
+						Timestamp int64  `json:"timestamp"`
+						MessageID string `json:"messageId"`
+					}{
+						MessageID: "sig124",
+						Timestamp: time.Now().UnixMilli(),
+					},
+				}
+				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg124" &&
+						m.SignalMsgID == "sig124" &&
+						m.DeliveryStatus == models.DeliveryStatusSent &&
+						*m.MediaPath == mediaPath
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name:      "media processing error",
+			chatID:    "chat123",
+			msgID:     "msg125",
+			sender:    "sender123",
+			content:   "Check this out!",
+			mediaPath: mediaPath,
+			wantErr:   true,
+			setup: func() {
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return("", assert.AnError).Once()
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
 			err := bridge.HandleWhatsAppMessage(ctx, tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -397,6 +386,15 @@ func TestHandleSignalMessage(t *testing.T) {
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
 	}
+
+	// Set up mock expectations for the initial message mapping
+	bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+		return m.WhatsAppChatID == "chat123" &&
+			m.WhatsAppMsgID == "msg123" &&
+			m.SignalMsgID == "sig123" &&
+			m.DeliveryStatus == models.DeliveryStatusSent
+	})).Return(nil).Once()
+
 	err = bridge.db.SaveMessageMapping(ctx, mapping)
 	require.NoError(t, err)
 
@@ -404,6 +402,7 @@ func TestHandleSignalMessage(t *testing.T) {
 		name    string
 		msg     *signal.SignalMessage
 		wantErr bool
+		setup   func()
 	}{
 		{
 			name: "text reply",
@@ -423,6 +422,19 @@ func TestHandleSignalMessage(t *testing.T) {
 				},
 			},
 			wantErr: false,
+			setup: func() {
+				bridge.db.(*mockDatabase).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.waClient.(*mockWhatsAppClient).sendTextResp = &types.SendMessageResponse{
+					MessageID: "msg124",
+					Status:    "sent",
+				}
+				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg124" &&
+						m.SignalMsgID == "sig124" &&
+						m.DeliveryStatus == models.DeliveryStatusSent
+				})).Return(nil).Once()
+			},
 		},
 		{
 			name: "media reply",
@@ -443,11 +455,54 @@ func TestHandleSignalMessage(t *testing.T) {
 				},
 			},
 			wantErr: false,
+			setup: func() {
+				bridge.db.(*mockDatabase).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
+				bridge.waClient.(*mockWhatsAppClient).sendImageResp = &types.SendMessageResponse{
+					MessageID: "msg125",
+					Status:    "sent",
+				}
+				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg125" &&
+						m.SignalMsgID == "sig125" &&
+						m.DeliveryStatus == models.DeliveryStatusSent &&
+						*m.MediaPath == mediaPath &&
+						m.MediaType == "image"
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name: "media processing error",
+			msg: &signal.SignalMessage{
+				MessageID:   "sig126",
+				Sender:      "sender123",
+				Message:     "Check this out!",
+				Attachments: []string{mediaPath},
+				QuotedMessage: &struct {
+					ID        string `json:"id"`
+					Author    string `json:"author"`
+					Text      string `json:"text"`
+					Timestamp int64  `json:"timestamp"`
+				}{
+					ID:     "msg123",
+					Author: "sender123",
+					Text:   "Original message",
+				},
+			},
+			wantErr: true,
+			setup: func() {
+				bridge.db.(*mockDatabase).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return("", assert.AnError).Once()
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
 			err := bridge.HandleSignalMessage(ctx, tt.msg)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -464,62 +519,92 @@ func TestUpdateDeliveryStatus(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a test message mapping
-	mapping := &models.MessageMapping{
-		WhatsAppChatID:  "chat123",
-		WhatsAppMsgID:   "msg123",
-		SignalMsgID:     "sig123",
-		SignalTimestamp: time.Now(),
-		ForwardedAt:     time.Now(),
-		DeliveryStatus:  models.DeliveryStatusSent,
-	}
-	err := bridge.db.SaveMessageMapping(ctx, mapping)
-	require.NoError(t, err)
+	// Set up mock expectations
+	bridge.db.(*mockDatabase).On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(nil).Once()
 
+	err := bridge.UpdateDeliveryStatus(ctx, "msg123", models.DeliveryStatusDelivered)
+	assert.NoError(t, err)
+
+	// Test error case
+	bridge.db.(*mockDatabase).On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(assert.AnError).Once()
+
+	err = bridge.UpdateDeliveryStatus(ctx, "msg123", models.DeliveryStatusDelivered)
+	assert.Error(t, err)
+}
+
+func TestMediaTypeDetection(t *testing.T) {
 	tests := []struct {
-		name        string
-		msgID       string
-		newStatus   models.DeliveryStatus
-		wantErr     bool
-		wantMapping *models.MessageMapping
+		name      string
+		path      string
+		isImage   bool
+		isVideo   bool
+		isDoc     bool
+		mediaType string
 	}{
 		{
-			name:      "update to delivered",
-			msgID:     "msg123",
-			newStatus: models.DeliveryStatusDelivered,
-			wantErr:   false,
-			wantMapping: &models.MessageMapping{
-				WhatsAppChatID: "chat123",
-				WhatsAppMsgID:  "msg123",
-				SignalMsgID:    "sig123",
-				DeliveryStatus: models.DeliveryStatusDelivered,
-			},
+			name:      "JPEG image",
+			path:      "test.jpg",
+			isImage:   true,
+			isVideo:   false,
+			isDoc:     false,
+			mediaType: "image",
 		},
 		{
-			name:      "update to failed",
-			msgID:     "msg123",
-			newStatus: models.DeliveryStatusFailed,
-			wantErr:   false,
-			wantMapping: &models.MessageMapping{
-				WhatsAppChatID: "chat123",
-				WhatsAppMsgID:  "msg123",
-				SignalMsgID:    "sig123",
-				DeliveryStatus: models.DeliveryStatusFailed,
-			},
+			name:      "PNG image",
+			path:      "test.png",
+			isImage:   true,
+			isVideo:   false,
+			isDoc:     false,
+			mediaType: "image",
+		},
+		{
+			name:      "MP4 video",
+			path:      "test.mp4",
+			isImage:   false,
+			isVideo:   true,
+			isDoc:     false,
+			mediaType: "video",
+		},
+		{
+			name:      "MOV video",
+			path:      "test.mov",
+			isImage:   false,
+			isVideo:   true,
+			isDoc:     false,
+			mediaType: "video",
+		},
+		{
+			name:      "PDF document",
+			path:      "test.pdf",
+			isImage:   false,
+			isVideo:   false,
+			isDoc:     true,
+			mediaType: "document",
+		},
+		{
+			name:      "Word document",
+			path:      "test.docx",
+			isImage:   false,
+			isVideo:   false,
+			isDoc:     true,
+			mediaType: "document",
+		},
+		{
+			name:      "Unknown type",
+			path:      "test.xyz",
+			isImage:   false,
+			isVideo:   false,
+			isDoc:     false,
+			mediaType: "unknown",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := bridge.UpdateDeliveryStatus(ctx, tt.msgID, tt.newStatus)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				mapping, err := bridge.db.GetMessageMappingByWhatsAppID(ctx, tt.msgID)
-				require.NoError(t, err)
-				assert.Equal(t, tt.wantMapping.DeliveryStatus, mapping.DeliveryStatus)
-			}
+			assert.Equal(t, tt.isImage, isImageAttachment(tt.path))
+			assert.Equal(t, tt.isVideo, isVideoAttachment(tt.path))
+			assert.Equal(t, tt.isDoc, isDocumentAttachment(tt.path))
+			assert.Equal(t, tt.mediaType, getMediaType(tt.path))
 		})
 	}
 }
@@ -530,12 +615,86 @@ func TestCleanupOldRecords(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Mock database error
-	mockDB := new(mockDatabase)
-	mockDB.On("CleanupOldRecords", 7).Return(assert.AnError)
-	bridge.db = mockDB
+	// Test successful cleanup
+	bridge.db.(*mockDatabase).On("CleanupOldRecords", 7).Return(nil).Once()
+	bridge.media.(*mockMediaHandler).On("CleanupOldFiles", int64(7*24*60*60)).Return(nil).Once()
 
 	err := bridge.CleanupOldRecords(ctx, 7)
-	assert.Error(t, err, "Expected error when database cleanup fails")
-	mockDB.AssertExpectations(t)
+	assert.NoError(t, err)
+
+	// Test database cleanup error
+	bridge.db.(*mockDatabase).On("CleanupOldRecords", 7).Return(assert.AnError).Once()
+	err = bridge.CleanupOldRecords(ctx, 7)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to cleanup old records")
+
+	// Test media cleanup error
+	bridge.db.(*mockDatabase).On("CleanupOldRecords", 7).Return(nil).Once()
+	bridge.media.(*mockMediaHandler).On("CleanupOldFiles", int64(7*24*60*60)).Return(assert.AnError).Once()
+	err = bridge.CleanupOldRecords(ctx, 7)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to cleanup old media files")
+}
+
+func TestHandleSignalGroupMessage(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	msg := &signal.SignalMessage{
+		MessageID: "group123",
+		Sender:    "group.123",
+		Message:   "Group message",
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	err := bridge.handleSignalGroupMessage(ctx, msg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "group messages are not supported yet")
+}
+
+func TestHandleNewSignalThread(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	msg := &signal.SignalMessage{
+		MessageID: "msg123",
+		Sender:    "sender123",
+		Message:   "New thread message",
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	err := bridge.handleNewSignalThread(ctx, msg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "new thread creation is not supported yet")
+}
+
+func TestNewBridge(t *testing.T) {
+	waClient := &mockWhatsAppClient{}
+	sigClient := &mockSignalClient{}
+	db := &mockDatabase{}
+	mediaHandler := &mockMediaHandler{}
+	retryConfig := RetryConfig{
+		InitialBackoff: 1,
+		MaxBackoff:     5,
+		MaxAttempts:    3,
+	}
+
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig)
+	require.NotNil(t, b)
+
+	// Test that the bridge implements the MessageBridge interface
+	_, ok := b.(MessageBridge)
+	assert.True(t, ok)
+
+	// Test that the bridge has the correct fields
+	bridgeImpl := b.(*bridge)
+	assert.Equal(t, waClient, bridgeImpl.waClient)
+	assert.Equal(t, sigClient, bridgeImpl.sigClient)
+	assert.Equal(t, db, bridgeImpl.db)
+	assert.Equal(t, mediaHandler, bridgeImpl.media)
+	assert.Equal(t, retryConfig, bridgeImpl.retryConfig)
 }

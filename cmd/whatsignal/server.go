@@ -7,9 +7,8 @@ import (
 	"net/http"
 	"os"
 	"time"
-
+	"whatsignal/internal/models"
 	"whatsignal/internal/service"
-	"whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp"
 	"whatsignal/pkg/whatsapp/types"
 
@@ -23,6 +22,30 @@ type Server struct {
 	msgService service.MessageService
 	waWebhook  whatsapp.WebhookHandler
 	server     *http.Server
+}
+
+type WhatsAppWebhookPayload struct {
+	Event string `json:"event"`
+	Data  struct {
+		ID        string `json:"id"`
+		ChatID    string `json:"chatId"`
+		Sender    string `json:"sender"`
+		Type      string `json:"type"`
+		Content   string `json:"content"`
+		MediaPath string `json:"mediaPath,omitempty"`
+	} `json:"data"`
+}
+
+type SignalWebhookPayload struct {
+	MessageID   string   `json:"messageId"`
+	Sender      string   `json:"sender"`
+	Message     string   `json:"message"`
+	Timestamp   int64    `json:"timestamp"`
+	Type        string   `json:"type"`
+	ThreadID    string   `json:"threadId"`
+	Recipient   string   `json:"recipient"`
+	MediaPath   string   `json:"mediaPath,omitempty"`
+	Attachments []string `json:"attachments,omitempty"`
 }
 
 func NewServer(msgService service.MessageService, logger *logrus.Logger) *Server {
@@ -102,16 +125,41 @@ func (s *Server) handleHealth() http.HandlerFunc {
 
 func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var event types.WebhookEvent
-		if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+		var payload WhatsAppWebhookPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			s.logger.WithError(err).Error("Failed to decode webhook payload")
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := s.waWebhook.Handle(r.Context(), &event); err != nil {
-			s.logger.WithError(err).Error("Failed to handle webhook event")
-			w.WriteHeader(http.StatusInternalServerError)
+		// Validate data field is present
+		if payload.Data.ID == "" && payload.Data.ChatID == "" && payload.Data.Sender == "" && payload.Data.Type == "" && payload.Data.Content == "" && payload.Data.MediaPath == "" {
+			http.Error(w, "Missing or invalid data field", http.StatusBadRequest)
+			return
+		}
+
+		if payload.Event != "message" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Validate required fields
+		if payload.Data.ID == "" || payload.Data.ChatID == "" || payload.Data.Sender == "" || payload.Data.Type == "" {
+			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+
+		err := s.msgService.HandleWhatsAppMessage(
+			r.Context(),
+			payload.Data.ChatID,
+			payload.Data.ID,
+			payload.Data.Sender,
+			payload.Data.Content,
+			payload.Data.MediaPath,
+		)
+		if err != nil {
+			s.logger.WithError(err).Error("Failed to handle WhatsApp message")
+			http.Error(w, "Failed to process message", http.StatusInternalServerError)
 			return
 		}
 
@@ -124,26 +172,49 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 		// Verify webhook signature if configured
 		if err := s.verifySignalWebhookSignature(r); err != nil {
 			s.logger.WithError(err).Error("Invalid Signal webhook signature")
-			w.WriteHeader(http.StatusUnauthorized)
+			http.Error(w, "Invalid webhook signature", http.StatusUnauthorized)
 			return
 		}
 
-		var msg signal.SignalMessage
-		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+		var payload SignalWebhookPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			s.logger.WithError(err).Error("Failed to decode Signal webhook payload")
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
+		}
+
+		// Validate required fields
+		if payload.MessageID == "" || payload.Sender == "" || payload.Type == "" {
+			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+
+		msg := &models.Message{
+			ID:        payload.MessageID,
+			Sender:    payload.Sender,
+			Content:   payload.Message,
+			Timestamp: time.UnixMilli(payload.Timestamp),
+			Type:      models.MessageType(payload.Type),
+			ThreadID:  payload.ThreadID,
+			Recipient: payload.Recipient,
+			MediaPath: payload.MediaPath,
+			Platform:  "signal",
+		}
+
+		if len(payload.Attachments) > 0 {
+			msg.Type = models.ImageMessage
+			msg.MediaURL = payload.Attachments[0]
 		}
 
 		s.logger.WithFields(logrus.Fields{
-			"messageId": msg.MessageID,
+			"messageId": msg.ID,
 			"sender":    msg.Sender,
 			"timestamp": msg.Timestamp,
 		}).Info("Received Signal message")
 
-		if err := s.msgService.HandleSignalMessage(r.Context(), &msg); err != nil {
+		if err := s.msgService.HandleSignalMessage(r.Context(), msg); err != nil {
 			s.logger.WithError(err).Error("Failed to handle Signal message")
-			w.WriteHeader(http.StatusInternalServerError)
+			http.Error(w, "Failed to process message", http.StatusInternalServerError)
 			return
 		}
 

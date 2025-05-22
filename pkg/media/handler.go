@@ -100,7 +100,7 @@ func (h *handler) CleanupOldFiles(maxAge int64) error {
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
-			continue
+			return fmt.Errorf("failed to get file info: %w", err)
 		}
 
 		age := now.Sub(info.ModTime())

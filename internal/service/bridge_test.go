@@ -88,24 +88,38 @@ func (m *mockWhatsAppClient) StopTyping(ctx context.Context, chatID string) erro
 
 type mockSignalClient struct {
 	mock.Mock
-	sendMessageResp *signal.SendMessageResponse
-	sendMessageErr  error
+	sendMessageResp     *signal.SendMessageResponse
+	sendMessageErr      error
+	initializeDeviceErr error
 }
 
-func (m *mockSignalClient) SendMessage(recipient, message string, attachments []string) (*signal.SendMessageResponse, error) {
-	return m.sendMessageResp, m.sendMessageErr
+func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*signal.SendMessageResponse, error) {
+	if m.sendMessageResp != nil || m.sendMessageErr != nil {
+		return m.sendMessageResp, m.sendMessageErr
+	}
+	args := m.Called(ctx, recipient, message, attachments)
+	if args.Get(0) == nil && args.Error(1) == nil {
+		return nil, nil
+	}
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*signal.SendMessageResponse), args.Error(1)
 }
 
-func (m *mockSignalClient) ReceiveMessages(timeoutSeconds int) ([]signal.SignalMessage, error) {
-	args := m.Called(timeoutSeconds)
+func (m *mockSignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]signal.SignalMessage, error) {
+	args := m.Called(ctx, timeoutSeconds)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]signal.SignalMessage), args.Error(1)
 }
 
-func (m *mockSignalClient) Register() error {
-	args := m.Called()
+func (m *mockSignalClient) InitializeDevice(ctx context.Context) error {
+	if m.initializeDeviceErr != nil {
+		return m.initializeDeviceErr
+	}
+	args := m.Called(ctx)
 	return args.Error(0)
 }
 

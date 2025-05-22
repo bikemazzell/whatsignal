@@ -163,7 +163,7 @@ go generate ./...
 
 1. **Authentication**
    - Secure token handling
-   - Webhook verification
+   - Webhook verification (e.g., HMAC-SHA256 signature checking of `X-Waha-Signature-256` and `X-Signal-Signature-256` headers)
    - Rate limiting
    - Access control
 
@@ -178,6 +178,10 @@ go generate ./...
    - Security scanning
    - Version pinning
    - License compliance
+
+4. **Concurrency and Context**
+   - All client methods accept `context.Context` for managing deadlines, cancellation signals, and other request-scoped values, promoting better control over goroutines and external calls.
+   - The underlying `http.Client` is configurable (e.g., for timeouts) when the `SignalClient` is instantiated, with a default timeout if no client is provided.
 
 ## Debugging
 
@@ -224,15 +228,16 @@ go generate ./...
 The Signal client (`pkg/signal/client.go`) follows these best practices:
 
 1. **Registration Flow**
-   - Proper device registration with phone number
-   - Device name management
-   - Session persistence
+   - Proper device registration with phone number (via `signal-cli` directly, then configured in `whatsignal`)
+   - Device name management (configured in `whatsignal`)
+   - The `InitializeDevice(ctx context.Context)` method in the client is used to perform any necessary initial communication or checks with the `signal-cli` daemon for the configured account (e.g. verifying account or device status). Full device registration or linking is typically done via `signal-cli` commands prior to running `whatsignal`.
 
 2. **Message Handling**
    - Support for all message types (text, media)
    - Proper metadata handling
    - Reply/quote correlation
    - Group message support (planned)
+   - Session recovery
 
 3. **Media Processing**
    - Size limit enforcement
@@ -245,3 +250,7 @@ The Signal client (`pkg/signal/client.go`) follows these best practices:
    - Graceful degradation
    - Detailed error reporting
    - Session recovery
+
+5. **Concurrency and Context**
+   - All client methods accept `context.Context` for managing deadlines, cancellation signals, and other request-scoped values, promoting better control over goroutines and external calls.
+   - The underlying `http.Client` is configurable (e.g., for timeouts) when the `SignalClient` is instantiated, with a default timeout if no client is provided.

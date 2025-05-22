@@ -23,23 +23,17 @@ WhatSignal operates as a bridge service that:
    ```json
    {
      "whatsapp": {
-       "webhookSecret": "your-secret-here"
+       "webhookSecret": "your-secure-random-waha-secret-here"
      }
    }
    ```
 
 ### 2. Signal Setup
 
-1. Ensure your signal-cli daemon is running and accessible
-2. Verify the RPC URL and auth token in `config.json`
-3. Register your device if not already registered:
-   ```bash
-   ./whatsignal -register
-   ```
-4. Follow the registration prompts:
-   - Enter your phone number
-   - Enter the verification code received via SMS
-   - Device will be registered as "whatsignal-bridge"
+1. Ensure your signal-cli daemon is running and accessible (see [Installation Guide](01-installation.md) for daemon setup).
+2. Verify the `signal.rpcUrl`, `signal.authToken` (if any), `signal.phoneNumber`, and `signal.deviceName` in `config.json`.
+3. Ensure `signal.webhookSecret` is set in `config.json` if you plan to use webhooks from Signal to WhatSignal (currently, WhatSignal polls Signal via JSON-RPC, but this allows for future webhook use).
+4. Initial device communication/check with `signal-cli` is handled by WhatSignal on startup using the configured phone number and device name via the `InitializeDevice` method. Full registration or linking of your phone number must be done directly with `signal-cli` first, as detailed in the [Installation Guide](01-installation.md).
 
 ## Message Flow
 

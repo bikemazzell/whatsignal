@@ -18,9 +18,10 @@ This document describes all configuration options available in `config.json`.
   - Used in API endpoints as `/api/{sessionName}/...`
   - Must be unique if running multiple instances
 
-- `whatsapp.webhookSecret`: Secret for authenticating incoming webhooks
-  - Must be set to a secure random string
-  - Used to verify that webhook calls are coming from your Waha instance
+- `whatsapp.webhookSecret`: Secret for authenticating incoming webhooks from WAHA.
+  - **Required for security.**
+  - Must be set to a secure random string.
+  - Used to verify that webhook calls are coming from your Waha instance using the `X-Waha-Signature-256` header.
 
 - `whatsapp.messageTypingDelay`: Controls typing simulation delay
   - Default: `50` (milliseconds per character)
@@ -67,6 +68,11 @@ This document describes all configuration options available in `config.json`.
   - Default: "whatsignal-bridge"
   - Used during registration to identify this device
 
+- `signal.webhookSecret`: Secret for authenticating incoming webhooks from Signal (if you configure Signal to send webhooks to WhatSignal).
+  - **Recommended if Signal webhooks are used.**
+  - Must be set to a secure random string.
+  - Used to verify webhook calls using the `X-Signal-Signature-256` header.
+
 ## Retry Configuration
 
 - `retry.initialBackoffMs`: Initial delay before first retry
@@ -105,7 +111,7 @@ This document describes all configuration options available in `config.json`.
     "apiBaseUrl": "http://localhost:3000",
     "apiKey": "your-api-key",
     "sessionName": "default",
-    "webhookSecret": "your-webhook-secret",
+    "webhookSecret": "your-whatsapp-webhook-secret",
     "messageTypingDelay": 50,
     "pollIntervalSec": 30,
     "mediaConfig": {
@@ -125,7 +131,10 @@ This document describes all configuration options available in `config.json`.
   },
   "signal": {
     "rpcUrl": "http://localhost:8080",
-    "authToken": "your-signal-auth-token"
+    "authToken": "your-signal-auth-token",
+    "phoneNumber": "+1234567890",
+    "deviceName": "whatsignal-device",
+    "webhookSecret": "your-signal-webhook-secret"
   },
   "retry": {
     "initialBackoffMs": 1000,

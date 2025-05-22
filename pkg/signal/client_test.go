@@ -1,6 +1,7 @@
 package signal
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -40,6 +41,8 @@ func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
 				ID:      1,
 			}
 			json.NewEncoder(w).Encode(resp)
+		case "/register":
+			w.WriteHeader(http.StatusOK)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -50,6 +53,7 @@ func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
 		"test-token",
 		"+1234567890",
 		"test-device",
+		nil,
 	).(*SignalClient)
 
 	return client, server
@@ -72,9 +76,10 @@ func TestClient_SendMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device", nil)
 
-	resp, err := client.SendMessage("recipient", "test message", nil)
+	ctx := context.Background()
+	resp, err := client.SendMessage(ctx, "recipient", "test message", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "test-msg-id", resp.Result.MessageID)
 }
@@ -96,9 +101,10 @@ func TestClient_SendMessageError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device", nil)
 
-	_, err := client.SendMessage("recipient", "test message", nil)
+	ctx := context.Background()
+	_, err := client.SendMessage(ctx, "recipient", "test message", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "test error")
 }
@@ -114,9 +120,10 @@ func TestClient_ReceiveMessages(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device", nil)
 
-	msgs, err := client.ReceiveMessages(1)
+	ctx := context.Background()
+	msgs, err := client.ReceiveMessages(ctx, 1)
 	require.NoError(t, err)
 	assert.Empty(t, msgs)
 }
@@ -138,42 +145,36 @@ func TestClient_ReceiveMessagesError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device", nil)
 
-	_, err := client.ReceiveMessages(1)
+	ctx := context.Background()
+	_, err := client.ReceiveMessages(ctx, 1)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "test error")
 }
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:8080", "test-token", "+1234567890", "test-device")
+	client := NewClient("http://localhost:8080", "test-token", "+1234567890", "test-device", nil)
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.(*SignalClient).client)
+	sConcreteClient := client.(*SignalClient)
+	assert.Equal(t, 30*time.Second, sConcreteClient.client.Timeout)
 }
 
-func TestClient_Register(t *testing.T) {
+func TestClient_InitializeDevice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := struct {
-			Jsonrpc string `json:"jsonrpc"`
-			Result  struct {
-				Success bool `json:"success"`
-			} `json:"result"`
-			ID int `json:"id"`
-		}{
-			Jsonrpc: "2.0",
-			Result: struct {
-				Success bool `json:"success"`
-			}{
-				Success: true,
-			},
-			ID: 1,
-		}
-		json.NewEncoder(w).Encode(resp)
+		var reqBody map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&reqBody)
+		require.NoError(t, err)
+		assert.Equal(t, "register", reqBody["method"])
+
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-token", "+1234567890", "test-device")
+	client := NewClient(server.URL, "test-token", "+1234567890", "test-device", nil)
 
-	err := client.Register()
+	ctx := context.Background()
+	err := client.InitializeDevice(ctx)
 	require.NoError(t, err)
 }

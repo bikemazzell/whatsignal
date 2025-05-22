@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,11 +10,19 @@ import (
 	"time"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
+	"whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	// XWahaSignatureHeader is the expected header name for WhatsApp (WAHA) webhook signatures.
+	XWahaSignatureHeader = "X-Waha-Signature-256"
+	// XSignalSignatureHeader is the expected header name for Signal webhook signatures.
+	XSignalSignatureHeader = "X-Signal-Signature-256"
 )
 
 type Server struct {
@@ -22,6 +31,7 @@ type Server struct {
 	msgService service.MessageService
 	waWebhook  whatsapp.WebhookHandler
 	server     *http.Server
+	cfg        *models.Config
 }
 
 type WhatsAppWebhookPayload struct {
@@ -48,12 +58,13 @@ type SignalWebhookPayload struct {
 	Attachments []string `json:"attachments,omitempty"`
 }
 
-func NewServer(msgService service.MessageService, logger *logrus.Logger) *Server {
+func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger) *Server {
 	s := &Server{
 		router:     mux.NewRouter(),
 		logger:     logger,
 		msgService: msgService,
 		waWebhook:  whatsapp.NewWebhookHandler(),
+		cfg:        cfg,
 	}
 
 	s.setupRoutes()
@@ -125,9 +136,18 @@ func (s *Server) handleHealth() http.HandlerFunc {
 
 func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Verify signature first
+		bodyBytes, err := verifySignature(r, s.cfg.WhatsApp.WebhookSecret, XWahaSignatureHeader)
+		if err != nil {
+			s.logger.WithError(err).Error("WhatsApp webhook signature verification failed")
+			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
+			return
+		}
+
 		var payload WhatsAppWebhookPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			s.logger.WithError(err).Error("Failed to decode webhook payload")
+		// Decode from the bodyBytes we got from verifySignature, as r.Body was replaced
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&payload); err != nil {
+			s.logger.WithError(err).Error("Failed to decode webhook payload after signature verification")
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
@@ -139,17 +159,18 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 		}
 
 		if payload.Event != "message" {
+			s.logger.Infof("Skipping non-message WhatsApp event: %s", payload.Event)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
 		// Validate required fields
 		if payload.Data.ID == "" || payload.Data.ChatID == "" || payload.Data.Sender == "" || payload.Data.Type == "" {
-			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			http.Error(w, "Missing required fields for message event", http.StatusBadRequest)
 			return
 		}
 
-		err := s.msgService.HandleWhatsAppMessage(
+		err = s.msgService.HandleWhatsAppMessage(
 			r.Context(),
 			payload.Data.ChatID,
 			payload.Data.ID,
@@ -169,16 +190,18 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 
 func (s *Server) handleSignalWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Verify webhook signature if configured
-		if err := s.verifySignalWebhookSignature(r); err != nil {
-			s.logger.WithError(err).Error("Invalid Signal webhook signature")
-			http.Error(w, "Invalid webhook signature", http.StatusUnauthorized)
+		// Verify signature first
+		bodyBytes, err := verifySignature(r, s.cfg.Signal.WebhookSecret, XSignalSignatureHeader)
+		if err != nil {
+			s.logger.WithError(err).Error("Signal webhook signature verification failed")
+			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
 			return
 		}
 
 		var payload SignalWebhookPayload
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			s.logger.WithError(err).Error("Failed to decode Signal webhook payload")
+		// Decode from the bodyBytes we got from verifySignature
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&payload); err != nil {
+			s.logger.WithError(err).Error("Failed to decode Signal webhook payload after signature verification")
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
@@ -189,40 +212,41 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 			return
 		}
 
-		msg := &models.Message{
-			ID:        payload.MessageID,
-			Sender:    payload.Sender,
-			Content:   payload.Message,
-			Timestamp: time.UnixMilli(payload.Timestamp),
-			Type:      models.MessageType(payload.Type),
-			ThreadID:  payload.ThreadID,
-			Recipient: payload.Recipient,
-			MediaPath: payload.MediaPath,
-			Platform:  "signal",
-		}
+		// Convert SignalWebhookPayload to models.Message as before
+		// Note: The original HandleSignalMessage expected a models.Message,
+		// but the service layer HandleSignalMessage expects signal.SignalMessage.
+		// This part needs to be reconciled with how signal messages are actually processed.
+		// For now, assuming the server constructs a signal.SignalMessage if that's what the service needs.
+		// Or, the service.HandleSignalMessage is adapted.
 
-		if len(payload.Attachments) > 0 {
-			msg.Type = models.ImageMessage
-			msg.MediaURL = payload.Attachments[0]
+		// Let's assume for now the webhook payload IS the signal.SignalMessage structure
+		// or can be directly mapped to it or a subset needed by HandleSignalMessage service method.
+		// The current SignalWebhookPayload is quite different from signal.SignalMessage.
+		// This indicates a potential mismatch between what the /webhook/signal expects and what service.HandleSignalMessage processes.
+
+		// For the purpose of this example, let's create a signal.SignalMessage from SignalWebhookPayload
+		// This part needs careful review based on actual data flow for Signal messages.
+		sigMsg := &signal.SignalMessage{
+			MessageID:   payload.MessageID,
+			Sender:      payload.Sender,
+			Message:     payload.Message,
+			Timestamp:   payload.Timestamp,
+			Attachments: payload.Attachments, // Assuming SignalWebhookPayload.Attachments maps directly
+			// QuotedMessage *struct { ... } // Not present in SignalWebhookPayload, would be nil
 		}
 
 		s.logger.WithFields(logrus.Fields{
-			"messageId": msg.ID,
-			"sender":    msg.Sender,
-			"timestamp": msg.Timestamp,
-		}).Info("Received Signal message")
+			"messageId": sigMsg.MessageID,
+			"sender":    sigMsg.Sender,
+			"timestamp": sigMsg.Timestamp,
+		}).Info("Received Signal message via webhook, calling ProcessIncomingSignalMessage")
 
-		if err := s.msgService.HandleSignalMessage(r.Context(), msg); err != nil {
-			s.logger.WithError(err).Error("Failed to handle Signal message")
+		if err := s.msgService.ProcessIncomingSignalMessage(r.Context(), sigMsg); err != nil { // Use ProcessIncomingSignalMessage
+			s.logger.WithError(err).Error("Failed to handle Signal message from webhook")
 			http.Error(w, "Failed to process message", http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 	}
-}
-
-func (s *Server) verifySignalWebhookSignature(r *http.Request) error {
-	// TODO: Implement webhook signature verification when Signal-CLI supports it
-	return nil
 }

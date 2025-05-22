@@ -32,6 +32,19 @@ const (
 	MediaTypeVideo MediaType = "Video"
 )
 
+const (
+	apiBase             = "/api/%s"
+	endpointSendText    = "/sendText"
+	endpointSendSeen    = "/sendSeen"
+	endpointStartTyping = "/startTyping"
+	endpointStopTyping  = "/stopTyping"
+	endpointSendImage   = "/sendImage"
+	endpointSendFile    = "/sendFile"
+	endpointSendVoice   = "/sendVoice"
+	endpointSendVideo   = "/sendVideo"
+	// Note: sendDocument uses endpointSendFile via MediaTypeFile
+)
+
 type WAClient interface {
 	SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error)
 	SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error)
@@ -73,38 +86,38 @@ func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, 
 	return c.sessionMgr.Get(ctx, c.sessionName)
 }
 
-func (c *WhatsAppClient) SendSeen(ctx context.Context, chatID string) error {
+func (c *WhatsAppClient) sendSeen(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf("/api/%s/sendSeen", c.sessionName), payload)
+	_, err := c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointSendSeen, c.sessionName), payload)
 	return err
 }
 
-func (c *WhatsAppClient) StartTyping(ctx context.Context, chatID string) error {
+func (c *WhatsAppClient) startTyping(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf("/api/%s/startTyping", c.sessionName), payload)
+	_, err := c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointStartTyping, c.sessionName), payload)
 	return err
 }
 
-func (c *WhatsAppClient) StopTyping(ctx context.Context, chatID string) error {
+func (c *WhatsAppClient) stopTyping(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf("/api/%s/stopTyping", c.sessionName), payload)
+	_, err := c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointStopTyping, c.sessionName), payload)
 	return err
 }
 
 func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
 	// 1. Send seen
-	if err := c.SendSeen(ctx, chatID); err != nil {
+	if err := c.sendSeen(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to send seen: %w", err)
 	}
 
 	// 2. Start typing
-	if err := c.StartTyping(ctx, chatID); err != nil {
+	if err := c.startTyping(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to start typing: %w", err)
 	}
 
@@ -116,7 +129,7 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 	time.Sleep(typingDuration)
 
 	// 4. Stop typing
-	if err := c.StopTyping(ctx, chatID); err != nil {
+	if err := c.stopTyping(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to stop typing: %w", err)
 	}
 
@@ -126,7 +139,7 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 		"text":   text,
 	}
 
-	return c.sendRequest(ctx, fmt.Sprintf("/api/%s/sendText", c.sessionName), payload)
+	return c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointSendText, c.sessionName), payload)
 }
 
 func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType MediaType) (*types.SendMessageResponse, error) {
@@ -157,7 +170,21 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("/api/%s/send%s", c.sessionName, mediaType)
+	var apiActionPath string
+	switch mediaType {
+	case MediaTypeImage:
+		apiActionPath = endpointSendImage
+	case MediaTypeFile: // Used by SendFile and SendDocument
+		apiActionPath = endpointSendFile
+	case MediaTypeVoice:
+		apiActionPath = endpointSendVoice
+	case MediaTypeVideo:
+		apiActionPath = endpointSendVideo
+	default:
+		return nil, fmt.Errorf("unsupported media type: %s", mediaType)
+	}
+
+	endpoint := fmt.Sprintf(apiBase+apiActionPath, c.sessionName)
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

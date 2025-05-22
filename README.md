@@ -49,7 +49,12 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 
    # Configure
    cp config.json.example config.json
-   nano config.json  # Edit configuration
+   nano config.json  # Edit configuration, ensure to set:
+                   # - whatsapp.apiKey
+                   # - whatsapp.webhookSecret (must match WAHA's X-Waha-Signature-256 secret if WAHA is configured to send it)
+                   # - signal.phoneNumber
+                   # - signal.deviceName
+                   # - signal.webhookSecret (if Signal is configured to send webhooks with X-Signal-Signature-256)
 
    # Start dependencies (Waha and Signal-CLI)
    docker-compose up -d  # Or follow manual setup in Installation Guide

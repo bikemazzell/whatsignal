@@ -2,40 +2,51 @@ package models
 
 import "time"
 
+// Config holds the application configuration
 type Config struct {
-	WhatsApp struct {
-		APIBaseURL      string        `json:"apiBaseUrl"`
-		APIKey          string        `json:"apiKey"`
-		SessionName     string        `json:"sessionName"`
-		Timeout         time.Duration `json:"timeout"`
-		RetryCount      int           `json:"retryCount"`
-		WebhookSecret   string        `json:"webhookSecret"`
-		PollIntervalSec int           `json:"pollIntervalSec"`
-	} `json:"whatsapp"`
+	WhatsApp WhatsAppConfig `mapstructure:"whatsapp"`
+	Signal   SignalConfig   `mapstructure:"signal"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Media    MediaConfig    `mapstructure:"media"`
+	Retry    RetryConfig    `mapstructure:"retry"`
+	LogLevel string         `mapstructure:"log_level"`
+}
 
-	Signal struct {
-		RPCURL      string `json:"rpcUrl"`
-		AuthToken   string `json:"authToken"`
-		PhoneNumber string `json:"phoneNumber"`
-		DeviceName  string `json:"deviceName"`
-	} `json:"signal"`
+// WhatsAppConfig holds WhatsApp related configurations
+type WhatsAppConfig struct {
+	APIBaseURL      string        `mapstructure:"api_base_url"`
+	APIKey          string        `mapstructure:"api_key"`
+	SessionName     string        `mapstructure:"session_name"`
+	Timeout         time.Duration `mapstructure:"timeout_ms"`
+	RetryCount      int           `mapstructure:"retry_count"`
+	WebhookSecret   string        `mapstructure:"webhook_secret"`
+	PollIntervalSec int           `json:"pollIntervalSec"`
+}
 
-	Retry struct {
-		InitialBackoffMs int `json:"initialBackoffMs"`
-		MaxBackoffMs     int `json:"maxBackoffMs"`
-		MaxAttempts      int `json:"maxAttempts"`
-	} `json:"retry"`
+// SignalConfig holds Signal related configurations
+type SignalConfig struct {
+	RPCURL        string `mapstructure:"rpc_url"`
+	AuthToken     string `mapstructure:"auth_token"`
+	PhoneNumber   string `mapstructure:"phone_number"`
+	DeviceName    string `mapstructure:"device_name"`
+	WebhookSecret string `mapstructure:"webhook_secret"`
+}
 
-	Database struct {
-		Path string `json:"path"`
-	} `json:"database"`
+// DatabaseConfig holds database related configurations
+type DatabaseConfig struct {
+	Path string `json:"path"`
+}
 
-	Media struct {
-		CacheDir string `json:"cacheDir"`
-	} `json:"media"`
+// MediaConfig holds media related configurations
+type MediaConfig struct {
+	CacheDir string `json:"cacheDir"`
+}
 
-	RetentionDays int    `json:"retentionDays"`
-	LogLevel      string `json:"logLevel"`
+// RetryConfig holds retry related configurations
+type RetryConfig struct {
+	InitialBackoffMs int `json:"initialBackoffMs"`
+	MaxBackoffMs     int `json:"maxBackoffMs"`
+	MaxAttempts      int `json:"maxAttempts"`
 }
 
 type ConfigError struct {

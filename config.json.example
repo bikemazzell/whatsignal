@@ -1,18 +1,18 @@
 {
   // WhatsApp configuration
-  // - apiBaseUrl: URL of your Waha instance (WhatsApp HTTP API)
-  // - apiKey: API key for authenticating with WAHA (must match WAHA's WHATSAPP_API_KEY)
-  // - sessionName: Name of the WhatsApp session (used in API endpoints)
-  // - webhookSecret: Secret for authenticating incoming webhooks
-  // - messageTypingDelay: Milliseconds per character for typing simulation (max 3000ms)
-  // - pollIntervalSec: How often to poll for messages if webhooks are not available
+  // - api_base_url: URL of your Waha instance (WhatsApp HTTP API)
+  // - api_key: API key for authenticating with WAHA (must match WAHA's WHATSAPP_API_KEY)
+  // - session_name: Name of the WhatsApp session (used in API endpoints)
+  // - timeout_ms: Timeout for API requests
+  // - retry_count: Maximum number of retry attempts
+  // - webhook_secret: Secret for authenticating incoming webhooks
   "whatsapp": {
-    "apiBaseUrl": "http://localhost:3000",
-    "apiKey": "your-api-key",
-    "sessionName": "default",
-    "webhookSecret": "your-webhook-secret",
-    "messageTypingDelay": 50,
-    "pollIntervalSec": 30,
+    "api_base_url": "http://localhost:3000",
+    "api_key": "your-waha-api-key",
+    "session_name": "default",
+    "timeout_ms": 10000,
+    "retry_count": 3,
+    "webhook_secret": "your-whatsapp-webhook-secret",
     "mediaConfig": {
       "maxSizeMB": {
         "image": 5,
@@ -30,26 +30,42 @@
   },
 
   // Signal configuration
-  // - rpcUrl: URL of your signal-cli JSON-RPC daemon
-  // - authToken: Authentication token for Signal API access
+  // - rpc_url: URL of your signal-cli JSON-RPC daemon
+  // - auth_token: Authentication token for Signal API access
+  // - phone_number: Phone number for Signal API access
+  // - device_name: Device name for Signal API access
+  // - webhook_secret: Secret for authenticating incoming webhooks
   "signal": {
-    "rpcUrl": "http://localhost:8080",
-    "authToken": "your-signal-auth-token"
+    "rpc_url": "http://localhost:8080/jsonrpc",
+    "auth_token": "your-signal-auth-token",
+    "phone_number": "+1234567890",
+    "device_name": "whatsignal-device",
+    "webhook_secret": "your-signal-webhook-secret"
   },
 
   // Message retry configuration
-  // - initialBackoffMs: Initial delay before first retry
-  // - maxBackoffMs: Maximum delay between retries
-  // - maxAttempts: Maximum number of retry attempts
+  // - initial_backoff_ms: Initial delay before first retry
+  // - max_backoff_ms: Maximum delay between retries
+  // - max_attempts: Maximum number of retry attempts
   "retry": {
-    "initialBackoffMs": 1000,
-    "maxBackoffMs": 60000,
-    "maxAttempts": 5
+    "initial_backoff_ms": 1000,
+    "max_backoff_ms": 60000,
+    "max_attempts": 5
   },
 
   // Number of days to keep message history
   "retentionDays": 30,
 
   // Logging level (debug, info, warn, error)
-  "logLevel": "info"
+  "log_level": "info",
+
+  // Database configuration
+  "database": {
+    "path": "./whatsignal.db"
+  },
+
+  // Media configuration
+  "media": {
+    "cache_dir": "./media_cache"
+  }
 } 

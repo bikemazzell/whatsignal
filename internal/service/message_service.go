@@ -3,18 +3,14 @@ package service
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"whatsignal/internal/models"
+	"whatsignal/pkg/signal"
 
 	"github.com/sirupsen/logrus"
 )
-
-type Bridge interface {
-	SendMessage(ctx context.Context, msg *models.Message) error
-}
 
 type Database interface {
 	SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error
@@ -37,18 +33,19 @@ type MessageService interface {
 	DeleteMessage(ctx context.Context, id string) error
 	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *models.Message) error
+	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signal.SignalMessage) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
 }
 
 type messageService struct {
 	logger     *logrus.Logger
 	db         Database
-	bridge     Bridge
+	bridge     MessageBridge
 	mediaCache MediaCache
 	mu         sync.RWMutex
 }
 
-func NewMessageService(bridge Bridge, db Database, mediaCache MediaCache) MessageService {
+func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache) MessageService {
 	return &messageService{
 		logger:     logrus.New(),
 		bridge:     bridge,
@@ -232,43 +229,38 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Handle group messages
-	if strings.HasPrefix(msg.Sender, "group.") {
-		return fmt.Errorf("group messages are not supported yet")
+	if msg.Platform != "signal" {
+		return fmt.Errorf("HandleSignalMessage called with non-Signal platform: %s", msg.Platform)
 	}
 
-	// Process media if present
-	if msg.MediaURL != "" {
-		msg.Type = models.ImageMessage
+	// Process media if present (example, might need more robust type handling)
+	if msg.MediaURL != "" && msg.MediaPath == "" { // Only process if MediaPath isn't already set
+		// msg.Type = models.ImageMessage // Type should be set correctly before calling this service method
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
-			return fmt.Errorf("failed to process media: %w", err)
+			return fmt.Errorf("failed to process media for HandleSignalMessage: %w", err)
 		}
 		msg.MediaPath = cachePath
 	}
 
-	// Forward message through bridge
+	// Forward message through bridge. SendMessage is part of MessageBridge.
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+		return fmt.Errorf("failed to send Signal message via bridge: %w", err)
 	}
-
-	// Save message mapping
-	mapping := &models.MessageMapping{
-		SignalMsgID:     msg.ID,
-		SignalTimestamp: msg.Timestamp,
-		ForwardedAt:     time.Now(),
-		DeliveryStatus:  models.DeliveryStatusSent,
-	}
-
-	if msg.MediaPath != "" {
-		mapping.MediaPath = &msg.MediaPath
-	}
-
-	if err := s.db.SaveMessageMapping(ctx, mapping); err != nil {
-		return fmt.Errorf("failed to save message mapping: %w", err)
-	}
-
 	return nil
+}
+
+func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signal.SignalMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.logger.WithFields(logrus.Fields{
+		"signalMsgID": rawSignalMsg.MessageID,
+		"sender":      rawSignalMsg.Sender,
+	}).Info("Processing incoming Signal message in service layer (ProcessIncomingSignalMessage)")
+
+	// Now s.bridge is of type MessageBridge (from service/bridge.go), which has HandleSignalMessage method.
+	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
 }
 
 func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error {

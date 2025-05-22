@@ -87,8 +87,17 @@ chmod 700 ~/.local/share/signal-cli ~/.config/signal-cli
 
 2. Register your Signal account (if not already registered):
    ```bash
-   # First time setup only
-   ./whatsignal -register
+   # Run signal-cli directly to register or link your phone number.
+   # Example for registering a new number (will prompt for SMS/call verification):
+   docker exec -it signal-cli signal-cli -u YOUR_SIGNAL_PHONE_NUMBER register
+
+   # Example for linking an existing device (will show a QR code or URI):
+   # docker exec -it signal-cli signal-cli link -n "WhatSignal Device"
+
+   # After successful registration/linking with signal-cli,
+   # ensure YOUR_SIGNAL_PHONE_NUMBER and an optional device name
+   # are correctly set in config.json for WhatSignal.
+   # WhatSignal's `InitializeDevice` will then use these details.
    ```
 
 3. Start the Waha service:
@@ -105,6 +114,8 @@ chmod 700 ~/.local/share/signal-cli ~/.config/signal-cli
    chmod 600 config.json  # Secure the config file
    ```
    Edit `config.json` according to your needs (see [Configuration Guide](03-configuration.md))
+   Ensure you set `whatsapp.webhookSecret` and `signal.webhookSecret` to strong, unique random strings for security.
+   Also, configure `signal.phoneNumber` and `signal.deviceName`.
 
 ### 4. Directory Setup
 

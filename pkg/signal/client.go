@@ -2,17 +2,24 @@ package signal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"time"
 )
 
+// Client defines the interface for interacting with the Signal service.
+// It includes context in all methods for better control over execution.
 type Client interface {
-	SendMessage(recipient, message string, attachments []string) (*SendMessageResponse, error)
-	ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error)
-	Register() error
+	SendMessage(ctx context.Context, recipient, message string, attachments []string) (*SendMessageResponse, error)
+	ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]SignalMessage, error)
+	InitializeDevice(ctx context.Context) error
 }
 
+// SignalClient implements the Client interface for Signal.
+// It now includes a configurable http.Client.
 type SignalClient struct {
 	rpcURL      string
 	authToken   string
@@ -45,21 +52,28 @@ type SendMessageResponse struct {
 	ID int `json:"id"`
 }
 
-func NewClient(rpcURL, authToken, phoneNumber, deviceName string) Client {
+// NewClient creates a new Signal client.
+// If a custom httpClient is not provided (nil), a default one with a timeout is created.
+func NewClient(rpcURL, authToken, phoneNumber, deviceName string, httpClient *http.Client) Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second} // Default timeout
+	}
 	return &SignalClient{
 		rpcURL:      rpcURL,
 		authToken:   authToken,
 		phoneNumber: phoneNumber,
 		deviceName:  deviceName,
-		client:      &http.Client{},
+		client:      httpClient,
 	}
 }
 
-func (c *SignalClient) SendMessage(recipient, message string, attachments []string) (*SendMessageResponse, error) {
+// SendMessage sends a message to a recipient via Signal JSON-RPC.
+// It now accepts a context.
+func (c *SignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*SendMessageResponse, error) {
 	request := SendMessageRequest{
 		Jsonrpc: "2.0",
 		Method:  "send",
-		ID:      1,
+		ID:      1, // Consider making ID dynamic if concurrent client use is expected
 	}
 	request.Params.Number = recipient
 	request.Params.Message = message
@@ -70,7 +84,7 @@ func (c *SignalClient) SendMessage(recipient, message string, attachments []stri
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.rpcURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.rpcURL, bytes.NewBuffer(jsonData)) // Used NewRequestWithContext
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -131,11 +145,13 @@ type ReceiveMessageResponse struct {
 	ID int `json:"id"`
 }
 
-func (c *SignalClient) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, error) {
+// ReceiveMessages polls for new messages from Signal JSON-RPC.
+// It now accepts a context.
+func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]SignalMessage, error) {
 	request := ReceiveMessageRequest{
 		Jsonrpc: "2.0",
 		Method:  "receive",
-		ID:      1,
+		ID:      1, // Consider making ID dynamic
 	}
 	request.Params.Timeout = timeoutSeconds
 
@@ -144,7 +160,7 @@ func (c *SignalClient) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, err
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.rpcURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.rpcURL, bytes.NewBuffer(jsonData)) // Used NewRequestWithContext
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -172,31 +188,46 @@ func (c *SignalClient) ReceiveMessages(timeoutSeconds int) ([]SignalMessage, err
 	return result.Result, nil
 }
 
-func (c *SignalClient) Register() error {
+// InitializeDevice attempts to initialize the device with the Signal JSON-RPC service.
+// This might be for linking or ensuring the account specified by phoneNumber and deviceName is active.
+// True number registration and verification must typically be done directly with signal-cli commands first.
+// It now accepts a context.
+func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 	request := struct {
 		Jsonrpc string `json:"jsonrpc"`
 		Method  string `json:"method"`
 		Params  struct {
-			PhoneNumber string `json:"phone"`
-			DeviceName  string `json:"deviceName"`
+			// Parameters for this method depend on the specific signal-cli JSON-RPC version and setup.
+			// For linking, it might expect parameters like "uri" from `signal-cli link`.
+			// For checking an existing account, parameters might differ.
+			// The current params are based on the previous Register method.
+			PhoneNumber string `json:"phone,omitempty"`      // Using omitempty as usage is unclear
+			DeviceName  string `json:"deviceName,omitempty"` // Using omitempty
 		} `json:"params"`
 		ID int `json:"id"`
 	}{
 		Jsonrpc: "2.0",
-		Method:  "register",
-		ID:      1,
+		Method:  "register", // This method name "register" via JSON-RPC might not perform full registration.
+		// It could be for checking an existing account or a specific linking step.
+		// Signal-CLI docs suggest full registration is not typically done via JSON-RPC directly.
+		ID: 1, // Consider making ID dynamic
 	}
-	request.Params.PhoneNumber = c.phoneNumber
-	request.Params.DeviceName = c.deviceName
+	// Only set params if they are provided; behavior depends on signal-cli
+	if c.phoneNumber != "" {
+		request.Params.PhoneNumber = c.phoneNumber
+	}
+	if c.deviceName != "" {
+		request.Params.DeviceName = c.deviceName
+	}
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("failed to marshal register request: %w", err)
+		return fmt.Errorf("failed to marshal initialize device request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.rpcURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.rpcURL, bytes.NewBuffer(jsonData)) // Used NewRequestWithContext
 	if err != nil {
-		return fmt.Errorf("failed to create register request: %w", err)
+		return fmt.Errorf("failed to create initialize device request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -206,12 +237,17 @@ func (c *SignalClient) Register() error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send register request: %w", err)
+		return fmt.Errorf("failed to send initialize device request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// For a method like this, the response might not be a standard SendMessageResponse or ReceiveMessageResponse.
+	// It could be a generic success/failure, or specific registration/linking status.
+	// For now, just checking status code. A more robust implementation would parse the specific response.
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("registration failed with status: %d", resp.StatusCode)
+		// Attempt to read error body for more details
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil

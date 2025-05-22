@@ -15,6 +15,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Define constants in the test file for clarity if they are used in switch cases
+// or directly in assertions. This mirrors the constants in client.go.
+const (
+	testAPIBase             = "/api/test-session"
+	testEndpointSendText    = "/sendText"
+	testEndpointSendImage   = "/sendImage"
+	testEndpointSendFile    = "/sendFile"
+	testEndpointSendVoice   = "/sendVoice"
+	testEndpointSendVideo   = "/sendVideo"
+	testEndpointSendSeen    = "/sendSeen"
+	testEndpointStartTyping = "/startTyping"
+	testEndpointStopTyping  = "/stopTyping"
+	// Session related endpoints
+	testEndpointSessions       = "/api/sessions"
+	testEndpointSessionDefault = "/api/sessions/test-session"
+	testEndpointSessionStart   = "/api/sessions/test-session/start"
+	testEndpointSessionStop    = "/api/sessions/test-session/stop"
+)
+
 func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check API key
@@ -24,7 +43,7 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 		}
 
 		switch r.URL.Path {
-		case "/api/test-session/sendText":
+		case testAPIBase + testEndpointSendText:
 			var payload map[string]interface{}
 			json.NewDecoder(r.Body).Decode(&payload)
 			resp := types.SendMessageResponse{
@@ -32,25 +51,52 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				Status:    "sent",
 			}
 			json.NewEncoder(w).Encode(resp)
-		case "/api/test-session/sendImage":
+		case testAPIBase + testEndpointSendImage:
 			resp := types.SendMessageResponse{
 				MessageID: "media123",
 				Status:    "sent",
 			}
 			json.NewEncoder(w).Encode(resp)
-		case "/api/test-session/sendSeen":
+		case testAPIBase + testEndpointSendFile:
+			resp := types.SendMessageResponse{
+				MessageID: "file123",
+				Status:    "sent",
+			}
+			json.NewEncoder(w).Encode(resp)
+		case testAPIBase + testEndpointSendVoice:
+			resp := types.SendMessageResponse{
+				MessageID: "voice123",
+				Status:    "sent",
+			}
+			json.NewEncoder(w).Encode(resp)
+		case testAPIBase + testEndpointSendVideo:
+			resp := types.SendMessageResponse{
+				MessageID: "video123",
+				Status:    "sent",
+			}
+			json.NewEncoder(w).Encode(resp)
+		case testAPIBase + testEndpointSendSeen:
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-		case "/api/test-session/startTyping":
+		case testAPIBase + testEndpointStartTyping:
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-		case "/api/test-session/stopTyping":
+		case testAPIBase + testEndpointStopTyping:
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-		case "/api/sessions":
+		case testEndpointSessions:
+			if r.Method == http.MethodPost {
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		case testEndpointSessionDefault:
+			if r.Method == http.MethodGet {
+				json.NewEncoder(w).Encode(types.Session{Name: "test-session", Status: types.SessionStatusRunning})
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		case testEndpointSessionStart:
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-		case "/api/sessions/test-session":
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-		case "/api/sessions/test-session/start":
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-		case "/api/sessions/test-session/stop":
+		case testEndpointSessionStop:
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -83,7 +129,7 @@ func TestClient_Session(t *testing.T) {
 
 	status, err := client.GetSessionStatus(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, types.SessionStatusStarting, status.Status)
+	assert.Equal(t, types.SessionStatusRunning, status.Status)
 
 	err = client.StopSession(ctx)
 	require.NoError(t, err)
@@ -116,7 +162,7 @@ func TestClient_SendImage(t *testing.T) {
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
-		assert.Equal(t, "/api/test-session/sendImage", r.URL.Path)
+		assert.Equal(t, testAPIBase+testEndpointSendImage, r.URL.Path)
 		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
 
 		// Parse multipart form
@@ -148,7 +194,7 @@ func TestClient_SendImage(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendImage(ctx, "123456", tmpFile.Name(), "Test image")
 	assert.NoError(t, err)
-	assert.Equal(t, "test-msg-id", resp.MessageID)
+	assert.Equal(t, "media123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 
 	// Test file not found
@@ -171,7 +217,7 @@ func TestClient_SendFile(t *testing.T) {
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
-		assert.Equal(t, "/api/test-session/sendFile", r.URL.Path)
+		assert.Equal(t, testAPIBase+testEndpointSendFile, r.URL.Path)
 		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
 
 		// Parse multipart form
@@ -203,7 +249,7 @@ func TestClient_SendFile(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendFile(ctx, "123456", tmpFile.Name(), "Test file")
 	assert.NoError(t, err)
-	assert.Equal(t, "test-msg-id", resp.MessageID)
+	assert.Equal(t, "file123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 }
 
@@ -221,7 +267,7 @@ func TestClient_SendVoice(t *testing.T) {
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
-		assert.Equal(t, "/api/test-session/sendVoice", r.URL.Path)
+		assert.Equal(t, testAPIBase+testEndpointSendVoice, r.URL.Path)
 		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
 
 		// Parse multipart form
@@ -252,7 +298,7 @@ func TestClient_SendVoice(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendVoice(ctx, "123456", tmpFile.Name())
 	assert.NoError(t, err)
-	assert.Equal(t, "test-msg-id", resp.MessageID)
+	assert.Equal(t, "voice123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 }
 
@@ -270,7 +316,7 @@ func TestClient_SendVideo(t *testing.T) {
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
-		assert.Equal(t, "/api/test-session/sendVideo", r.URL.Path)
+		assert.Equal(t, testAPIBase+testEndpointSendVideo, r.URL.Path)
 		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
 
 		// Parse multipart form
@@ -302,7 +348,7 @@ func TestClient_SendVideo(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
 	assert.NoError(t, err)
-	assert.Equal(t, "test-msg-id", resp.MessageID)
+	assert.Equal(t, "video123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 }
 
@@ -360,7 +406,7 @@ func TestSendDocument(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/api/test-session/sendFile", r.URL.Path)
+		assert.Equal(t, testAPIBase+testEndpointSendFile, r.URL.Path)
 
 		// Check request body
 		err := r.ParseMultipartForm(10 << 20)

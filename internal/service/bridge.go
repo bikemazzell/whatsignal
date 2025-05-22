@@ -72,7 +72,7 @@ func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 		if msg.MediaPath != "" {
 			attachments = append(attachments, msg.MediaPath)
 		}
-		_, err := b.sigClient.SendMessage(msg.ThreadID, msg.Content, attachments)
+		_, err := b.sigClient.SendMessage(ctx, msg.ThreadID, msg.Content, attachments)
 		if err != nil {
 			return fmt.Errorf("failed to send Signal message: %w", err)
 		}
@@ -108,7 +108,7 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 		attachments = append(attachments, processedPath)
 	}
 
-	resp, err := b.sigClient.SendMessage(chatID, message, attachments)
+	resp, err := b.sigClient.SendMessage(ctx, chatID, message, attachments)
 	if err != nil {
 		return fmt.Errorf("failed to send signal message: %w", err)
 	}

@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -93,6 +94,17 @@ func (sm *sessionManager) Get(ctx context.Context, name string) (*types.Session,
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get session, status: %d", resp.StatusCode)
 	}
+
+	// Decode the response body into the session object
+	var serverSession types.Session
+	if err := json.NewDecoder(resp.Body).Decode(&serverSession); err != nil {
+		return nil, fmt.Errorf("failed to decode session response: %w", err)
+	}
+
+	// Update local cache with information from the server
+	session.Status = serverSession.Status
+	session.UpdatedAt = serverSession.UpdatedAt // Assuming server provides this
+	// Potentially update other fields if they can change on the server
 
 	return session, nil
 }

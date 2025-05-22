@@ -92,7 +92,16 @@ func run(ctx context.Context) error {
 		cfg.Signal.AuthToken,
 		cfg.Signal.PhoneNumber,
 		cfg.Signal.DeviceName,
+		nil,
 	)
+
+	// Initialize the Signal device/account before using it
+	if err := sigClient.InitializeDevice(ctx); err != nil {
+		// Log a warning or return an error based on desired behavior.
+		// If Signal is critical, this should probably be a fatal error.
+		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
+		// Depending on strictness, you might: return fmt.Errorf("failed to initialize Signal device: %w", err)
+	}
 
 	// Initialize message bridge
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, service.RetryConfig{
@@ -105,7 +114,7 @@ func run(ctx context.Context) error {
 	messageService := service.NewMessageService(bridge, db, mediaHandler)
 
 	// Start HTTP server
-	server := NewServer(messageService, logger)
+	server := NewServer(cfg, messageService, logger)
 	serverErrCh := make(chan error, 1)
 	go func() {
 		if err := server.Start(); err != nil {

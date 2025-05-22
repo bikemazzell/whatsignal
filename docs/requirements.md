@@ -109,6 +109,7 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
 ### 4.4 Security  
 - Store API credentials and webhook secrets securely (file permissions, optional secret manager)  
 - Validate and sanitize incoming webhook payloads  
+- Verify webhook signatures (e.g., `X-Waha-Signature-256` for WAHA, `X-Signal-Signature-256` for Signal) to authenticate the source of webhooks.
 - Rate-limit or authenticate webhooks to prevent abuse  
 - Log sensitive data (e.g. message content, numbers) only if explicitly enabled
 
@@ -132,14 +133,13 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
 - Endpoints: `/api/sendText`, `/api/sendMedia`, webhook receiver at `/webhook/whatsapp`  
 
 ### 6.2 Signal-CLI JSON-RPC  
-- Methods: `send`, `receive`, `register`, `event subscribe`  
+- Methods used: `send`, `receive`, `register` (for device initialization/check, not full registration)
 - Persistent daemon running locally on configurable port/socket
-- Support for device registration and management
-- Proper session handling and persistence
-- Media type validation and conversion
-- Size limit enforcement per platform
-- Reply correlation with metadata
-- Group message support (planned)
+- WhatSignal client uses configured phone number and device name.
+- `InitializeDevice` method in WhatSignal's client performs an initial check/communication with the daemon.
+- Authentication via Bearer token if `signal.authToken` is configured.
+- All client method calls from WhatSignal include `context.Context`.
+- HTTP client used by WhatSignal for JSON-RPC calls is configurable (e.g. for timeouts).
 
 ## 7. Data Model  
 
@@ -169,7 +169,10 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
     },
     "signal": {
       "rpcUrl": "http://localhost:<port>",
-      "authToken": null
+      "authToken": null,
+      "phoneNumber": "+1234567890",
+      "deviceName": "whatsignal-device",
+      "webhookSecret": "..."
     },
     "retry": {
       "initialBackoffMs": 1000,

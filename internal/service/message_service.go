@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"whatsignal/internal/models"
-	"whatsignal/pkg/signal"
+	signaltypes "whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -34,7 +34,7 @@ type MessageService interface {
 	DeleteMessage(ctx context.Context, id string) error
 	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *models.Message) error
-	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signal.SignalMessage) error
+	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
 }
 
@@ -242,7 +242,7 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 	return nil
 }
 
-func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signal.SignalMessage) error {
+func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

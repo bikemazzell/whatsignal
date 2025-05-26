@@ -9,10 +9,18 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o whatsignal ./cmd/
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates sqlite
+
+RUN addgroup -g 1001 -S whatsignal && \
+    adduser -u 1001 -S whatsignal -G whatsignal
+
 WORKDIR /app
 COPY --from=builder /app/whatsignal .
 
-RUN mkdir -p /app/cache /app/data
+RUN mkdir -p /app/cache /app/data && \
+    chown -R whatsignal:whatsignal /app && \
+    chmod 755 /app/whatsignal
+
+USER whatsignal
 
 EXPOSE 8082
 

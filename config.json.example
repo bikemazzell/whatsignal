@@ -12,21 +12,7 @@
     "session_name": "default",
     "timeout_ms": 10000,
     "retry_count": 3,
-    "webhook_secret": "your-whatsapp-webhook-secret",
-    "mediaConfig": {
-      "maxSizeMB": {
-        "image": 5,
-        "video": 100,
-        "document": 100,
-        "voice": 16
-      },
-      "allowedTypes": {
-        "image": ["jpg", "jpeg", "png"],
-        "video": ["mp4"],
-        "document": ["pdf", "doc", "docx"],
-        "voice": ["ogg"]
-      }
-    }
+    "webhook_secret": "your-whatsapp-webhook-secret"
   },
 
   // Signal configuration
@@ -65,7 +51,23 @@
   },
 
   // Media configuration
+  // - cache_dir: Directory to store cached media files
+  // - maxSizeMB: Maximum file sizes in MB for different media types
+  // - allowedTypes: Allowed file extensions for different media types
   "media": {
-    "cache_dir": "./media_cache"
+    "cache_dir": "./media_cache",
+    "maxSizeMB": {
+      "image": 5,
+      "video": 100,
+      "gif": 25,
+      "document": 100,
+      "voice": 16
+    },
+    "allowedTypes": {
+      "image": ["jpg", "jpeg", "png"],
+      "video": ["mp4", "mov"],
+      "document": ["pdf", "doc", "docx"],
+      "voice": ["ogg"]
+    }
   }
 } 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	"whatsignal/pkg/signal/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,7 @@ func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
 
 		switch r.URL.Path {
 		case "/send":
-			resp := SendMessageResponse{
+			resp := types.SendMessageResponse{
 				Jsonrpc: "2.0",
 				Result: struct {
 					Timestamp int64  `json:"timestamp"`
@@ -35,9 +36,9 @@ func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
 			}
 			json.NewEncoder(w).Encode(resp)
 		case "/receive":
-			resp := ReceiveMessageResponse{
+			resp := types.ReceiveMessageResponse{
 				Jsonrpc: "2.0",
-				Result:  []SignalMessage{},
+				Result:  []types.SignalMessage{},
 				ID:      1,
 			}
 			json.NewEncoder(w).Encode(resp)
@@ -61,7 +62,7 @@ func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
 
 func TestClient_SendMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := SendMessageResponse{
+		resp := types.SendMessageResponse{
 			Jsonrpc: "2.0",
 			Result: struct {
 				Timestamp int64  `json:"timestamp"`
@@ -86,7 +87,7 @@ func TestClient_SendMessage(t *testing.T) {
 
 func TestClient_SendMessageError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := SendMessageResponse{
+		resp := types.SendMessageResponse{
 			Jsonrpc: "2.0",
 			Error: &struct {
 				Code    int    `json:"code"`
@@ -111,9 +112,9 @@ func TestClient_SendMessageError(t *testing.T) {
 
 func TestClient_ReceiveMessages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ReceiveMessageResponse{
+		resp := types.ReceiveMessageResponse{
 			Jsonrpc: "2.0",
-			Result:  []SignalMessage{},
+			Result:  []types.SignalMessage{},
 			ID:      1,
 		}
 		json.NewEncoder(w).Encode(resp)
@@ -130,7 +131,7 @@ func TestClient_ReceiveMessages(t *testing.T) {
 
 func TestClient_ReceiveMessagesError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ReceiveMessageResponse{
+		resp := types.ReceiveMessageResponse{
 			Jsonrpc: "2.0",
 			Error: &struct {
 				Code    int    `json:"code"`

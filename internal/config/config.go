@@ -45,6 +45,38 @@ func validate(c *models.Config) error {
 	if c.Media.CacheDir == "" {
 		return ErrMissingMediaDir
 	}
+
+	// Set default media configuration if not provided
+	if c.Media.MaxSizeMB.Image == 0 {
+		c.Media.MaxSizeMB.Image = 5
+	}
+	if c.Media.MaxSizeMB.Video == 0 {
+		c.Media.MaxSizeMB.Video = 100
+	}
+	if c.Media.MaxSizeMB.Gif == 0 {
+		c.Media.MaxSizeMB.Gif = 25
+	}
+	if c.Media.MaxSizeMB.Document == 0 {
+		c.Media.MaxSizeMB.Document = 100
+	}
+	if c.Media.MaxSizeMB.Voice == 0 {
+		c.Media.MaxSizeMB.Voice = 16
+	}
+
+	// Set default allowed types if not provided
+	if len(c.Media.AllowedTypes.Image) == 0 {
+		c.Media.AllowedTypes.Image = []string{"jpg", "jpeg", "png"}
+	}
+	if len(c.Media.AllowedTypes.Video) == 0 {
+		c.Media.AllowedTypes.Video = []string{"mp4", "mov"}
+	}
+	if len(c.Media.AllowedTypes.Document) == 0 {
+		c.Media.AllowedTypes.Document = []string{"pdf", "doc", "docx"}
+	}
+	if len(c.Media.AllowedTypes.Voice) == 0 {
+		c.Media.AllowedTypes.Voice = []string{"ogg"}
+	}
+
 	if c.RetentionDays <= 0 {
 		c.RetentionDays = 30
 	}

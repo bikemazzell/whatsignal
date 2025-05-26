@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"whatsignal/internal/models"
-	"whatsignal/pkg/signal"
+	signaltypes "whatsignal/pkg/signal/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -27,7 +27,7 @@ func (m *mockBridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, s
 	return args.Error(0)
 }
 
-func (m *mockBridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
+func (m *mockBridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
 	args := m.Called(ctx, msg)
 	return args.Error(0)
 }

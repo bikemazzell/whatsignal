@@ -66,7 +66,7 @@ func run(ctx context.Context) error {
 	}
 	defer db.Close()
 
-	mediaHandler, err := media.NewHandler(cfg.Media.CacheDir)
+	mediaHandler, err := media.NewHandler(cfg.Media.CacheDir, cfg.Media)
 	if err != nil {
 		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}
@@ -91,13 +91,16 @@ func run(ctx context.Context) error {
 		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
 	}
 
-	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, service.RetryConfig{
-		InitialBackoff: cfg.Retry.InitialBackoffMs,
-		MaxBackoff:     cfg.Retry.MaxBackoffMs,
-		MaxAttempts:    cfg.Retry.MaxAttempts,
+	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, models.RetryConfig{
+		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
+		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
+		MaxAttempts:      cfg.Retry.MaxAttempts,
 	})
 
 	messageService := service.NewMessageService(bridge, db, mediaHandler)
+
+	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, logger)
+	go scheduler.Start(ctx)
 
 	server := NewServer(cfg, messageService, logger)
 	serverErrCh := make(chan error, 1)

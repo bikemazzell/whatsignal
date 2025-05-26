@@ -6,13 +6,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
-)
-
-const (
-	MaxSignalImageSize = 5 * 1024 * 1024   // 5MB
-	MaxSignalVideoSize = 100 * 1024 * 1024 // 100MB
-	MaxSignalGifSize   = 25 * 1024 * 1024  // 25MB
+	"whatsignal/internal/models"
 )
 
 type Handler interface {
@@ -22,15 +18,17 @@ type Handler interface {
 
 type handler struct {
 	cacheDir string
+	config   models.MediaConfig
 }
 
-func NewHandler(cacheDir string) (Handler, error) {
+func NewHandler(cacheDir string, config models.MediaConfig) (Handler, error) {
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
 	return &handler{
 		cacheDir: cacheDir,
+		config:   config,
 	}, nil
 }
 
@@ -40,20 +38,11 @@ func (h *handler) ProcessMedia(path string) (string, error) {
 		return "", fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	ext := filepath.Ext(path)
-	switch ext {
-	case ".jpg", ".jpeg", ".png":
-		if info.Size() > MaxSignalImageSize {
-			return "", fmt.Errorf("image too large: %d > %d", info.Size(), MaxSignalImageSize)
-		}
-	case ".mp4", ".mov":
-		if info.Size() > MaxSignalVideoSize {
-			return "", fmt.Errorf("video too large: %d > %d", info.Size(), MaxSignalVideoSize)
-		}
-	case ".gif":
-		if info.Size() > MaxSignalGifSize {
-			return "", fmt.Errorf("gif too large: %d > %d", info.Size(), MaxSignalGifSize)
-		}
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+
+	// Check if file type is allowed and validate size
+	if err := h.validateMedia(ext, info.Size()); err != nil {
+		return "", err
 	}
 
 	file, err := os.Open(path)
@@ -81,6 +70,66 @@ func (h *handler) ProcessMedia(path string) (string, error) {
 	}
 
 	return cachedPath, nil
+}
+
+func (h *handler) validateMedia(ext string, size int64) error {
+	// Check if extension is allowed for any media type
+	var maxSizeMB int
+	var mediaType string
+
+	for _, allowedExt := range h.config.AllowedTypes.Image {
+		if ext == allowedExt {
+			maxSizeMB = h.config.MaxSizeMB.Image
+			mediaType = "image"
+			break
+		}
+	}
+
+	if maxSizeMB == 0 {
+		for _, allowedExt := range h.config.AllowedTypes.Video {
+			if ext == allowedExt {
+				maxSizeMB = h.config.MaxSizeMB.Video
+				mediaType = "video"
+				break
+			}
+		}
+	}
+
+	if maxSizeMB == 0 && ext == "gif" {
+		maxSizeMB = h.config.MaxSizeMB.Gif
+		mediaType = "gif"
+	}
+
+	if maxSizeMB == 0 {
+		for _, allowedExt := range h.config.AllowedTypes.Document {
+			if ext == allowedExt {
+				maxSizeMB = h.config.MaxSizeMB.Document
+				mediaType = "document"
+				break
+			}
+		}
+	}
+
+	if maxSizeMB == 0 {
+		for _, allowedExt := range h.config.AllowedTypes.Voice {
+			if ext == allowedExt {
+				maxSizeMB = h.config.MaxSizeMB.Voice
+				mediaType = "voice"
+				break
+			}
+		}
+	}
+
+	if maxSizeMB == 0 {
+		return fmt.Errorf("file type .%s is not allowed", ext)
+	}
+
+	maxSizeBytes := int64(maxSizeMB) * 1024 * 1024
+	if size > maxSizeBytes {
+		return fmt.Errorf("%s too large: %d > %d bytes", mediaType, size, maxSizeBytes)
+	}
+
+	return nil
 }
 
 func (h *handler) CleanupOldFiles(maxAge int64) error {

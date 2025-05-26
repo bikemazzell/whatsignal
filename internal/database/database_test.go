@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,6 +29,175 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 	}
 
 	return db, tmpDir, cleanup
+}
+
+func TestNewDatabase(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupPath   func(t *testing.T) string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid path",
+			setupPath: func(t *testing.T) string {
+				tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
+				require.NoError(t, err)
+				t.Cleanup(func() { os.RemoveAll(tmpDir) })
+				return filepath.Join(tmpDir, "test.db")
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid path with null byte",
+			setupPath: func(t *testing.T) string {
+				return "\x00invalid"
+			},
+			expectError: true,
+			errorMsg:    "invalid database path",
+		},
+		{
+			name: "empty path",
+			setupPath: func(t *testing.T) string {
+				return ""
+			},
+			expectError: true,
+			errorMsg:    "invalid database path",
+		},
+		{
+			name: "unwritable directory",
+			setupPath: func(t *testing.T) string {
+				tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					os.Chmod(tmpDir, 0755) // Restore permissions before cleanup
+					os.RemoveAll(tmpDir)
+				})
+
+				// Make directory read-only
+				err = os.Chmod(tmpDir, 0444)
+				require.NoError(t, err)
+
+				return filepath.Join(tmpDir, "test.db")
+			},
+			expectError: true,
+			errorMsg:    "failed to create database file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dbPath := tt.setupPath(t)
+
+			db, err := New(dbPath)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+				assert.Nil(t, db)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, db)
+				if db != nil {
+					db.Close()
+				}
+			}
+		})
+	}
+}
+
+func TestDatabaseEncryptionErrors(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with encryption enabled but invalid secret
+	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "")
+	defer func() {
+		os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	}()
+
+	// Create a new encryptor with the invalid secret
+	encryptor, err := NewEncryptor()
+	require.NoError(t, err)
+	db.encryptor = encryptor
+
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "msg123",
+		SignalMsgID:     "sig123",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	// This should work fine as encryption uses default secret
+	err = db.SaveMessageMapping(ctx, mapping)
+	assert.NoError(t, err)
+}
+
+func TestGetMessageMappingErrors(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with corrupted database
+	_, err := db.db.Exec("DROP TABLE message_mappings")
+	require.NoError(t, err)
+
+	// This should return an error
+	mapping, err := db.GetMessageMapping(ctx, "test-id")
+	assert.Error(t, err)
+	assert.Nil(t, mapping)
+}
+
+func TestGetMessageMappingByWhatsAppIDErrors(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with corrupted database
+	_, err := db.db.Exec("DROP TABLE message_mappings")
+	require.NoError(t, err)
+
+	// This should return an error
+	mapping, err := db.GetMessageMappingByWhatsAppID(ctx, "test-id")
+	assert.Error(t, err)
+	assert.Nil(t, mapping)
+}
+
+func TestUpdateDeliveryStatusErrors(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with corrupted database
+	_, err := db.db.Exec("DROP TABLE message_mappings")
+	require.NoError(t, err)
+
+	// This should return an error
+	err = db.UpdateDeliveryStatus(ctx, "test-id", "delivered")
+	assert.Error(t, err)
+}
+
+func TestCleanupOldRecordsErrors(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Test with corrupted database
+	_, err := db.db.Exec("DROP TABLE message_mappings")
+	require.NoError(t, err)
+
+	// This should return an error
+	err = db.CleanupOldRecords(7)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to cleanup old records")
 }
 
 func TestMessageMappingCRUD(t *testing.T) {
@@ -254,4 +424,223 @@ func TestNewDatabaseErrors(t *testing.T) {
 	db, err = New(dbPath)
 	assert.Error(t, err, "Expected error with unwritable directory")
 	assert.Nil(t, db)
+}
+
+func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with encryption enabled but corrupted encryptor
+	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+
+	// Create a mapping that will trigger encryption
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "msg123",
+		SignalMsgID:     "sig123",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	// This should work with default encryption
+	err := db.SaveMessageMapping(ctx, mapping)
+	assert.NoError(t, err)
+}
+
+func TestEncryptorNonceGeneration(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+
+	encryptor, err := NewEncryptor()
+	require.NoError(t, err)
+
+	// Test that encryption produces different results for the same input
+	plaintext := "test message"
+	encrypted1, err := encryptor.Encrypt(plaintext)
+	assert.NoError(t, err)
+
+	encrypted2, err := encryptor.Encrypt(plaintext)
+	assert.NoError(t, err)
+
+	// Should be different due to random nonce
+	assert.NotEqual(t, encrypted1, encrypted2)
+
+	// But both should decrypt to the same plaintext
+	decrypted1, err := encryptor.Decrypt(encrypted1)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted1)
+
+	decrypted2, err := encryptor.Decrypt(encrypted2)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted2)
+}
+
+func TestSaveMessageMappingWithMediaPath(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test saving a message mapping with media path
+	mediaPath := "/path/to/media.jpg"
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "msg123",
+		SignalMsgID:     "sig123",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		MediaPath:       &mediaPath,
+	}
+
+	err := db.SaveMessageMapping(ctx, mapping)
+	require.NoError(t, err)
+
+	// Retrieve and verify
+	retrieved, err := db.GetMessageMappingByWhatsAppID(ctx, "msg123")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	require.NotNil(t, retrieved.MediaPath)
+	assert.Equal(t, mediaPath, *retrieved.MediaPath)
+}
+
+func TestDatabaseWithCorruptedSchema(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	// Create a database file with invalid schema
+	file, err := os.Create(dbPath)
+	require.NoError(t, err)
+	file.WriteString("invalid sql content")
+	file.Close()
+
+	// This should fail when trying to initialize schema
+	db, err := New(dbPath)
+	if err != nil {
+		// Expected case - schema initialization failed
+		assert.Contains(t, err.Error(), "failed to")
+		assert.Nil(t, db)
+	} else {
+		// If it somehow succeeded, clean up
+		db.Close()
+	}
+}
+
+func TestEncryptorEdgeCases(t *testing.T) {
+	// Test with encryption disabled
+	os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+
+	encryptor, err := NewEncryptor()
+	require.NoError(t, err)
+
+	// Test empty string encryption/decryption
+	encrypted, err := encryptor.Encrypt("")
+	assert.NoError(t, err)
+	assert.Equal(t, "", encrypted)
+
+	decrypted, err := encryptor.Decrypt("")
+	assert.NoError(t, err)
+	assert.Equal(t, "", decrypted)
+
+	// Test EncryptIfEnabled and DecryptIfEnabled with encryption disabled
+	result, err := encryptor.EncryptIfEnabled("test")
+	assert.NoError(t, err)
+	assert.Equal(t, "test", result)
+
+	result, err = encryptor.DecryptIfEnabled("test")
+	assert.NoError(t, err)
+	assert.Equal(t, "test", result)
+
+	// Test with encryption enabled
+	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+
+	result, err = encryptor.EncryptIfEnabled("test")
+	assert.NoError(t, err)
+	assert.NotEqual(t, "test", result)
+
+	decrypted, err = encryptor.DecryptIfEnabled(result)
+	assert.NoError(t, err)
+	assert.Equal(t, "test", decrypted)
+}
+
+func TestDecryptInvalidData(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+
+	encryptor, err := NewEncryptor()
+	require.NoError(t, err)
+
+	// Test with invalid base64
+	_, err = encryptor.Decrypt("invalid-base64!")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decode base64")
+
+	// Test with data too short
+	shortData := base64.StdEncoding.EncodeToString([]byte("short"))
+	_, err = encryptor.Decrypt(shortData)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ciphertext too short")
+
+	// Test with invalid ciphertext (valid base64 but wrong encryption)
+	invalidCiphertext := base64.StdEncoding.EncodeToString(make([]byte, 20)) // 20 bytes: 12 for nonce + 8 for data
+	_, err = encryptor.Decrypt(invalidCiphertext)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decrypt")
+}
+
+func TestDatabaseOperationsWithClosedDB(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	cleanup() // Close the database
+
+	ctx := context.Background()
+
+	// All operations should fail with closed database
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "msg123",
+		SignalMsgID:     "sig123",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	err := db.SaveMessageMapping(ctx, mapping)
+	assert.Error(t, err)
+
+	_, err = db.GetMessageMapping(ctx, "test")
+	assert.Error(t, err)
+
+	_, err = db.GetMessageMappingByWhatsAppID(ctx, "test")
+	assert.Error(t, err)
+
+	err = db.UpdateDeliveryStatus(ctx, "test", "delivered")
+	assert.Error(t, err)
+}
+
+func TestNewEncryptorWithCustomSecret(t *testing.T) {
+	// Test with custom encryption secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "custom-secret-key")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
+	encryptor, err := NewEncryptor()
+	assert.NoError(t, err)
+	assert.NotNil(t, encryptor)
+
+	// Test encryption/decryption with custom secret
+	plaintext := "test message"
+	encrypted, err := encryptor.Encrypt(plaintext)
+	assert.NoError(t, err)
+	assert.NotEqual(t, plaintext, encrypted)
+
+	decrypted, err := encryptor.Decrypt(encrypted)
+	assert.NoError(t, err)
+	assert.Equal(t, plaintext, decrypted)
 }

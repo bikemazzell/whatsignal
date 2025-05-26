@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
+
+	"whatsignal/internal/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,6 +88,241 @@ func TestGracefulShutdown(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Shutdown timed out")
 	}
+}
+
+func TestValidateConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      *models.Config
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid config",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIKey:     "test-key",
+					APIBaseURL: "http://localhost:8080",
+				},
+				Signal: models.SignalConfig{
+					PhoneNumber: "+1234567890",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/tmp/test.db",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/tmp/media",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "missing WhatsApp API key",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "http://localhost:8080",
+				},
+				Signal: models.SignalConfig{
+					PhoneNumber: "+1234567890",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/tmp/test.db",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/tmp/media",
+				},
+			},
+			expectError: true,
+			errorMsg:    "WhatsApp API key is required",
+		},
+		{
+			name: "missing WhatsApp API base URL",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIKey: "test-key",
+				},
+				Signal: models.SignalConfig{
+					PhoneNumber: "+1234567890",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/tmp/test.db",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/tmp/media",
+				},
+			},
+			expectError: true,
+			errorMsg:    "WhatsApp API base URL is required",
+		},
+		{
+			name: "missing Signal phone number",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIKey:     "test-key",
+					APIBaseURL: "http://localhost:8080",
+				},
+				Signal: models.SignalConfig{},
+				Database: models.DatabaseConfig{
+					Path: "/tmp/test.db",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/tmp/media",
+				},
+			},
+			expectError: true,
+			errorMsg:    "Signal phone number is required",
+		},
+		{
+			name: "missing database path",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIKey:     "test-key",
+					APIBaseURL: "http://localhost:8080",
+				},
+				Signal: models.SignalConfig{
+					PhoneNumber: "+1234567890",
+				},
+				Database: models.DatabaseConfig{},
+				Media: models.MediaConfig{
+					CacheDir: "/tmp/media",
+				},
+			},
+			expectError: true,
+			errorMsg:    "Database path is required",
+		},
+		{
+			name: "missing media cache directory",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIKey:     "test-key",
+					APIBaseURL: "http://localhost:8080",
+				},
+				Signal: models.SignalConfig{
+					PhoneNumber: "+1234567890",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/tmp/test.db",
+				},
+				Media: models.MediaConfig{},
+			},
+			expectError: true,
+			errorMsg:    "Media cache directory is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfig(tt.config)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestRunWithDatabaseRetries(t *testing.T) {
+	setupTestEnv(t)
+	defer cleanupTestEnv(t)
+
+	// Use an invalid database path to trigger retries
+	os.Setenv("DB_PATH", "/invalid/path/test.db")
+	defer os.Unsetenv("DB_PATH")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := run(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to initialize database after retries")
+}
+
+func TestRunWithMediaHandlerError(t *testing.T) {
+	setupTestEnv(t)
+	defer cleanupTestEnv(t)
+
+	// Unset MEDIA_DIR to prevent environment override
+	os.Unsetenv("MEDIA_DIR")
+
+	// Create a file where the cache directory should be to cause mkdir to fail
+	tmpFile, err := os.CreateTemp("", "block-mkdir-*")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	// Create a config with the file path as cache directory (this will cause mkdir to fail)
+	configContent := fmt.Sprintf(`{
+		"whatsapp": {
+			"apiBaseUrl": "http://localhost:8080",
+			"apiKey": "test-key",
+			"sessionName": "test-session",
+			"timeout": 5000000000,
+			"retryCount": 3,
+			"webhookSecret": "test-secret",
+			"pollIntervalSec": 30
+		},
+		"signal": {
+			"rpcUrl": "http://localhost:8081",
+			"authToken": "test-token",
+			"phoneNumber": "+1234567890",
+			"deviceName": "test-device"
+		},
+		"retry": {
+			"initialBackoffMs": 1000,
+			"maxBackoffMs": 5000,
+			"maxAttempts": 3
+		},
+		"database": {
+			"path": "whatsignal.db"
+		},
+		"media": {
+			"cacheDir": "%s",
+			"maxSizeMB": {
+				"image": 10,
+				"video": 50,
+				"gif": 10,
+				"document": 20,
+				"voice": 5
+			},
+			"allowedTypes": {
+				"image": ["jpg", "jpeg", "png"],
+				"video": ["mp4", "avi"],
+				"document": ["pdf", "doc"],
+				"voice": ["mp3", "wav"]
+			}
+		},
+		"retentionDays": 7,
+		"logLevel": "info"
+	}`, tmpFile.Name())
+
+	err = os.WriteFile("config.json", []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err = run(ctx)
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "failed to initialize media handler")
+	}
+}
+
+func TestRunWithServerError(t *testing.T) {
+	setupTestEnv(t)
+	defer cleanupTestEnv(t)
+
+	// Use a port that's likely to be in use or invalid
+	os.Setenv("PORT", "80") // Privileged port that should fail
+	defer os.Unsetenv("PORT")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := run(ctx)
+	// Should get either a permission error or bind error
+	assert.Error(t, err)
 }
 
 func setupTestEnv(t *testing.T) {

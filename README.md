@@ -27,6 +27,8 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Media file caching
   - Size limit enforcement
   - Configurable message retention
+  - Automated cleanup scheduling
+  - Database encryption at rest
   - Health monitoring endpoint
   - Comprehensive test coverage
   - Type-safe message handling
@@ -69,10 +71,11 @@ docker compose up -d --build
     *   Create a `.env` file in the project root:
         ```bash
         cp env.example .env
-        # Edit .env with your actual values, especially WEBHOOK_SECRET
+        # Edit .env with your actual values
         nano .env
         ```
-    *   Set your `WEBHOOK_SECRET` in the `.env` file (this is the only place it needs to be configured)
+    *   **Required**: Set your `WEBHOOK_SECRET` (minimum 32 characters)
+    *   **Recommended**: Enable encryption by setting `WHATSIGNAL_ENABLE_ENCRYPTION=true` and `WHATSIGNAL_ENCRYPTION_SECRET`
 
 2.  **Clone and Configure**:
     ```bash
@@ -105,6 +108,8 @@ docker compose up -d --build
 
 - [Installation Guide](docs/installation.md) - Detailed setup instructions
 - [Configuration Guide](docs/configuration.md) - Configuration options
+- [Security Guide](docs/security.md) - Encryption and security features
+- [Operations Guide](docs/operations.md) - Production deployment and maintenance
 - [Usage Guide](docs/usage.md) - How to use WhatSignal
 - [Development Guide](docs/development.md) - Contributing and development
 - [Technical Requirements](docs/requirements.md) - Design specifications

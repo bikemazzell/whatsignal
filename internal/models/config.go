@@ -40,7 +40,26 @@ type DatabaseConfig struct {
 
 // MediaConfig holds media related configurations
 type MediaConfig struct {
-	CacheDir string `json:"cacheDir"`
+	CacheDir     string            `json:"cacheDir"`
+	MaxSizeMB    MediaSizeLimits   `json:"maxSizeMB"`
+	AllowedTypes MediaAllowedTypes `json:"allowedTypes"`
+}
+
+// MediaSizeLimits defines size limits for different media types in MB
+type MediaSizeLimits struct {
+	Image    int `json:"image"`
+	Video    int `json:"video"`
+	Gif      int `json:"gif"`
+	Document int `json:"document"`
+	Voice    int `json:"voice"`
+}
+
+// MediaAllowedTypes defines allowed file extensions for different media types
+type MediaAllowedTypes struct {
+	Image    []string `json:"image"`
+	Video    []string `json:"video"`
+	Document []string `json:"document"`
+	Voice    []string `json:"voice"`
 }
 
 // RetryConfig holds retry related configurations

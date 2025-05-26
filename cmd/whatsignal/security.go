@@ -11,9 +11,6 @@ import (
 	"strings"
 )
 
-// verifySignature reads the request body, computes an HMAC-SHA256 signature using the provided secret,
-// and compares it against the signature provided in the specified header.
-// It returns the request body bytes if the signature is valid, or an error otherwise.
 // The signature in the header is expected to be prefixed with "sha256=".
 func verifySignature(r *http.Request, secretKey string, signatureHeaderName string) ([]byte, error) {
 	body, err := io.ReadAll(r.Body)
@@ -26,7 +23,6 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 	if secretKey == "" {
 		// If no secret key is configured, skip verification. This might be desired for testing or specific setups.
 		// For production, a secret key should always be configured.
-		// Consider logging a warning here if appropriate.
 		return body, nil
 	}
 
@@ -43,7 +39,7 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 	expectedSignatureHex := parts[1]
 
 	mac := hmac.New(sha256.New, []byte(secretKey))
-	mac.Write(body) // Use the original body bytes for MAC calculation
+	mac.Write(body)
 	computedMAC := mac.Sum(nil)
 	computedSignatureHex := hex.EncodeToString(computedMAC)
 

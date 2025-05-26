@@ -13,7 +13,8 @@ import (
 )
 
 type Database struct {
-	db *sql.DB
+	db        *sql.DB
+	encryptor *encryptor
 }
 
 func New(dbPath string) (*Database, error) {
@@ -21,7 +22,7 @@ func New(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("invalid database path")
 	}
 
-	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0644)
+	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database file: %w", err)
 	}
@@ -48,7 +49,13 @@ func New(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	return &Database{db: db}, nil
+	encryptor, err := NewEncryptor()
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize encryptor: %w", err)
+	}
+
+	return &Database{db: db, encryptor: encryptor}, nil
 }
 
 func (d *Database) Close() error {
@@ -56,6 +63,30 @@ func (d *Database) Close() error {
 }
 
 func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error {
+	encryptedChatID, err := d.encryptor.EncryptIfEnabled(mapping.WhatsAppChatID)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt chat ID: %w", err)
+	}
+
+	encryptedWhatsAppMsgID, err := d.encryptor.EncryptIfEnabled(mapping.WhatsAppMsgID)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt WhatsApp message ID: %w", err)
+	}
+
+	encryptedSignalMsgID, err := d.encryptor.EncryptIfEnabled(mapping.SignalMsgID)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt Signal message ID: %w", err)
+	}
+
+	var encryptedMediaPath *string
+	if mapping.MediaPath != nil {
+		encrypted, err := d.encryptor.EncryptIfEnabled(*mapping.MediaPath)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt media path: %w", err)
+		}
+		encryptedMediaPath = &encrypted
+	}
+
 	query := `
 		INSERT INTO message_mappings (
 			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
@@ -63,14 +94,14 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := d.db.ExecContext(ctx, query,
-		mapping.WhatsAppChatID,
-		mapping.WhatsAppMsgID,
-		mapping.SignalMsgID,
+	_, err = d.db.ExecContext(ctx, query,
+		encryptedChatID,
+		encryptedWhatsAppMsgID,
+		encryptedSignalMsgID,
 		mapping.SignalTimestamp,
 		mapping.ForwardedAt,
 		mapping.DeliveryStatus,
-		mapping.MediaPath,
+		encryptedMediaPath,
 	)
 
 	if err != nil {
@@ -81,6 +112,11 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 }
 
 func (d *Database) GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error) {
+	encryptedID, err := d.encryptor.EncryptIfEnabled(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt search ID: %w", err)
+	}
+
 	query := `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			   signal_timestamp, forwarded_at, delivery_status, media_path,
@@ -89,16 +125,19 @@ func (d *Database) GetMessageMapping(ctx context.Context, id string) (*models.Me
 		WHERE whatsapp_msg_id = ? OR signal_msg_id = ?
 	`
 
+	var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
+	var encryptedMediaPath *string
 	mapping := &models.MessageMapping{}
-	err := d.db.QueryRowContext(ctx, query, id, id).Scan(
+
+	err = d.db.QueryRowContext(ctx, query, encryptedID, encryptedID).Scan(
 		&mapping.ID,
-		&mapping.WhatsAppChatID,
-		&mapping.WhatsAppMsgID,
-		&mapping.SignalMsgID,
+		&encryptedChatID,
+		&encryptedWhatsAppMsgID,
+		&encryptedSignalMsgID,
 		&mapping.SignalTimestamp,
 		&mapping.ForwardedAt,
 		&mapping.DeliveryStatus,
-		&mapping.MediaPath,
+		&encryptedMediaPath,
 		&mapping.CreatedAt,
 		&mapping.UpdatedAt,
 	)
@@ -109,10 +148,39 @@ func (d *Database) GetMessageMapping(ctx context.Context, id string) (*models.Me
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message mapping: %w", err)
 	}
+
+	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt chat ID: %w", err)
+	}
+
+	mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWhatsAppMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
+	}
+
+	mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
+	}
+
+	if encryptedMediaPath != nil {
+		decryptedMediaPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt media path: %w", err)
+		}
+		mapping.MediaPath = &decryptedMediaPath
+	}
+
 	return mapping, nil
 }
 
 func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
+	encryptedWhatsAppID, err := d.encryptor.EncryptIfEnabled(whatsappID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt WhatsApp ID: %w", err)
+	}
+
 	query := `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			   signal_timestamp, forwarded_at, delivery_status, media_path,
@@ -121,16 +189,19 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 		WHERE whatsapp_msg_id = ?
 	`
 
+	var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
+	var encryptedMediaPath *string
 	mapping := &models.MessageMapping{}
-	err := d.db.QueryRowContext(ctx, query, whatsappID).Scan(
+
+	err = d.db.QueryRowContext(ctx, query, encryptedWhatsAppID).Scan(
 		&mapping.ID,
-		&mapping.WhatsAppChatID,
-		&mapping.WhatsAppMsgID,
-		&mapping.SignalMsgID,
+		&encryptedChatID,
+		&encryptedWhatsAppMsgID,
+		&encryptedSignalMsgID,
 		&mapping.SignalTimestamp,
 		&mapping.ForwardedAt,
 		&mapping.DeliveryStatus,
-		&mapping.MediaPath,
+		&encryptedMediaPath,
 		&mapping.CreatedAt,
 		&mapping.UpdatedAt,
 	)
@@ -141,17 +212,46 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message mapping: %w", err)
 	}
+
+	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt chat ID: %w", err)
+	}
+
+	mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWhatsAppMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
+	}
+
+	mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
+	}
+
+	if encryptedMediaPath != nil {
+		decryptedMediaPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt media path: %w", err)
+		}
+		mapping.MediaPath = &decryptedMediaPath
+	}
+
 	return mapping, nil
 }
 
 func (d *Database) UpdateDeliveryStatus(ctx context.Context, id string, status string) error {
+	encryptedID, err := d.encryptor.EncryptIfEnabled(id)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt message ID: %w", err)
+	}
+
 	query := `
 		UPDATE message_mappings
 		SET delivery_status = ?
 		WHERE whatsapp_msg_id = ? OR signal_msg_id = ?
 	`
 
-	result, err := d.db.ExecContext(ctx, query, status, id, id)
+	result, err := d.db.ExecContext(ctx, query, status, encryptedID, encryptedID)
 	if err != nil {
 		return fmt.Errorf("failed to update delivery status: %w", err)
 	}

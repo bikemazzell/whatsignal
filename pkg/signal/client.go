@@ -8,13 +8,14 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"whatsignal/pkg/signal/types"
 )
 
 // Client defines the interface for interacting with the Signal service.
 // It includes context in all methods for better control over execution.
 type Client interface {
-	SendMessage(ctx context.Context, recipient, message string, attachments []string) (*SendMessageResponse, error)
-	ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]SignalMessage, error)
+	SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error)
+	ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]types.SignalMessage, error)
 	InitializeDevice(ctx context.Context) error
 }
 
@@ -26,30 +27,6 @@ type SignalClient struct {
 	client      *http.Client
 	phoneNumber string
 	deviceName  string
-}
-
-type SendMessageRequest struct {
-	Jsonrpc string `json:"jsonrpc"`
-	Method  string `json:"method"`
-	Params  struct {
-		Number      string   `json:"number"`
-		Message     string   `json:"message"`
-		Attachments []string `json:"attachments,omitempty"`
-	} `json:"params"`
-	ID int `json:"id"`
-}
-
-type SendMessageResponse struct {
-	Jsonrpc string `json:"jsonrpc"`
-	Result  struct {
-		Timestamp int64  `json:"timestamp"`
-		MessageID string `json:"messageId"`
-	} `json:"result"`
-	Error *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-	ID int `json:"id"`
 }
 
 // NewClient creates a new Signal client.
@@ -69,8 +46,8 @@ func NewClient(rpcURL, authToken, phoneNumber, deviceName string, httpClient *ht
 
 // SendMessage sends a message to a recipient via Signal JSON-RPC.
 // It now accepts a context.
-func (c *SignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*SendMessageResponse, error) {
-	request := SendMessageRequest{
+func (c *SignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error) {
+	request := types.SendMessageRequest{
 		Jsonrpc: "2.0",
 		Method:  "send",
 		ID:      1, // Consider making ID dynamic if concurrent client use is expected
@@ -100,7 +77,7 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}
 	defer resp.Body.Close()
 
-	var result SendMessageResponse
+	var result types.SendMessageResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -112,43 +89,10 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	return &result, nil
 }
 
-type ReceiveMessageRequest struct {
-	Jsonrpc string `json:"jsonrpc"`
-	Method  string `json:"method"`
-	Params  struct {
-		Timeout int `json:"timeout"`
-	} `json:"params"`
-	ID int `json:"id"`
-}
-
-type SignalMessage struct {
-	Timestamp     int64    `json:"timestamp"`
-	Sender        string   `json:"sender"`
-	MessageID     string   `json:"messageId"`
-	Message       string   `json:"message"`
-	Attachments   []string `json:"attachments"`
-	QuotedMessage *struct {
-		ID        string `json:"id"`
-		Author    string `json:"author"`
-		Text      string `json:"text"`
-		Timestamp int64  `json:"timestamp"`
-	} `json:"quotedMessage,omitempty"`
-}
-
-type ReceiveMessageResponse struct {
-	Jsonrpc string          `json:"jsonrpc"`
-	Result  []SignalMessage `json:"result"`
-	Error   *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-	ID int `json:"id"`
-}
-
 // ReceiveMessages polls for new messages from Signal JSON-RPC.
 // It now accepts a context.
-func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]SignalMessage, error) {
-	request := ReceiveMessageRequest{
+func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]types.SignalMessage, error) {
+	request := types.ReceiveMessageRequest{
 		Jsonrpc: "2.0",
 		Method:  "receive",
 		ID:      1, // Consider making ID dynamic
@@ -176,7 +120,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	}
 	defer resp.Body.Close()
 
-	var result ReceiveMessageResponse
+	var result types.ReceiveMessageResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}

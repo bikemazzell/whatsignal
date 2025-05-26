@@ -11,13 +11,14 @@ import (
 	"whatsignal/internal/models"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
+	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp/types"
 )
 
 type MessageBridge interface {
 	SendMessage(ctx context.Context, msg *models.Message) error
 	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
-	HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error
+	HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
 }
@@ -35,16 +36,10 @@ type bridge struct {
 	sigClient   signal.Client
 	db          DatabaseService
 	media       media.Handler
-	retryConfig RetryConfig
+	retryConfig models.RetryConfig
 }
 
-type RetryConfig struct {
-	InitialBackoff int
-	MaxBackoff     int
-	MaxAttempts    int
-}
-
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc RetryConfig) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig) MessageBridge {
 	return &bridge{
 		waClient:    waClient,
 		sigClient:   sigClient,
@@ -132,7 +127,7 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 	return nil
 }
 
-func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
+func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
 	if strings.HasPrefix(msg.Sender, "group.") {
 		return b.handleSignalGroupMessage(ctx, msg)
 	}
@@ -254,10 +249,10 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 	return nil
 }
 
-func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signal.SignalMessage) error {
+func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
 	return fmt.Errorf("group messages are not supported yet")
 }
 
-func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signal.SignalMessage) error {
+func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.SignalMessage) error {
 	return fmt.Errorf("new thread creation is not supported yet")
 }

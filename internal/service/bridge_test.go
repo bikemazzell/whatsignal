@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"whatsignal/internal/models"
-	"whatsignal/pkg/signal"
+	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/stretchr/testify/assert"
@@ -88,12 +88,12 @@ func (m *mockWhatsAppClient) StopTyping(ctx context.Context, chatID string) erro
 
 type mockSignalClient struct {
 	mock.Mock
-	sendMessageResp     *signal.SendMessageResponse
+	sendMessageResp     *signaltypes.SendMessageResponse
 	sendMessageErr      error
 	initializeDeviceErr error
 }
 
-func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*signal.SendMessageResponse, error) {
+func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*signaltypes.SendMessageResponse, error) {
 	if m.sendMessageResp != nil || m.sendMessageErr != nil {
 		return m.sendMessageResp, m.sendMessageErr
 	}
@@ -104,15 +104,15 @@ func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message s
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*signal.SendMessageResponse), args.Error(1)
+	return args.Get(0).(*signaltypes.SendMessageResponse), args.Error(1)
 }
 
-func (m *mockSignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]signal.SignalMessage, error) {
+func (m *mockSignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]signaltypes.SignalMessage, error) {
 	args := m.Called(ctx, timeoutSeconds)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]signal.SignalMessage), args.Error(1)
+	return args.Get(0).([]signaltypes.SignalMessage), args.Error(1)
 }
 
 func (m *mockSignalClient) InitializeDevice(ctx context.Context) error {
@@ -194,10 +194,10 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 		waClient:  mockWAClient,
 		sigClient: mockSignalClient,
 		media:     mediaHandler,
-		retryConfig: RetryConfig{
-			InitialBackoff: 1,
-			MaxBackoff:     5,
-			MaxAttempts:    3,
+		retryConfig: models.RetryConfig{
+			InitialBackoffMs: 1,
+			MaxBackoffMs:     5,
+			MaxAttempts:      3,
 		},
 	}
 
@@ -305,7 +305,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			content: "Hello, World!",
 			wantErr: false,
 			setup: func() {
-				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signal.SendMessageResponse{
+				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
 					Result: struct {
 						Timestamp int64  `json:"timestamp"`
 						MessageID string `json:"messageId"`
@@ -332,7 +332,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			wantErr:   false,
 			setup: func() {
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
-				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signal.SendMessageResponse{
+				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
 					Result: struct {
 						Timestamp int64  `json:"timestamp"`
 						MessageID string `json:"messageId"`
@@ -414,13 +414,13 @@ func TestHandleSignalMessage(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		msg     *signal.SignalMessage
+		msg     *signaltypes.SignalMessage
 		wantErr bool
 		setup   func()
 	}{
 		{
 			name: "text reply",
-			msg: &signal.SignalMessage{
+			msg: &signaltypes.SignalMessage{
 				MessageID: "sig124",
 				Sender:    "sender123",
 				Message:   "This is a reply",
@@ -452,7 +452,7 @@ func TestHandleSignalMessage(t *testing.T) {
 		},
 		{
 			name: "media reply",
-			msg: &signal.SignalMessage{
+			msg: &signaltypes.SignalMessage{
 				MessageID:   "sig125",
 				Sender:      "sender123",
 				Message:     "Check this out!",
@@ -488,7 +488,7 @@ func TestHandleSignalMessage(t *testing.T) {
 		},
 		{
 			name: "media processing error",
-			msg: &signal.SignalMessage{
+			msg: &signaltypes.SignalMessage{
 				MessageID:   "sig126",
 				Sender:      "sender123",
 				Message:     "Check this out!",
@@ -656,7 +656,7 @@ func TestHandleSignalGroupMessage(t *testing.T) {
 
 	ctx := context.Background()
 
-	msg := &signal.SignalMessage{
+	msg := &signaltypes.SignalMessage{
 		MessageID: "group123",
 		Sender:    "group.123",
 		Message:   "Group message",
@@ -674,7 +674,7 @@ func TestHandleNewSignalThread(t *testing.T) {
 
 	ctx := context.Background()
 
-	msg := &signal.SignalMessage{
+	msg := &signaltypes.SignalMessage{
 		MessageID: "msg123",
 		Sender:    "sender123",
 		Message:   "New thread message",
@@ -691,10 +691,10 @@ func TestNewBridge(t *testing.T) {
 	sigClient := &mockSignalClient{}
 	db := &mockDatabase{}
 	mediaHandler := &mockMediaHandler{}
-	retryConfig := RetryConfig{
-		InitialBackoff: 1,
-		MaxBackoff:     5,
-		MaxAttempts:    3,
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 1,
+		MaxBackoffMs:     5,
+		MaxAttempts:      3,
 	}
 
 	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig)

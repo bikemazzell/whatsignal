@@ -7,10 +7,29 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"whatsignal/internal/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func getTestMediaConfig() models.MediaConfig {
+	return models.MediaConfig{
+		MaxSizeMB: models.MediaSizeLimits{
+			Image:    5,
+			Video:    100,
+			Gif:      25,
+			Document: 100,
+			Voice:    16,
+		},
+		AllowedTypes: models.MediaAllowedTypes{
+			Image:    []string{"jpg", "jpeg", "png"},
+			Video:    []string{"mp4", "mov"},
+			Document: []string{"pdf", "doc", "docx"},
+			Voice:    []string{"ogg"},
+		},
+	}
+}
 
 func setupTestHandler(t *testing.T) (Handler, string, func()) {
 	// Create a temporary directory for test files
@@ -19,7 +38,7 @@ func setupTestHandler(t *testing.T) (Handler, string, func()) {
 
 	// Create cache directory
 	cacheDir := filepath.Join(tmpDir, "cache")
-	handler, err := NewHandler(cacheDir)
+	handler, err := NewHandler(cacheDir, getTestMediaConfig())
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -49,7 +68,7 @@ func TestNewHandler(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	cacheDir := filepath.Join(tmpDir, "cache")
-	handler, err := NewHandler(cacheDir)
+	handler, err := NewHandler(cacheDir, getTestMediaConfig())
 	assert.NoError(t, err)
 	assert.NotNil(t, handler)
 
@@ -77,7 +96,7 @@ func TestProcessMedia(t *testing.T) {
 	expectedHash := hex.EncodeToString(hash.Sum(nil))
 
 	// Initialize handler
-	handler, err := NewHandler(filepath.Join(tmpDir, "cache"))
+	handler, err := NewHandler(filepath.Join(tmpDir, "cache"), getTestMediaConfig())
 	require.NoError(t, err)
 
 	// Test processing
@@ -136,7 +155,7 @@ func TestCleanupOldFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize handler
-	handler, err := NewHandler(cacheDir)
+	handler, err := NewHandler(cacheDir, getTestMediaConfig())
 	require.NoError(t, err)
 
 	// Run cleanup with 7 days retention
@@ -168,15 +187,21 @@ func TestProcessMediaWithUnsupportedType(t *testing.T) {
 	// Create test file with unsupported extension
 	sourcePath := createTestFile(t, tmpDir, "test.xyz", 1024)
 
-	// Should process without error as we only validate size for known types
+	// Should return error for unsupported file types
 	cachedPath, err := handler.ProcessMedia(sourcePath)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, cachedPath)
+	assert.Error(t, err)
+	assert.Empty(t, cachedPath)
+	assert.Contains(t, err.Error(), "file type .xyz is not allowed")
 }
 
 func TestProcessMediaSizeLimits(t *testing.T) {
 	handler, tmpDir, cleanup := setupTestHandler(t)
 	defer cleanup()
+
+	config := getTestMediaConfig()
+	maxImageSize := int64(config.MaxSizeMB.Image) * 1024 * 1024
+	maxVideoSize := int64(config.MaxSizeMB.Video) * 1024 * 1024
+	maxGifSize := int64(config.MaxSizeMB.Gif) * 1024 * 1024
 
 	tests := []struct {
 		name      string
@@ -187,37 +212,37 @@ func TestProcessMediaSizeLimits(t *testing.T) {
 		{
 			name:      "image within limit",
 			filename:  "test.jpg",
-			size:      MaxSignalImageSize - 1024,
+			size:      maxImageSize - 1024,
 			wantError: false,
 		},
 		{
 			name:      "image exceeds limit",
 			filename:  "test.png",
-			size:      MaxSignalImageSize + 1024,
+			size:      maxImageSize + 1024,
 			wantError: true,
 		},
 		{
 			name:      "video within limit",
 			filename:  "test.mp4",
-			size:      MaxSignalVideoSize - 1024,
+			size:      maxVideoSize - 1024,
 			wantError: false,
 		},
 		{
 			name:      "video exceeds limit",
 			filename:  "test.mov",
-			size:      MaxSignalVideoSize + 1024,
+			size:      maxVideoSize + 1024,
 			wantError: true,
 		},
 		{
 			name:      "gif within limit",
 			filename:  "test.gif",
-			size:      MaxSignalGifSize - 1024,
+			size:      maxGifSize - 1024,
 			wantError: false,
 		},
 		{
 			name:      "gif exceeds limit",
 			filename:  "test.gif",
-			size:      MaxSignalGifSize + 1024,
+			size:      maxGifSize + 1024,
 			wantError: true,
 		},
 	}
@@ -295,7 +320,7 @@ func TestCleanupOldFilesWithNonExistentDirectory(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	nonExistentDir := filepath.Join(tmpDir, "nonexistent")
-	handler, err := NewHandler(nonExistentDir)
+	handler, err := NewHandler(nonExistentDir, getTestMediaConfig())
 	require.NoError(t, err)
 
 	// Remove the directory after creating the handler
@@ -385,12 +410,12 @@ func TestNewHandlerErrors(t *testing.T) {
 	defer os.Chmod(tmpDir, 0755)
 
 	cacheDir := filepath.Join(tmpDir, "cache")
-	_, err = NewHandler(cacheDir)
+	_, err = NewHandler(cacheDir, getTestMediaConfig())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create cache directory")
 
 	// Test with invalid path characters (Windows-specific, but should be tested)
 	invalidPath := filepath.Join(tmpDir, "invalid\x00path")
-	_, err = NewHandler(invalidPath)
+	_, err = NewHandler(invalidPath, getTestMediaConfig())
 	assert.Error(t, err)
 }

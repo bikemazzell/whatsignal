@@ -42,6 +42,10 @@ Thumbs.db
 config.json
 !config.json.example
 
+# Environment variables
+.env
+!env.example
+
 # Debug files
 __debug_bin
 debug.test 

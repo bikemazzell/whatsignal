@@ -38,37 +38,68 @@ To use WhatSignal, you must have:
 2. **Signal Bridge Number**: Dedicated for the bridge, used by Signal-CLI, and different from the destination number.
 3. **Signal Destination Number**: The final recipient, typically on your mobile or desktop Signal app. This must not be the same as the bridge number.
 
+## System Requirements
+
+**Minimum Hardware Requirements:**
+- **CPU**: 2 cores (1 GHz+)
+- **RAM**: 2 GB
+- **Disk Space**: 5 GB (includes Docker images, logs, and media cache)
+- **Network**: Stable internet connection for WhatsApp and Signal APIs
+
+**Recommended Hardware:**
+- **CPU**: 4 cores (2 GHz+)
+- **RAM**: 4 GB
+- **Disk Space**: 10 GB
+- **Network**: High-speed internet for media file transfers
+
+**Software Requirements:**
+- Docker 20.10+
+- Docker Compose 2.0+
+- Linux/macOS/Windows with Docker support
+
 ## Quick Start
 
-1. Install prerequisites:
-   - Go 1.22 or later
-   - SQLite 3
-   - Docker (for running Waha and Signal-CLI)
-   - [Waha](https://github.com/devlikeapro/waha) - WhatsApp HTTP API
-   - [signal-cli](https://github.com/AsamK/signal-cli) - Signal CLI daemon
+**One-liner to start the service:**
+```bash
+docker compose up -d --build
+```
 
-2. Install and run:
-   ```bash
-   # Clone and build
-   git clone https://github.com/yourusername/whatsignal.git
-   cd whatsignal
-   go build -o whatsignal cmd/whatsignal/main.go
+1.  **Prerequisites**:
+    *   Docker and Docker Compose installed
+    *   Create a `.env` file in the project root:
+        ```bash
+        cp env.example .env
+        # Edit .env with your actual values, especially WEBHOOK_SECRET
+        nano .env
+        ```
+    *   Set your `WEBHOOK_SECRET` in the `.env` file (this is the only place it needs to be configured)
 
-   # Configure
-   cp config.json.example config.json
-   nano config.json  # Edit configuration, ensure to set:
-                   # - whatsapp.apiKey
-                   # - whatsapp.webhookSecret (must match WAHA's X-Waha-Signature-256 secret if WAHA is configured to send it)
-                   # - signal.phoneNumber
-                   # - signal.deviceName
-                   # - signal.webhookSecret (if Signal is configured to send webhooks with X-Signal-Signature-256)
+2.  **Clone and Configure**:
+    ```bash
+    git clone https://github.com/yourusername/whatsignal.git
+    cd whatsignal
+    cp config.json.example config.json
+    nano config.json # Configure your Signal and WhatsApp settings
+    ```
 
-   # Start dependencies (Waha and Signal-CLI)
-   docker-compose up -d  # Or follow manual setup in Installation Guide
+3.  **Run with Docker Compose**:
+    ```bash
+    docker compose up -d --build
+    ```
+    This will build the `whatsignal` image and start all services (`whatsignal`, `waha`, and `signal-cli`).
 
-   # Run WhatSignal
-   ./whatsignal -config config.json -db whatsignal.db -cache ./cache
-   ```
+4.  **Check Health**:
+    ```bash
+    curl http://localhost:8082/health # Check WhatSignal health
+    # You can also check waha (localhost:3000) and signal-cli (localhost:8080) if they expose health/status endpoints.
+    ```
+
+5.  **View Logs**:
+    ```bash
+    docker compose logs -f whatsignal
+    docker compose logs -f waha
+    docker compose logs -f signal-cli
+    ```
 
 ## Documentation
 

@@ -4,11 +4,12 @@ services:
   signal-cli:
     image: registry.gitlab.com/packaging/signal-cli/signal-cli:latest
     container_name: signal-cli
-    command: jsonRpc
+    command: daemon --socket 0.0.0.0:8080 --json-rpc
     ports:
       - "8080:8080"
     volumes:
       - ~/.local/share/signal-cli:/home/.local/share/signal-cli
+      - ~/.config/signal-cli:/home/.config/signal-cli
     restart: unless-stopped
 
   waha:
@@ -20,5 +21,28 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     environment:
-      - WEBHOOK_URL=http://host.docker.internal:8082/webhook/whatsapp  # Default WhatSignal webhook
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret}  # Set this in your .env file 
+      - WEBHOOK_URL=http://whatsignal:8082/webhook/whatsapp
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret}
+
+  whatsignal:
+    build:
+      context: .
+    container_name: whatsignal
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./cache:/app/cache
+      - whatsignal_db_data:/app/data
+    environment:
+      - WHATSAPP_WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret}
+    depends_on:
+      signal-cli:
+        condition: service_started
+    restart: unless-stopped
+    command: ["/app/whatsignal", "-config", "/app/config.json", "-db", "/app/data/whatsignal.db", "-cache", "/app/cache"]
+    networks:
+      - default
+
+volumes:
+  whatsignal_db_data: {} 

@@ -17,12 +17,10 @@ type Database struct {
 }
 
 func New(dbPath string) (*Database, error) {
-	// Check if path is valid
 	if len(dbPath) == 0 || dbPath[0] == '\x00' {
 		return nil, fmt.Errorf("invalid database path")
 	}
 
-	// Try to create the database file to check permissions
 	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database file: %w", err)
@@ -39,7 +37,6 @@ func New(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Initialize schema
 	schema, err := migrations.GetInitialSchema()
 	if err != nil {
 		db.Close()

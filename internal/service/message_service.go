@@ -60,7 +60,6 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Process media if present
 	if msg.MediaURL != "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -69,16 +68,14 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 		msg.MediaPath = cachePath
 	}
 
-	// Forward message through bridge
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	// Save message mapping
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  msg.ChatID,
 		WhatsAppMsgID:   msg.ID,
-		SignalMsgID:     msg.ID, // TODO: Get from bridge response
+		SignalMsgID:     msg.ID,
 		SignalTimestamp: msg.Timestamp,
 		ForwardedAt:     msg.Timestamp,
 		DeliveryStatus:  models.DeliveryStatusSent,
@@ -95,13 +92,11 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 }
 
 func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message) error {
-	// Check if message already processed
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msg.ID)
 	if err == nil && existingMapping != nil {
-		return nil // Already processed
+		return nil
 	}
 
-	// Process media if present
 	if msg.MediaURL != "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -110,17 +105,15 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		msg.MediaPath = cachePath
 	}
 
-	// Forward message through bridge
 	err = s.bridge.SendMessage(ctx, msg)
 	if err != nil {
 		return err
 	}
 
-	// Save message mapping
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  msg.ChatID,
 		WhatsAppMsgID:   msg.ID,
-		SignalMsgID:     msg.ID, // TODO: Get from bridge response
+		SignalMsgID:     msg.ID,
 		SignalTimestamp: msg.Timestamp,
 		ForwardedAt:     msg.Timestamp,
 		DeliveryStatus:  "received",
@@ -171,7 +164,6 @@ func (s *messageService) GetMessageThread(ctx context.Context, threadID string) 
 		return nil, fmt.Errorf("thread not found: %s", threadID)
 	}
 
-	// For now, just return a single message
 	msg := &models.Message{
 		ID:             mapping.WhatsAppMsgID,
 		ChatID:         mapping.WhatsAppChatID,
@@ -194,7 +186,6 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO: Implement message deletion
 	return nil
 }
 
@@ -202,10 +193,9 @@ func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Check if message already processed
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msgID)
 	if err == nil && existingMapping != nil {
-		return nil // Already processed
+		return nil
 	}
 
 	msg := &models.Message{
@@ -234,14 +224,11 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 		return fmt.Errorf("HandleSignalMessage called with non-Signal platform: %s", msg.Platform)
 	}
 
-	// Reject group messages for now
 	if strings.HasPrefix(msg.Sender, "group.") {
 		return fmt.Errorf("group messages are not supported yet")
 	}
 
-	// Process media if present (example, might need more robust type handling)
-	if msg.MediaURL != "" && msg.MediaPath == "" { // Only process if MediaPath isn't already set
-		// msg.Type = models.ImageMessage // Type should be set correctly before calling this service method
+	if msg.MediaURL != "" && msg.MediaPath == "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
 			return fmt.Errorf("failed to process media for HandleSignalMessage: %w", err)
@@ -249,7 +236,6 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 		msg.MediaPath = cachePath
 	}
 
-	// Forward message through bridge. SendMessage is part of MessageBridge.
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send Signal message via bridge: %w", err)
 	}
@@ -265,7 +251,6 @@ func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSi
 		"sender":      rawSignalMsg.Sender,
 	}).Info("Processing incoming Signal message in service layer (ProcessIncomingSignalMessage)")
 
-	// Now s.bridge is of type MessageBridge (from service/bridge.go), which has HandleSignalMessage method.
 	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
 }
 

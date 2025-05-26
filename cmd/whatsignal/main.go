@@ -21,7 +21,6 @@ import (
 )
 
 func main() {
-	// Create context that listens for the interrupt signal
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -31,22 +30,18 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	// Initialize logger
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
-	// Load configuration
 	cfg, err := config.LoadConfig("config.json")
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Validate required configuration
 	if err := validateConfig(cfg); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Set log level from config
 	if cfg.LogLevel != "" {
 		level, err := logrus.ParseLevel(cfg.LogLevel)
 		if err != nil {
@@ -57,7 +52,6 @@ func run(ctx context.Context) error {
 		}
 	}
 
-	// Initialize database with retry
 	var db *database.Database
 	for attempts := 0; attempts < 3; attempts++ {
 		db, err = database.New(cfg.Database.Path)
@@ -72,13 +66,11 @@ func run(ctx context.Context) error {
 	}
 	defer db.Close()
 
-	// Initialize media handler
 	mediaHandler, err := media.NewHandler(cfg.Media.CacheDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}
 
-	// Initialize clients
 	waClient := whatsapp.NewClient(types.ClientConfig{
 		BaseURL:     cfg.WhatsApp.APIBaseURL,
 		APIKey:      cfg.WhatsApp.APIKey,
@@ -95,25 +87,18 @@ func run(ctx context.Context) error {
 		nil,
 	)
 
-	// Initialize the Signal device/account before using it
 	if err := sigClient.InitializeDevice(ctx); err != nil {
-		// Log a warning or return an error based on desired behavior.
-		// If Signal is critical, this should probably be a fatal error.
 		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
-		// Depending on strictness, you might: return fmt.Errorf("failed to initialize Signal device: %w", err)
 	}
 
-	// Initialize message bridge
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, service.RetryConfig{
 		InitialBackoff: cfg.Retry.InitialBackoffMs,
 		MaxBackoff:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:    cfg.Retry.MaxAttempts,
 	})
 
-	// Initialize message service
 	messageService := service.NewMessageService(bridge, db, mediaHandler)
 
-	// Start HTTP server
 	server := NewServer(cfg, messageService, logger)
 	serverErrCh := make(chan error, 1)
 	go func() {
@@ -122,7 +107,6 @@ func run(ctx context.Context) error {
 		}
 	}()
 
-	// Wait for shutdown signal or server error
 	select {
 	case <-ctx.Done():
 		logger.Info("Received shutdown signal")
@@ -131,11 +115,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	// Create shutdown context with timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Perform graceful shutdown
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("failed to shutdown server gracefully: %w", err)
 	}

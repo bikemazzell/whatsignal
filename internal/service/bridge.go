@@ -133,18 +133,14 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 }
 
 func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
-	// Handle group messages
 	if strings.HasPrefix(msg.Sender, "group.") {
 		return b.handleSignalGroupMessage(ctx, msg)
 	}
 
-	// Handle direct messages
 	if msg.QuotedMessage == nil {
-		// For messages without quotes, create a new thread
 		return b.handleNewSignalThread(ctx, msg)
 	}
 
-	// Handle replies
 	mapping, err := b.db.GetMessageMappingByWhatsAppID(ctx, msg.QuotedMessage.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get message mapping: %w", err)
@@ -154,7 +150,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMess
 		return fmt.Errorf("no mapping found for quoted message")
 	}
 
-	// Process attachments
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
 		return fmt.Errorf("failed to process attachments: %w", err)
@@ -163,7 +158,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMess
 	var resp *types.SendMessageResponse
 	var sendErr error
 
-	// Handle different message types
 	switch {
 	case len(attachments) > 0 && isImageAttachment(attachments[0]):
 		resp, sendErr = b.waClient.SendImage(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
@@ -261,11 +255,9 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 }
 
 func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signal.SignalMessage) error {
-	// For now, we'll just log group messages as they require special handling
 	return fmt.Errorf("group messages are not supported yet")
 }
 
 func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signal.SignalMessage) error {
-	// For now, we'll just log new threads as they require special handling
 	return fmt.Errorf("new thread creation is not supported yet")
 }

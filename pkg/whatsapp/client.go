@@ -76,29 +76,24 @@ func (c *WhatsAppClient) stopTyping(ctx context.Context, chatID string) error {
 }
 
 func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
-	// 1. Send seen
 	if err := c.sendSeen(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to send seen: %w", err)
 	}
 
-	// 2. Start typing
 	if err := c.startTyping(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to start typing: %w", err)
 	}
 
-	// 3. Wait based on message length (simulating typing)
-	typingDuration := time.Duration(len(text)) * 50 * time.Millisecond // 50ms per character
+	typingDuration := time.Duration(len(text)) * 50 * time.Millisecond
 	if typingDuration > 3*time.Second {
-		typingDuration = 3 * time.Second // Cap at 3 seconds
+		typingDuration = 3 * time.Second
 	}
 	time.Sleep(typingDuration)
 
-	// 4. Stop typing
 	if err := c.stopTyping(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to stop typing: %w", err)
 	}
 
-	// 5. Send the message
 	payload := map[string]interface{}{
 		"chatId": chatID,
 		"text":   text,
@@ -139,7 +134,7 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 	switch mediaType {
 	case types.MediaTypeImage:
 		apiActionPath = types.EndpointSendImage
-	case types.MediaTypeFile: // Used by SendFile and SendDocument
+	case types.MediaTypeFile:
 		apiActionPath = types.EndpointSendFile
 	case types.MediaTypeVoice:
 		apiActionPath = types.EndpointSendVoice
@@ -178,7 +173,6 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 	return &result, nil
 }
 
-// Convenience methods for different media types
 func (c *WhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
 	return c.SendMedia(ctx, chatID, imagePath, caption, types.MediaTypeImage)
 }

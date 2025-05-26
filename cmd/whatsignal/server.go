@@ -58,6 +58,26 @@ type SignalWebhookPayload struct {
 	Attachments []string `json:"attachments,omitempty"`
 }
 
+func convertWebhookPayloadToSignalMessage(payload *SignalWebhookPayload) *signal.SignalMessage {
+	attachments := payload.Attachments
+	if attachments == nil {
+		attachments = []string{}
+	}
+
+	if payload.MediaPath != "" {
+		attachments = append(attachments, payload.MediaPath)
+	}
+
+	return &signal.SignalMessage{
+		MessageID:     payload.MessageID,
+		Sender:        payload.Sender,
+		Message:       payload.Message,
+		Timestamp:     payload.Timestamp,
+		Attachments:   attachments,
+		QuotedMessage: nil,
+	}
+}
+
 func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger) *Server {
 	s := &Server{
 		router:     mux.NewRouter(),
@@ -215,28 +235,7 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 			return
 		}
 
-		// Convert SignalWebhookPayload to models.Message as before
-		// Note: The original HandleSignalMessage expected a models.Message,
-		// but the service layer HandleSignalMessage expects signal.SignalMessage.
-		// This part needs to be reconciled with how signal messages are actually processed.
-		// For now, assuming the server constructs a signal.SignalMessage if that's what the service needs.
-		// Or, the service.HandleSignalMessage is adapted.
-
-		// Let's assume for now the webhook payload IS the signal.SignalMessage structure
-		// or can be directly mapped to it or a subset needed by HandleSignalMessage service method.
-		// The current SignalWebhookPayload is quite different from signal.SignalMessage.
-		// This indicates a potential mismatch between what the /webhook/signal expects and what service.HandleSignalMessage processes.
-
-		// For the purpose of this example, let's create a signal.SignalMessage from SignalWebhookPayload
-		// This part needs careful review based on actual data flow for Signal messages.
-		sigMsg := &signal.SignalMessage{
-			MessageID:   payload.MessageID,
-			Sender:      payload.Sender,
-			Message:     payload.Message,
-			Timestamp:   payload.Timestamp,
-			Attachments: payload.Attachments, // Assuming SignalWebhookPayload.Attachments maps directly
-			// QuotedMessage *struct { ... } // Not present in SignalWebhookPayload, would be nil
-		}
+		sigMsg := convertWebhookPayloadToSignalMessage(&payload)
 
 		s.logger.WithFields(logrus.Fields{
 			"messageId": sigMsg.MessageID,

@@ -35,13 +35,11 @@ func NewHandler(cacheDir string) (Handler, error) {
 }
 
 func (h *handler) ProcessMedia(path string) (string, error) {
-	// Get file info
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	// Check file size based on extension
 	ext := filepath.Ext(path)
 	switch ext {
 	case ".jpg", ".jpeg", ".png":
@@ -58,7 +56,6 @@ func (h *handler) ProcessMedia(path string) (string, error) {
 		}
 	}
 
-	// Calculate file hash
 	file, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
@@ -70,18 +67,14 @@ func (h *handler) ProcessMedia(path string) (string, error) {
 		return "", fmt.Errorf("failed to calculate hash: %w", err)
 	}
 
-	// Create cache file path
 	hashStr := fmt.Sprintf("%x", hash.Sum(nil))
 	cachedPath := filepath.Join(h.cacheDir, hashStr+ext)
 
-	// Check if file already exists in cache
 	if _, err := os.Stat(cachedPath); err == nil {
 		return cachedPath, nil
 	}
 
-	// Copy file to cache
 	if err := os.Link(path, cachedPath); err != nil {
-		// If hard linking fails (e.g., across devices), fall back to copying
 		if err := copyFile(path, cachedPath); err != nil {
 			return "", fmt.Errorf("failed to copy file to cache: %w", err)
 		}

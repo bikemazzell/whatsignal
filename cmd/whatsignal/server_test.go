@@ -321,6 +321,98 @@ func TestServer_SignalWebhook(t *testing.T) {
 	}
 }
 
+func TestConvertWebhookPayloadToSignalMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  *SignalWebhookPayload
+		expected *signal.SignalMessage
+	}{
+		{
+			name: "basic message",
+			payload: &SignalWebhookPayload{
+				MessageID: "msg123",
+				Sender:    "+1234567890",
+				Message:   "Hello, World!",
+				Timestamp: 1234567890,
+				Type:      "text",
+			},
+			expected: &signal.SignalMessage{
+				MessageID:     "msg123",
+				Sender:        "+1234567890",
+				Message:       "Hello, World!",
+				Timestamp:     1234567890,
+				Attachments:   []string{},
+				QuotedMessage: nil,
+			},
+		},
+		{
+			name: "message with attachments",
+			payload: &SignalWebhookPayload{
+				MessageID:   "msg124",
+				Sender:      "+1234567890",
+				Message:     "Check this out!",
+				Timestamp:   1234567890,
+				Type:        "image",
+				Attachments: []string{"http://example.com/image.jpg"},
+			},
+			expected: &signal.SignalMessage{
+				MessageID:     "msg124",
+				Sender:        "+1234567890",
+				Message:       "Check this out!",
+				Timestamp:     1234567890,
+				Attachments:   []string{"http://example.com/image.jpg"},
+				QuotedMessage: nil,
+			},
+		},
+		{
+			name: "message with media path",
+			payload: &SignalWebhookPayload{
+				MessageID: "msg125",
+				Sender:    "+1234567890",
+				Message:   "Media message",
+				Timestamp: 1234567890,
+				Type:      "image",
+				MediaPath: "/path/to/media.jpg",
+			},
+			expected: &signal.SignalMessage{
+				MessageID:     "msg125",
+				Sender:        "+1234567890",
+				Message:       "Media message",
+				Timestamp:     1234567890,
+				Attachments:   []string{"/path/to/media.jpg"},
+				QuotedMessage: nil,
+			},
+		},
+		{
+			name: "message with both attachments and media path",
+			payload: &SignalWebhookPayload{
+				MessageID:   "msg126",
+				Sender:      "+1234567890",
+				Message:     "Multiple attachments",
+				Timestamp:   1234567890,
+				Type:        "image",
+				Attachments: []string{"http://example.com/image1.jpg"},
+				MediaPath:   "/path/to/media2.jpg",
+			},
+			expected: &signal.SignalMessage{
+				MessageID:     "msg126",
+				Sender:        "+1234567890",
+				Message:       "Multiple attachments",
+				Timestamp:     1234567890,
+				Attachments:   []string{"http://example.com/image1.jpg", "/path/to/media2.jpg"},
+				QuotedMessage: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertWebhookPayloadToSignalMessage(tt.payload)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestServer_StartAndShutdown(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()

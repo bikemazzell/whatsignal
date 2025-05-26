@@ -31,6 +31,13 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Comprehensive test coverage
   - Type-safe message handling
 
+## Prerequisite Accounts
+To use WhatSignal, you must have:
+
+1. **WhatsApp Number**: Registered and active, activated as a session on WAHA.
+2. **Signal Bridge Number**: Dedicated for the bridge, used by Signal-CLI, and different from the destination number.
+3. **Signal Destination Number**: The final recipient, typically on your mobile or desktop Signal app. This must not be the same as the bridge number.
+
 ## Quick Start
 
 1. Install prerequisites:

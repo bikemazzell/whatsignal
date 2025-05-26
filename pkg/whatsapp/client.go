@@ -20,45 +20,10 @@ type WhatsAppClient struct {
 	apiKey      string
 	sessionName string
 	client      *http.Client
-	sessionMgr  SessionManager
+	sessionMgr  types.SessionManager
 }
 
-type MediaType string
-
-const (
-	MediaTypeImage MediaType = "Image"
-	MediaTypeFile  MediaType = "File"
-	MediaTypeVoice MediaType = "Voice"
-	MediaTypeVideo MediaType = "Video"
-)
-
-const (
-	apiBase             = "/api/%s"
-	endpointSendText    = "/sendText"
-	endpointSendSeen    = "/sendSeen"
-	endpointStartTyping = "/startTyping"
-	endpointStopTyping  = "/stopTyping"
-	endpointSendImage   = "/sendImage"
-	endpointSendFile    = "/sendFile"
-	endpointSendVoice   = "/sendVoice"
-	endpointSendVideo   = "/sendVideo"
-	// Note: sendDocument uses endpointSendFile via MediaTypeFile
-)
-
-type WAClient interface {
-	SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error)
-	SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error)
-	SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error)
-	SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error)
-	SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error)
-	SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error)
-	CreateSession(ctx context.Context) error
-	StartSession(ctx context.Context) error
-	StopSession(ctx context.Context) error
-	GetSessionStatus(ctx context.Context) (*types.Session, error)
-}
-
-func NewClient(config types.ClientConfig) WAClient {
+func NewClient(config types.ClientConfig) types.WAClient {
 	client := &WhatsAppClient{
 		baseURL:     config.BaseURL,
 		apiKey:      config.APIKey,
@@ -90,7 +55,7 @@ func (c *WhatsAppClient) sendSeen(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointSendSeen, c.sessionName), payload)
+	_, err := c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointSendSeen, c.sessionName), payload)
 	return err
 }
 
@@ -98,7 +63,7 @@ func (c *WhatsAppClient) startTyping(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointStartTyping, c.sessionName), payload)
+	_, err := c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointStartTyping, c.sessionName), payload)
 	return err
 }
 
@@ -106,7 +71,7 @@ func (c *WhatsAppClient) stopTyping(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
 		"chatId": chatID,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointStopTyping, c.sessionName), payload)
+	_, err := c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointStopTyping, c.sessionName), payload)
 	return err
 }
 
@@ -139,10 +104,10 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 		"text":   text,
 	}
 
-	return c.sendRequest(ctx, fmt.Sprintf(apiBase+endpointSendText, c.sessionName), payload)
+	return c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointSendText, c.sessionName), payload)
 }
 
-func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType MediaType) (*types.SendMessageResponse, error) {
+func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType) (*types.SendMessageResponse, error) {
 	file, err := os.Open(mediaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open media file: %w", err)
@@ -172,19 +137,19 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 
 	var apiActionPath string
 	switch mediaType {
-	case MediaTypeImage:
-		apiActionPath = endpointSendImage
-	case MediaTypeFile: // Used by SendFile and SendDocument
-		apiActionPath = endpointSendFile
-	case MediaTypeVoice:
-		apiActionPath = endpointSendVoice
-	case MediaTypeVideo:
-		apiActionPath = endpointSendVideo
+	case types.MediaTypeImage:
+		apiActionPath = types.EndpointSendImage
+	case types.MediaTypeFile: // Used by SendFile and SendDocument
+		apiActionPath = types.EndpointSendFile
+	case types.MediaTypeVoice:
+		apiActionPath = types.EndpointSendVoice
+	case types.MediaTypeVideo:
+		apiActionPath = types.EndpointSendVideo
 	default:
 		return nil, fmt.Errorf("unsupported media type: %s", mediaType)
 	}
 
-	endpoint := fmt.Sprintf(apiBase+apiActionPath, c.sessionName)
+	endpoint := fmt.Sprintf(types.APIBase+apiActionPath, c.sessionName)
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -215,23 +180,23 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 
 // Convenience methods for different media types
 func (c *WhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, imagePath, caption, MediaTypeImage)
+	return c.SendMedia(ctx, chatID, imagePath, caption, types.MediaTypeImage)
 }
 
 func (c *WhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, filePath, caption, MediaTypeFile)
+	return c.SendMedia(ctx, chatID, filePath, caption, types.MediaTypeFile)
 }
 
 func (c *WhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, voicePath, "", MediaTypeVoice)
+	return c.SendMedia(ctx, chatID, voicePath, "", types.MediaTypeVoice)
 }
 
 func (c *WhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, videoPath, caption, MediaTypeVideo)
+	return c.SendMedia(ctx, chatID, videoPath, caption, types.MediaTypeVideo)
 }
 
 func (c *WhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, docPath, caption, MediaTypeFile)
+	return c.SendMedia(ctx, chatID, docPath, caption, types.MediaTypeFile)
 }
 
 func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, payload interface{}) (*types.SendMessageResponse, error) {

@@ -11,7 +11,6 @@ import (
 	"whatsignal/internal/models"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
-	"whatsignal/pkg/whatsapp"
 	"whatsignal/pkg/whatsapp/types"
 )
 
@@ -32,7 +31,7 @@ type DatabaseService interface {
 }
 
 type bridge struct {
-	waClient    whatsapp.WAClient
+	waClient    types.WAClient
 	sigClient   signal.Client
 	db          DatabaseService
 	media       media.Handler
@@ -45,7 +44,7 @@ type RetryConfig struct {
 	MaxAttempts    int
 }
 
-func NewBridge(waClient whatsapp.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc RetryConfig) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc RetryConfig) MessageBridge {
 	return &bridge{
 		waClient:    waClient,
 		sigClient:   sigClient,

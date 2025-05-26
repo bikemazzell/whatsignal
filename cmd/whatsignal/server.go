@@ -123,6 +123,9 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.server == nil {
+		return nil // Server was never started
+	}
 	return s.server.Shutdown(ctx)
 }
 

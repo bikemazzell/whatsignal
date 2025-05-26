@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"whatsignal/internal/models"
+	"whatsignal/pkg/signal"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,6 +19,26 @@ type mockBridge struct {
 
 func (m *mockBridge) SendMessage(ctx context.Context, msg *models.Message) error {
 	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
+func (m *mockBridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
+	args := m.Called(ctx, chatID, msgID, sender, content, mediaPath)
+	return args.Error(0)
+}
+
+func (m *mockBridge) HandleSignalMessage(ctx context.Context, msg *signal.SignalMessage) error {
+	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
+func (m *mockBridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error {
+	args := m.Called(ctx, msgID, status)
+	return args.Error(0)
+}
+
+func (m *mockBridge) CleanupOldRecords(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
 	return args.Error(0)
 }
 
@@ -486,7 +507,6 @@ func TestMessageService_HandleSignalMessageDetailed(t *testing.T) {
 						msg.Content == "Hello, Signal!" &&
 						msg.Type == models.TextMessage
 				})).Return(nil).Once()
-				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
 			},
 		},
 		{
@@ -508,7 +528,6 @@ func TestMessageService_HandleSignalMessageDetailed(t *testing.T) {
 						msg.Type == models.ImageMessage &&
 						msg.MediaPath == "/cache/image.jpg"
 				})).Return(nil).Once()
-				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
 			},
 		},
 		{

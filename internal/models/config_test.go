@@ -21,15 +21,7 @@ func TestConfig_Validation(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				WhatsApp: struct {
-					APIBaseURL      string        `json:"apiBaseUrl"`
-					APIKey          string        `json:"apiKey"`
-					SessionName     string        `json:"sessionName"`
-					Timeout         time.Duration `json:"timeout"`
-					RetryCount      int           `json:"retryCount"`
-					WebhookSecret   string        `json:"webhookSecret"`
-					PollIntervalSec int           `json:"pollIntervalSec"`
-				}{
+				WhatsApp: WhatsAppConfig{
 					APIBaseURL:      "http://localhost:8080",
 					APIKey:          "test-key",
 					SessionName:     "test-session",
@@ -38,22 +30,13 @@ func TestConfig_Validation(t *testing.T) {
 					WebhookSecret:   "secret",
 					PollIntervalSec: 30,
 				},
-				Signal: struct {
-					RPCURL      string `json:"rpcUrl"`
-					AuthToken   string `json:"authToken"`
-					PhoneNumber string `json:"phoneNumber"`
-					DeviceName  string `json:"deviceName"`
-				}{
+				Signal: SignalConfig{
 					RPCURL:      "http://localhost:8081",
 					AuthToken:   "test-token",
 					PhoneNumber: "+1234567890",
 					DeviceName:  "test-device",
 				},
-				Retry: struct {
-					InitialBackoffMs int `json:"initialBackoffMs"`
-					MaxBackoffMs     int `json:"maxBackoffMs"`
-					MaxAttempts      int `json:"maxAttempts"`
-				}{
+				Retry: RetryConfig{
 					InitialBackoffMs: 100,
 					MaxBackoffMs:     1000,
 					MaxAttempts:      3,
@@ -66,21 +49,8 @@ func TestConfig_Validation(t *testing.T) {
 		{
 			name: "missing required fields",
 			config: Config{
-				WhatsApp: struct {
-					APIBaseURL      string        `json:"apiBaseUrl"`
-					APIKey          string        `json:"apiKey"`
-					SessionName     string        `json:"sessionName"`
-					Timeout         time.Duration `json:"timeout"`
-					RetryCount      int           `json:"retryCount"`
-					WebhookSecret   string        `json:"webhookSecret"`
-					PollIntervalSec int           `json:"pollIntervalSec"`
-				}{},
-				Signal: struct {
-					RPCURL      string `json:"rpcUrl"`
-					AuthToken   string `json:"authToken"`
-					PhoneNumber string `json:"phoneNumber"`
-					DeviceName  string `json:"deviceName"`
-				}{},
+				WhatsApp: WhatsAppConfig{},
+				Signal:   SignalConfig{},
 			},
 			valid: false,
 		},

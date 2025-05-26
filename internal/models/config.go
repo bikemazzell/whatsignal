@@ -4,12 +4,13 @@ import "time"
 
 // Config holds the application configuration
 type Config struct {
-	WhatsApp WhatsAppConfig `mapstructure:"whatsapp"`
-	Signal   SignalConfig   `mapstructure:"signal"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Media    MediaConfig    `mapstructure:"media"`
-	Retry    RetryConfig    `mapstructure:"retry"`
-	LogLevel string         `mapstructure:"log_level"`
+	WhatsApp      WhatsAppConfig `mapstructure:"whatsapp"`
+	Signal        SignalConfig   `mapstructure:"signal"`
+	Database      DatabaseConfig `mapstructure:"database"`
+	Media         MediaConfig    `mapstructure:"media"`
+	Retry         RetryConfig    `mapstructure:"retry"`
+	LogLevel      string         `mapstructure:"log_level"`
+	RetentionDays int            `json:"retentionDays"`
 }
 
 // WhatsAppConfig holds WhatsApp related configurations

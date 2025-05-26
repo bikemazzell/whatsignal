@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -231,6 +232,11 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 
 	if msg.Platform != "signal" {
 		return fmt.Errorf("HandleSignalMessage called with non-Signal platform: %s", msg.Platform)
+	}
+
+	// Reject group messages for now
+	if strings.HasPrefix(msg.Sender, "group.") {
+		return fmt.Errorf("group messages are not supported yet")
 	}
 
 	// Process media if present (example, might need more robust type handling)

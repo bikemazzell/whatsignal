@@ -194,7 +194,7 @@ func TestClient_SendImage(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendImage(ctx, "123456", tmpFile.Name(), "Test image")
 	assert.NoError(t, err)
-	assert.Equal(t, "media123", resp.MessageID)
+	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 
 	// Test file not found
@@ -249,7 +249,7 @@ func TestClient_SendFile(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendFile(ctx, "123456", tmpFile.Name(), "Test file")
 	assert.NoError(t, err)
-	assert.Equal(t, "file123", resp.MessageID)
+	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 }
 
@@ -298,7 +298,7 @@ func TestClient_SendVoice(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendVoice(ctx, "123456", tmpFile.Name())
 	assert.NoError(t, err)
-	assert.Equal(t, "voice123", resp.MessageID)
+	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 }
 
@@ -348,7 +348,7 @@ func TestClient_SendVideo(t *testing.T) {
 	// Test successful send
 	resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
 	assert.NoError(t, err)
-	assert.Equal(t, "video123", resp.MessageID)
+	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"whatsignal/internal/models"
+	"whatsignal/pkg/signal"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -73,10 +74,16 @@ func (m *mockMessageService) UpdateDeliveryStatus(ctx context.Context, msgID str
 	return args.Error(0)
 }
 
+func (m *mockMessageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signal.SignalMessage) error {
+	args := m.Called(ctx, rawSignalMsg)
+	return args.Error(0)
+}
+
 func TestServer_Health(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
-	server := NewServer(msgService, logger)
+	cfg := &models.Config{}
+	server := NewServer(cfg, msgService, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -90,7 +97,8 @@ func TestServer_Health(t *testing.T) {
 func TestServer_WhatsAppWebhook(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
-	server := NewServer(msgService, logger)
+	cfg := &models.Config{}
+	server := NewServer(cfg, msgService, logger)
 
 	tests := []struct {
 		name       string
@@ -204,7 +212,8 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 func TestServer_SignalWebhook(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
-	server := NewServer(msgService, logger)
+	cfg := &models.Config{}
+	server := NewServer(cfg, msgService, logger)
 
 	tests := []struct {
 		name       string
@@ -224,14 +233,12 @@ func TestServer_SignalWebhook(t *testing.T) {
 				"recipient": "+0987654321",
 			},
 			setup: func() {
-				msgService.On("HandleSignalMessage",
+				msgService.On("ProcessIncomingSignalMessage",
 					mock.Anything,
-					mock.MatchedBy(func(msg *models.Message) bool {
-						return msg.ID == "sig123" &&
+					mock.MatchedBy(func(msg *signal.SignalMessage) bool {
+						return msg.MessageID == "sig123" &&
 							msg.Sender == "+1234567890" &&
-							msg.Content == "Hello, Signal!" &&
-							msg.Type == models.TextMessage &&
-							msg.Platform == "signal"
+							msg.Message == "Hello, Signal!"
 					}),
 				).Return(nil).Once()
 			},
@@ -250,15 +257,14 @@ func TestServer_SignalWebhook(t *testing.T) {
 				"attachments": []string{"http://example.com/image.jpg"},
 			},
 			setup: func() {
-				msgService.On("HandleSignalMessage",
+				msgService.On("ProcessIncomingSignalMessage",
 					mock.Anything,
-					mock.MatchedBy(func(msg *models.Message) bool {
-						return msg.ID == "sig124" &&
+					mock.MatchedBy(func(msg *signal.SignalMessage) bool {
+						return msg.MessageID == "sig124" &&
 							msg.Sender == "+1234567890" &&
-							msg.Content == "Check this out!" &&
-							msg.Type == models.ImageMessage &&
-							msg.Platform == "signal" &&
-							msg.MediaURL == "http://example.com/image.jpg"
+							msg.Message == "Check this out!" &&
+							len(msg.Attachments) == 1 &&
+							msg.Attachments[0] == "http://example.com/image.jpg"
 					}),
 				).Return(nil).Once()
 			},
@@ -283,11 +289,10 @@ func TestServer_SignalWebhook(t *testing.T) {
 				"recipient": "+0987654321",
 			},
 			setup: func() {
-				msgService.On("HandleSignalMessage",
+				msgService.On("ProcessIncomingSignalMessage",
 					mock.Anything,
-					mock.MatchedBy(func(msg *models.Message) bool {
-						return msg.ID == "sig125" &&
-							msg.Platform == "signal"
+					mock.MatchedBy(func(msg *signal.SignalMessage) bool {
+						return msg.MessageID == "sig125"
 					}),
 				).Return(assert.AnError).Once()
 			},
@@ -319,7 +324,8 @@ func TestServer_SignalWebhook(t *testing.T) {
 func TestServer_StartAndShutdown(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
-	server := NewServer(msgService, logger)
+	cfg := &models.Config{}
+	server := NewServer(cfg, msgService, logger)
 
 	// Override port for test
 	os.Setenv("PORT", "8082")

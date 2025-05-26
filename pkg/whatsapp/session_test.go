@@ -15,21 +15,36 @@ import (
 )
 
 func setupTestSessionManager(t *testing.T) (*sessionManager, *httptest.Server) {
+	sessionStates := make(map[string]types.SessionStatus)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "POST /api/sessions":
+			sessionStates["test"] = types.SessionStatusInitialized
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 		case "GET /api/sessions/test":
+			status, exists := sessionStates["test"]
+			if !exists {
+				status = types.SessionStatusInitialized
+			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			json.NewEncoder(w).Encode(types.Session{
+				Name:      "test",
+				Status:    status,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			})
 		case "POST /api/sessions/test/start":
+			sessionStates["test"] = types.SessionStatusStarting
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 		case "POST /api/sessions/test/stop":
+			sessionStates["test"] = types.SessionStatusStopped
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 		case "DELETE /api/sessions/test":
+			delete(sessionStates, "test")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 		default:
@@ -72,6 +87,7 @@ func TestSessionManager_Get(t *testing.T) {
 	session, err := sm.Get(ctx, "test")
 	require.NoError(t, err)
 	assert.Equal(t, "test", session.Name)
+	assert.Equal(t, types.SessionStatusInitialized, session.Status)
 
 	// Test non-existent session
 	_, err = sm.Get(ctx, "nonexistent")

@@ -4,34 +4,49 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 
 ## Features
 
-- One-to-one chat bridging between WhatsApp and Signal
-- Full WAHA API compliance with best practices:
+- **Core Bridging**:
+  - One-to-one chat bridging between WhatsApp and Signal
+  - Bidirectional message forwarding with context preservation
+  - Reply correlation and threading support
+  - Message metadata preservation
+
+- **WAHA API Integration**:
+  - Full WAHA API compliance with best practices
   - Natural typing simulation
   - Message seen status
   - Proper message flow handling
-- Comprehensive media support:
-  - Images (JPEG, PNG)
-  - Videos (MP4)
-  - Documents (PDF, DOC, etc.)
-  - Voice messages (OGG)
-- Message Features:
-  - Text with formatting
+  - Session management and recovery
+
+- **Comprehensive Media Support**:
+  - Images (JPEG, PNG) - up to 5MB
+  - Videos (MP4, MOV) - up to 100MB
+  - Documents (PDF, DOC, DOCX) - up to 100MB
+  - Voice messages (OGG) - up to 16MB
+  - GIFs - up to 25MB
+  - Intelligent media caching and cleanup
+
+- **Message Features**:
+  - Text with formatting preservation
   - URL previews
-  - Reply context preservation
-  - Media in replies
-- Platform Integration:
-  - Webhook-based message delivery
-  - Session management
-  - Delivery status tracking
-- System Features:
-  - Media file caching
-  - Size limit enforcement
-  - Configurable message retention
+  - Reply context preservation across platforms
+  - Media attachments in replies
+  - Message delivery status tracking
+
+- **Security & Privacy**:
+  - Database encryption at rest (AES-256-GCM)
+  - Webhook authentication and validation
+  - Path traversal protection
+  - Configurable data retention
   - Automated cleanup scheduling
-  - Database encryption at rest
+  - Comprehensive security scanning
+
+- **System Features**:
   - Health monitoring endpoint
-  - Comprehensive test coverage
+  - Structured JSON logging
+  - Comprehensive test coverage (>80%)
   - Type-safe message handling
+  - Graceful error handling and retries
+  - Docker deployment ready
 
 ## Prerequisite Accounts
 To use WhatSignal, you must have:

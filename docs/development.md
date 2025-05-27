@@ -13,16 +13,19 @@ whatsignal/
 │       ├── main.go          # Application initialization
 │       └── server.go        # HTTP server implementation
 ├── internal/                # Private application code
-│   ├── config/             # Configuration management (96% coverage)
-│   ├── database/           # Database operations (65% coverage)
+│   ├── config/             # Configuration management
+│   ├── database/           # Database operations with encryption
+│   ├── migrations/         # Database schema migrations
 │   ├── models/             # Data models and type definitions
-│   └── service/            # Core business logic (74% coverage)
+│   ├── security/           # Security utilities (path validation, etc.)
+│   └── service/            # Core business logic
 │       ├── bridge.go       # Message bridging between platforms
-│       └── message_service.go # Message handling and storage
+│       ├── message_service.go # Message handling and storage
+│       └── scheduler.go    # Automated cleanup scheduling
 ├── pkg/                    # Public libraries
-│   ├── whatsapp/          # WhatsApp client (78% coverage)
-│   ├── signal/            # Signal client (80% coverage)
-│   └── media/             # Media file handling (57% coverage)
+│   ├── whatsapp/          # WhatsApp client with WAHA integration
+│   ├── signal/            # Signal client with JSON-RPC
+│   └── media/             # Media file handling and caching
 ├── scripts/               # Database migrations and utilities
 ├── docs/                  # Documentation
 └── config.json.example    # Example configuration
@@ -129,11 +132,19 @@ govulncheck -show verbose ./...
 
 For comprehensive security practices, workflows, and detailed scanning procedures, see the [Security Guide](security.md).
 
+**Enhanced Security Features Implemented:**
+- Database field-level encryption with AES-256-GCM
+- Path validation to prevent directory traversal attacks
+- Comprehensive security scanning with `gosec` and `govulncheck`
+- Webhook authentication and signature validation
+- Secure file permissions and access controls
+
 **Recommended Development Workflow:**
 - Run `go vet ./...` before each commit
 - Run `go test -race ./...` when working on concurrent code
 - Run `staticcheck ./...` daily or before pushing changes
 - Run `govulncheck ./...` weekly or before releases
+- Run `gosec ./...` for security analysis
 - Run `golangci-lint run` before creating pull requests
 - Set up your IDE to run these tools automatically on save
 

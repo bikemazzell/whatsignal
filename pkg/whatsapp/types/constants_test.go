@@ -152,9 +152,9 @@ func TestAPIEndpointFormatting(t *testing.T) {
 
 func TestMediaTypeComparison(t *testing.T) {
 	// Test that media types can be compared
-	assert.True(t, MediaTypeImage == MediaTypeImage)
-	assert.False(t, MediaTypeImage == MediaTypeFile)
-	assert.True(t, MediaTypeVideo != MediaTypeVoice)
+	assert.Equal(t, MediaTypeImage, MediaTypeImage)
+	assert.NotEqual(t, MediaTypeImage, MediaTypeFile)
+	assert.NotEqual(t, MediaTypeVideo, MediaTypeVoice)
 }
 
 func TestMediaTypeInSlice(t *testing.T) {

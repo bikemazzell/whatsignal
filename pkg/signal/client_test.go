@@ -13,53 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestClient(t *testing.T) (*SignalClient, *httptest.Server) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check auth token
-		if authToken := r.Header.Get("Authorization"); authToken != "Bearer test-token" {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		switch r.URL.Path {
-		case "/send":
-			resp := types.SendMessageResponse{
-				Jsonrpc: "2.0",
-				Result: struct {
-					Timestamp int64  `json:"timestamp"`
-					MessageID string `json:"messageId"`
-				}{
-					Timestamp: time.Now().UnixMilli(),
-					MessageID: "test-msg-id",
-				},
-				ID: 1,
-			}
-			json.NewEncoder(w).Encode(resp)
-		case "/receive":
-			resp := types.ReceiveMessageResponse{
-				Jsonrpc: "2.0",
-				Result:  []types.SignalMessage{},
-				ID:      1,
-			}
-			json.NewEncoder(w).Encode(resp)
-		case "/register":
-			w.WriteHeader(http.StatusOK)
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-
-	client := NewClient(
-		server.URL,
-		"test-token",
-		"+1234567890",
-		"test-device",
-		nil,
-	).(*SignalClient)
-
-	return client, server
-}
-
 func TestClient_SendMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := types.SendMessageResponse{

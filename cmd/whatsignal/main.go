@@ -131,19 +131,19 @@ func run(ctx context.Context) error {
 
 func validateConfig(cfg *models.Config) error {
 	if cfg.WhatsApp.APIKey == "" {
-		return fmt.Errorf("WhatsApp API key is required")
+		return fmt.Errorf("whatsApp API key is required")
 	}
 	if cfg.WhatsApp.APIBaseURL == "" {
-		return fmt.Errorf("WhatsApp API base URL is required")
+		return fmt.Errorf("whatsApp API base URL is required")
 	}
 	if cfg.Signal.PhoneNumber == "" {
-		return fmt.Errorf("Signal phone number is required")
+		return fmt.Errorf("signal phone number is required")
 	}
 	if cfg.Database.Path == "" {
-		return fmt.Errorf("Database path is required")
+		return fmt.Errorf("database path is required")
 	}
 	if cfg.Media.CacheDir == "" {
-		return fmt.Errorf("Media cache directory is required")
+		return fmt.Errorf("media cache directory is required")
 	}
 	return nil
 }

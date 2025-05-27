@@ -133,7 +133,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "WhatsApp API key is required",
+			errorMsg:    "whatsApp API key is required",
 		},
 		{
 			name: "missing WhatsApp API base URL",
@@ -152,7 +152,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "WhatsApp API base URL is required",
+			errorMsg:    "whatsApp API base URL is required",
 		},
 		{
 			name: "missing Signal phone number",
@@ -170,7 +170,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "Signal phone number is required",
+			errorMsg:    "signal phone number is required",
 		},
 		{
 			name: "missing database path",
@@ -188,7 +188,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "Database path is required",
+			errorMsg:    "database path is required",
 		},
 		{
 			name: "missing media cache directory",
@@ -206,7 +206,7 @@ func TestValidateConfig(t *testing.T) {
 				Media: models.MediaConfig{},
 			},
 			expectError: true,
-			errorMsg:    "Media cache directory is required",
+			errorMsg:    "media cache directory is required",
 		},
 	}
 

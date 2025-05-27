@@ -701,8 +701,7 @@ func TestNewBridge(t *testing.T) {
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
-	_, ok := b.(MessageBridge)
-	assert.True(t, ok)
+	var _ MessageBridge = b
 
 	// Test that the bridge has the correct fields
 	bridgeImpl := b.(*bridge)

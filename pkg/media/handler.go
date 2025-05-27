@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"whatsignal/internal/models"
+	"whatsignal/internal/security"
 )
 
 type Handler interface {
@@ -22,7 +23,7 @@ type handler struct {
 }
 
 func NewHandler(cacheDir string, config models.MediaConfig) (Handler, error) {
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -33,6 +34,11 @@ func NewHandler(cacheDir string, config models.MediaConfig) (Handler, error) {
 }
 
 func (h *handler) ProcessMedia(path string) (string, error) {
+	// Validate file path to prevent directory traversal
+	if err := security.ValidateFilePath(path); err != nil {
+		return "", fmt.Errorf("invalid media path: %w", err)
+	}
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to get file info: %w", err)
@@ -158,6 +164,11 @@ func (h *handler) CleanupOldFiles(maxAge int64) error {
 }
 
 func copyFile(src, dst string) error {
+	// Validate source path to prevent directory traversal
+	if err := security.ValidateFilePath(src); err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err

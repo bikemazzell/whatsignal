@@ -22,31 +22,41 @@ func setupTestSessionManager(t *testing.T) (*sessionManager, *httptest.Server) {
 		case "POST /api/sessions":
 			sessionStates["test"] = types.SessionStatusInitialized
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case "GET /api/sessions/test":
 			status, exists := sessionStates["test"]
 			if !exists {
 				status = types.SessionStatusInitialized
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(types.Session{
+			if err := json.NewEncoder(w).Encode(types.Session{
 				Name:      "test",
 				Status:    status,
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
-			})
+			}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case "POST /api/sessions/test/start":
 			sessionStates["test"] = types.SessionStatusStarting
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case "POST /api/sessions/test/stop":
 			sessionStates["test"] = types.SessionStatusStopped
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case "DELETE /api/sessions/test":
 			delete(sessionStates, "test")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -172,7 +182,9 @@ func TestSessionManager_ApiKeyHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedApiKey = r.Header.Get("X-Api-Key")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 

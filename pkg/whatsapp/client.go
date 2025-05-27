@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"whatsignal/internal/security"
 	"whatsignal/pkg/whatsapp/types"
 )
 
@@ -103,6 +104,11 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 }
 
 func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType) (*types.SendMessageResponse, error) {
+	// Validate file path to prevent directory traversal
+	if err := security.ValidateFilePath(mediaPath); err != nil {
+		return nil, fmt.Errorf("invalid media path: %w", err)
+	}
+
 	file, err := os.Open(mediaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open media file: %w", err)
@@ -121,9 +127,13 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 		return nil, fmt.Errorf("failed to copy file content: %w", err)
 	}
 
-	writer.WriteField("chatId", chatID)
+	if err := writer.WriteField("chatId", chatID); err != nil {
+		return nil, fmt.Errorf("failed to write chatId field: %w", err)
+	}
 	if caption != "" {
-		writer.WriteField("caption", caption)
+		if err := writer.WriteField("caption", caption); err != nil {
+			return nil, fmt.Errorf("failed to write caption field: %w", err)
+		}
 	}
 
 	if err := writer.Close(); err != nil {

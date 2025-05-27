@@ -2,8 +2,10 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"whatsignal/internal/models"
+	"whatsignal/internal/security"
 )
 
 var (
@@ -14,6 +16,11 @@ var (
 )
 
 func LoadConfig(path string) (*models.Config, error) {
+	// Validate config file path to prevent directory traversal
+	if err := security.ValidateFilePath(path); err != nil {
+		return nil, fmt.Errorf("invalid config path: %w", err)
+	}
+
 	file, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

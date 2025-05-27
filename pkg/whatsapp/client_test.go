@@ -45,59 +45,86 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 		switch r.URL.Path {
 		case testAPIBase + testEndpointSendText:
 			var payload map[string]interface{}
-			json.NewDecoder(r.Body).Decode(&payload)
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+				return
+			}
 			resp := types.SendMessageResponse{
 				MessageID: "msg123",
 				Status:    "sent",
 			}
-			json.NewEncoder(w).Encode(resp)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointSendImage:
 			resp := types.SendMessageResponse{
 				MessageID: "media123",
 				Status:    "sent",
 			}
-			json.NewEncoder(w).Encode(resp)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointSendFile:
 			resp := types.SendMessageResponse{
 				MessageID: "file123",
 				Status:    "sent",
 			}
-			json.NewEncoder(w).Encode(resp)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointSendVoice:
 			resp := types.SendMessageResponse{
 				MessageID: "voice123",
 				Status:    "sent",
 			}
-			json.NewEncoder(w).Encode(resp)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointSendVideo:
 			resp := types.SendMessageResponse{
 				MessageID: "video123",
 				Status:    "sent",
 			}
-			json.NewEncoder(w).Encode(resp)
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointSendSeen:
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointStartTyping:
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testAPIBase + testEndpointStopTyping:
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testEndpointSessions:
 			if r.Method == http.MethodPost {
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+				if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
 			} else {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
 		case testEndpointSessionDefault:
 			if r.Method == http.MethodGet {
-				json.NewEncoder(w).Encode(types.Session{Name: "test-session", Status: types.SessionStatusRunning})
+				if err := json.NewEncoder(w).Encode(types.Session{Name: "test-session", Status: types.SessionStatusRunning}); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
 			} else {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
 		case testEndpointSessionStart:
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		case testEndpointSessionStop:
-			json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -175,10 +202,12 @@ func TestClient_SendImage(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(types.SendMessageResponse{
+		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
 			MessageID: "test-msg-id",
 			Status:    "sent",
-		})
+		}); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -230,10 +259,12 @@ func TestClient_SendFile(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(types.SendMessageResponse{
+		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
 			MessageID: "test-msg-id",
 			Status:    "sent",
-		})
+		}); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -279,10 +310,12 @@ func TestClient_SendVoice(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(types.SendMessageResponse{
+		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
 			MessageID: "test-msg-id",
 			Status:    "sent",
-		})
+		}); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -329,10 +362,12 @@ func TestClient_SendVideo(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(types.SendMessageResponse{
+		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
 			MessageID: "test-msg-id",
 			Status:    "sent",
-		})
+		}); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -360,10 +395,12 @@ func TestClient_Authentication(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(types.SendMessageResponse{
+		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
 			MessageID: "msg123",
 			Status:    "sent",
-		})
+		}); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -421,7 +458,9 @@ func TestSendDocument(t *testing.T) {
 			MessageID: "msg123",
 			Status:    "sent",
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 

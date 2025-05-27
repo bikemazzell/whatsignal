@@ -26,7 +26,9 @@ func TestClient_SendMessage(t *testing.T) {
 			},
 			ID: 1,
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -51,7 +53,9 @@ func TestClient_SendMessageError(t *testing.T) {
 			},
 			ID: 1,
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -70,7 +74,9 @@ func TestClient_ReceiveMessages(t *testing.T) {
 			Result:  []types.SignalMessage{},
 			ID:      1,
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -95,7 +101,9 @@ func TestClient_ReceiveMessagesError(t *testing.T) {
 			},
 			ID: 1,
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 

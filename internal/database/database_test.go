@@ -70,7 +70,9 @@ func TestNewDatabase(t *testing.T) {
 				tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 				require.NoError(t, err)
 				t.Cleanup(func() {
-					os.Chmod(tmpDir, 0755) // Restore permissions before cleanup
+					if err := os.Chmod(tmpDir, 0755); err != nil {
+						t.Errorf("Failed to restore directory permissions: %v", err)
+					}
 					os.RemoveAll(tmpDir)
 				})
 
@@ -418,7 +420,11 @@ func TestNewDatabaseErrors(t *testing.T) {
 	// Make parent directory read-only
 	err = os.Chmod(tmpDir, 0444)
 	require.NoError(t, err)
-	defer os.Chmod(tmpDir, 0755)
+	defer func() {
+		if err := os.Chmod(tmpDir, 0755); err != nil {
+			t.Errorf("Failed to restore directory permissions: %v", err)
+		}
+	}()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	db, err = New(dbPath)
@@ -518,7 +524,9 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 	// Create a database file with invalid schema
 	file, err := os.Create(dbPath)
 	require.NoError(t, err)
-	file.WriteString("invalid sql content")
+	if _, err := file.WriteString("invalid sql content"); err != nil {
+		t.Errorf("Failed to write to file: %v", err)
+	}
 	file.Close()
 
 	// This should fail when trying to initialize schema

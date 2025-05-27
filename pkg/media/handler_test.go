@@ -302,7 +302,11 @@ func TestCleanupOldFilesWithReadOnlyError(t *testing.T) {
 	// Make the directory unwritable
 	err := os.Chmod(cacheDir, 0555)
 	require.NoError(t, err)
-	defer os.Chmod(cacheDir, 0755)
+	defer func() {
+		if err := os.Chmod(cacheDir, 0755); err != nil {
+			t.Errorf("Failed to restore directory permissions: %v", err)
+		}
+	}()
 
 	err = handler.CleanupOldFiles(7 * 24 * 60 * 60)
 	assert.Error(t, err)
@@ -392,7 +396,11 @@ func TestCopyFile(t *testing.T) {
 	require.NoError(t, err)
 	err = os.Chmod(unreadablePath, 0000)
 	require.NoError(t, err)
-	defer os.Chmod(unreadablePath, 0644)
+	defer func() {
+		if err := os.Chmod(unreadablePath, 0644); err != nil {
+			t.Errorf("Failed to restore file permissions: %v", err)
+		}
+	}()
 
 	err = copyFile(unreadablePath, dstPath)
 	assert.Error(t, err)
@@ -407,7 +415,11 @@ func TestNewHandlerErrors(t *testing.T) {
 	// Make parent directory unwritable
 	err = os.Chmod(tmpDir, 0555)
 	require.NoError(t, err)
-	defer os.Chmod(tmpDir, 0755)
+	defer func() {
+		if err := os.Chmod(tmpDir, 0755); err != nil {
+			t.Errorf("Failed to restore directory permissions: %v", err)
+		}
+	}()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
 	_, err = NewHandler(cacheDir, getTestMediaConfig())

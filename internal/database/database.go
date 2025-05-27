@@ -8,6 +8,7 @@ import (
 
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
+	"whatsignal/internal/security"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -22,11 +23,18 @@ func New(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("invalid database path")
 	}
 
+	// Validate database path to prevent directory traversal
+	if err := security.ValidateFilePath(dbPath); err != nil {
+		return nil, fmt.Errorf("invalid database path: %w", err)
+	}
+
 	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database file: %w", err)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close database file: %w", err)
+	}
 
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -34,24 +42,32 @@ func New(dbPath string) (*Database, error) {
 	}
 
 	if err := db.Ping(); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to ping database: %w (close error: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	schema, err := migrations.GetInitialSchema()
 	if err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to read schema: %w (close error: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to read schema: %w", err)
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to initialize schema: %w (close error: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	encryptor, err := NewEncryptor()
 	if err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to initialize encryptor: %w (close error: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to initialize encryptor: %w", err)
 	}
 

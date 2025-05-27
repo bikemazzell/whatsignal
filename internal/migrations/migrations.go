@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"whatsignal/internal/security"
 )
 
 var (
@@ -24,6 +25,11 @@ func GetInitialSchema() (string, error) {
 	var err error
 
 	for _, path := range searchPaths {
+		// Validate file path to prevent directory traversal
+		if err := security.ValidateFilePath(path); err != nil {
+			continue // Skip invalid paths
+		}
+
 		schemaContent, err = os.ReadFile(path)
 		if err == nil {
 			return string(schemaContent), nil

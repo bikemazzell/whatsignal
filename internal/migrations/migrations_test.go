@@ -85,7 +85,11 @@ func TestGetInitialSchemaWithExecutablePath(t *testing.T) {
 	// Save current working directory
 	originalWd, err := os.Getwd()
 	require.NoError(t, err)
-	defer os.Chdir(originalWd)
+	defer func() {
+		if err := os.Chdir(originalWd); err != nil {
+			t.Errorf("Failed to restore working directory: %v", err)
+		}
+	}()
 
 	// Change to temp directory to simulate running from a different location
 	err = os.Chdir(tmpDir)
@@ -113,7 +117,11 @@ func TestGetInitialSchemaWithParentDirectorySearch(t *testing.T) {
 	// Save current working directory
 	originalWd, err := os.Getwd()
 	require.NoError(t, err)
-	defer os.Chdir(originalWd)
+	defer func() {
+		if err := os.Chdir(originalWd); err != nil {
+			t.Errorf("Failed to restore working directory: %v", err)
+		}
+	}()
 
 	// Change to the deep directory
 	err = os.Chdir(deepDir)

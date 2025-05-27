@@ -127,7 +127,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			s.logger.WithError(err).Error("Failed to write health check response")
+		}
 	}
 }
 

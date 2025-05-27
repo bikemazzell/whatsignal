@@ -165,6 +165,82 @@ To rotate encryption keys:
 4. Restart the service
 5. Old encrypted data will be inaccessible (by design)
 
+## Development Security Practices
+
+### Vulnerability Scanning
+
+Regular security scanning is essential for maintaining a secure codebase:
+
+```bash
+# Install govulncheck for vulnerability scanning
+go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Install gosec for static security analysis
+go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+# Scan for vulnerabilities in dependencies and standard library
+govulncheck ./...
+
+# Run static security analysis to find potential security issues
+gosec ./...
+
+# Run with verbose output for detailed information
+govulncheck -show verbose ./...
+gosec -fmt=json ./... | jq .
+
+# Scan specific modules only
+govulncheck -mode=module ./...
+
+# Check for outdated dependencies
+go list -u -m all
+
+# Update dependencies (with caution)
+go get -u ./...
+go mod tidy
+```
+
+### Security Development Workflow
+
+**Daily practices:**
+- Run `go vet ./...` before each commit for basic security checks
+- Run `gosec ./...` for static security analysis
+- Use `go test -race ./...` when working on concurrent code to prevent race conditions
+
+**Weekly practices:**
+- Run `govulncheck ./...` to identify new vulnerabilities
+- Run comprehensive `gosec ./...` scan for security issues
+- Review dependency updates and security advisories
+
+**Before releases:**
+- Run comprehensive security scan with `govulncheck -show verbose ./...`
+- Run detailed security analysis with `gosec -fmt=json ./...`
+- Update Go to latest stable version if vulnerabilities are found
+- Review and test all dependency updates
+
+**Monthly practices:**
+- Review and update dependencies
+- Monitor Go security announcements
+- Audit access controls and secrets
+- Review and address any new `gosec` findings
+
+### Security Monitoring Workflow
+
+1. **Weekly scans**: Run `govulncheck` and `gosec` to identify vulnerabilities and security issues
+2. **Dependency updates**: Review and update dependencies monthly
+3. **Go version updates**: Keep Go updated to latest stable version
+4. **Security advisories**: Monitor Go security announcements
+5. **Static analysis**: Address `gosec` findings and validate security improvements
+6. **Incident response**: Have a plan for addressing critical vulnerabilities
+
+### Code Review Security Checks
+
+All pull requests must pass:
+- Security scan (`govulncheck ./...`)
+- Security analysis (`gosec ./...`)
+- Static analysis (`go vet ./...`, `staticcheck ./...`)
+- Race condition tests (`go test -race ./...`)
+- Comprehensive linting (`golangci-lint run`)
+
 ## Security Updates
 
 Stay informed about security updates:
@@ -172,6 +248,7 @@ Stay informed about security updates:
 - Subscribe to dependency security alerts
 - Regularly update base Docker images
 - Review security logs periodically
+- Use `govulncheck` for automated vulnerability detection
 
 ## Reporting Security Issues
 

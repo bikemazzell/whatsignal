@@ -23,7 +23,6 @@ func TestConfig_Validation(t *testing.T) {
 			config: Config{
 				WhatsApp: WhatsAppConfig{
 					APIBaseURL:      "http://localhost:8080",
-					APIKey:          "test-key",
 					SessionName:     "test-session",
 					Timeout:         5 * time.Second,
 					RetryCount:      3,

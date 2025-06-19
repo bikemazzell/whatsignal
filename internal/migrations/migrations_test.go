@@ -72,10 +72,11 @@ func TestGetInitialSchema(t *testing.T) {
 	assert.Contains(t, schema, "CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id")
 	assert.Contains(t, schema, "CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at")
 
-	// Test with non-existent directory
+	// Test with non-existent directory - should return embedded schema
 	MigrationsDir = "nonexistent/path"
-	_, err = GetInitialSchema()
-	assert.Error(t, err)
+	schema, err = GetInitialSchema()
+	assert.NoError(t, err) // Should not error, returns embedded schema
+	assert.Contains(t, schema, "CREATE TABLE IF NOT EXISTS message_mappings")
 }
 
 func TestGetInitialSchemaWithExecutablePath(t *testing.T) {

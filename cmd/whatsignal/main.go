@@ -20,6 +20,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	// MaxDatabaseRetryAttempts is the maximum number of times to retry database initialization
+	MaxDatabaseRetryAttempts = 3
+	// GracefulShutdownTimeout is the maximum time to wait for graceful shutdown
+	GracefulShutdownTimeout = 30 * time.Second
+)
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -53,12 +60,12 @@ func run(ctx context.Context) error {
 	}
 
 	var db *database.Database
-	for attempts := 0; attempts < 3; attempts++ {
+	for attempts := 0; attempts < MaxDatabaseRetryAttempts; attempts++ {
 		db, err = database.New(cfg.Database.Path)
 		if err == nil {
 			break
 		}
-		logger.Warnf("Failed to initialize database (attempt %d/3): %v", attempts+1, err)
+		logger.Warnf("Failed to initialize database (attempt %d/%d): %v", attempts+1, MaxDatabaseRetryAttempts, err)
 		time.Sleep(time.Second * time.Duration(attempts+1))
 	}
 	if err != nil {
@@ -71,9 +78,14 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}
 
+	apiKey := os.Getenv("WHATSAPP_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
+	}
+
 	waClient := whatsapp.NewClient(types.ClientConfig{
 		BaseURL:     cfg.WhatsApp.APIBaseURL,
-		APIKey:      cfg.WhatsApp.APIKey,
+		APIKey:      apiKey,
 		SessionName: cfg.WhatsApp.SessionName,
 		Timeout:     cfg.WhatsApp.Timeout,
 		RetryCount:  cfg.WhatsApp.RetryCount,
@@ -118,7 +130,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), GracefulShutdownTimeout)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
@@ -130,9 +142,6 @@ func run(ctx context.Context) error {
 }
 
 func validateConfig(cfg *models.Config) error {
-	if cfg.WhatsApp.APIKey == "" {
-		return fmt.Errorf("whatsApp API key is required")
-	}
 	if cfg.WhatsApp.APIBaseURL == "" {
 		return fmt.Errorf("whatsApp API base URL is required")
 	}

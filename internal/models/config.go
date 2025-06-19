@@ -16,7 +16,6 @@ type Config struct {
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
 	APIBaseURL      string        `mapstructure:"api_base_url"`
-	APIKey          string        `mapstructure:"api_key"`
 	SessionName     string        `mapstructure:"session_name"`
 	Timeout         time.Duration `mapstructure:"timeout_ms"`
 	RetryCount      int           `mapstructure:"retry_count"`

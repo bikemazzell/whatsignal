@@ -48,6 +48,39 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Graceful error handling and retries
   - Docker deployment ready
 
+## Building
+
+This project includes a comprehensive Makefile for building debug and release versions:
+
+### Quick Start
+```bash
+# Build debug version (default)
+make
+
+# Build release version
+make release
+
+# Build both versions
+make both
+
+# Clean build artifacts
+make clean
+
+# Run tests
+make test
+
+# Show all available targets
+make help
+```
+
+### Build Output
+
+Binaries are created in:
+- `build/debug/whatsignal` - Debug version (~14MB)
+- `build/release/whatsignal` - Release version (~8MB)
+
+The release version is significantly smaller due to symbol stripping and optimizations.
+
 ## Prerequisite Accounts
 To use WhatSignal, you must have:
 
@@ -89,7 +122,7 @@ docker compose up -d --build
         # Edit .env with your actual values
         nano .env
         ```
-    *   **Required**: Set your `WEBHOOK_SECRET` (minimum 32 characters)
+    *   **Required**: Set your `WHATSAPP_API_KEY` and `WEBHOOK_SECRET` (minimum 32 characters)
     *   **Recommended**: Enable encryption by setting `WHATSIGNAL_ENABLE_ENCRYPTION=true` and `WHATSIGNAL_ENCRYPTION_SECRET`
 
 2.  **Clone and Configure**:

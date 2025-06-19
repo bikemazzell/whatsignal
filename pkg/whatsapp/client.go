@@ -16,6 +16,13 @@ import (
 	"whatsignal/pkg/whatsapp/types"
 )
 
+const (
+	// TypingDurationPerChar is the typing duration per character in milliseconds
+	TypingDurationPerChar = 50 * time.Millisecond
+	// MaxTypingDuration is the maximum typing duration
+	MaxTypingDuration = 3 * time.Second
+)
+
 type WhatsAppClient struct {
 	baseURL     string
 	apiKey      string
@@ -85,11 +92,20 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 		return nil, fmt.Errorf("failed to start typing: %w", err)
 	}
 
-	typingDuration := time.Duration(len(text)) * 50 * time.Millisecond
-	if typingDuration > 3*time.Second {
-		typingDuration = 3 * time.Second
+	typingDuration := time.Duration(len(text)) * TypingDurationPerChar
+	if typingDuration > MaxTypingDuration {
+		typingDuration = MaxTypingDuration
 	}
-	time.Sleep(typingDuration)
+
+	// Use context-aware sleep to avoid blocking indefinitely
+	select {
+	case <-time.After(typingDuration):
+		// Normal completion
+	case <-ctx.Done():
+		// Context cancelled, stop typing and return
+		c.stopTyping(ctx, chatID) // Best effort cleanup
+		return nil, ctx.Err()
+	}
 
 	if err := c.stopTyping(ctx, chatID); err != nil {
 		return nil, fmt.Errorf("failed to stop typing: %w", err)

@@ -101,7 +101,6 @@ func TestValidateConfig(t *testing.T) {
 			name: "valid config",
 			config: &models.Config{
 				WhatsApp: models.WhatsAppConfig{
-					APIKey:     "test-key",
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{
@@ -117,30 +116,9 @@ func TestValidateConfig(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "missing WhatsApp API key",
-			config: &models.Config{
-				WhatsApp: models.WhatsAppConfig{
-					APIBaseURL: "http://localhost:8080",
-				},
-				Signal: models.SignalConfig{
-					PhoneNumber: "+1234567890",
-				},
-				Database: models.DatabaseConfig{
-					Path: "/tmp/test.db",
-				},
-				Media: models.MediaConfig{
-					CacheDir: "/tmp/media",
-				},
-			},
-			expectError: true,
-			errorMsg:    "whatsApp API key is required",
-		},
-		{
 			name: "missing WhatsApp API base URL",
 			config: &models.Config{
-				WhatsApp: models.WhatsAppConfig{
-					APIKey: "test-key",
-				},
+				WhatsApp: models.WhatsAppConfig{},
 				Signal: models.SignalConfig{
 					PhoneNumber: "+1234567890",
 				},
@@ -158,7 +136,6 @@ func TestValidateConfig(t *testing.T) {
 			name: "missing Signal phone number",
 			config: &models.Config{
 				WhatsApp: models.WhatsAppConfig{
-					APIKey:     "test-key",
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{},
@@ -176,7 +153,6 @@ func TestValidateConfig(t *testing.T) {
 			name: "missing database path",
 			config: &models.Config{
 				WhatsApp: models.WhatsAppConfig{
-					APIKey:     "test-key",
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{
@@ -194,7 +170,6 @@ func TestValidateConfig(t *testing.T) {
 			name: "missing media cache directory",
 			config: &models.Config{
 				WhatsApp: models.WhatsAppConfig{
-					APIKey:     "test-key",
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{
@@ -378,6 +353,7 @@ func setupTestEnv(t *testing.T) {
 	os.Setenv("DB_PATH", tmpDir+"/whatsignal.db")
 	os.Setenv("MEDIA_DIR", tmpDir+"/media")
 	os.Setenv("MEDIA_RETENTION_DAYS", "7")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-main-testing-purposes")
 }
 
 func cleanupTestEnv(t *testing.T) {
@@ -398,6 +374,7 @@ func cleanupTestEnv(t *testing.T) {
 		"MEDIA_DIR",
 		"MEDIA_RETENTION_DAYS",
 		"LOG_LEVEL",
+		"WHATSIGNAL_ENCRYPTION_SECRET",
 	}
 
 	for _, v := range vars {

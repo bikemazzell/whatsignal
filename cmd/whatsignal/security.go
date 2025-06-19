@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -21,8 +22,11 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	if secretKey == "" {
-		// If no secret key is configured, skip verification. This might be desired for testing or specific setups.
-		// For production, a secret key should always be configured.
+		// Check if we're in production mode
+		if os.Getenv("WHATSIGNAL_ENV") == "production" {
+			return nil, fmt.Errorf("webhook secret is required in production mode")
+		}
+		// Allow empty secrets only in development/testing
 		return body, nil
 	}
 

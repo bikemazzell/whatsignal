@@ -15,6 +15,10 @@ import (
 )
 
 func setupTestDB(t *testing.T) (*Database, string, func()) {
+	// Set up encryption secret for tests
+	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+
 	// Create a temporary directory for test database
 	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 	require.NoError(t, err)
@@ -26,12 +30,29 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 	cleanup := func() {
 		db.Close()
 		os.RemoveAll(tmpDir)
+		// Restore original environment
+		if originalSecret != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+		}
 	}
 
 	return db, tmpDir, cleanup
 }
 
 func TestNewDatabase(t *testing.T) {
+	// Set up encryption secret for tests
+	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+	defer func() {
+		if originalSecret != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+		}
+	}()
+
 	tests := []struct {
 		name        string
 		setupPath   func(t *testing.T) string
@@ -109,36 +130,19 @@ func TestNewDatabase(t *testing.T) {
 }
 
 func TestDatabaseEncryptionErrors(t *testing.T) {
-	db, _, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
 	// Test with encryption enabled but invalid secret
 	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short") // Too short secret
 	defer func() {
 		os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
 		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 	}()
 
-	// Create a new encryptor with the invalid secret
-	encryptor, err := NewEncryptor()
-	require.NoError(t, err)
-	db.encryptor = encryptor
+	// Create a new encryptor with the invalid secret - this should fail
+	_, err := NewEncryptor()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "encryption secret must be at least 32 characters long")
 
-	mapping := &models.MessageMapping{
-		WhatsAppChatID:  "chat123",
-		WhatsAppMsgID:   "msg123",
-		SignalMsgID:     "sig123",
-		SignalTimestamp: time.Now(),
-		ForwardedAt:     time.Now(),
-		DeliveryStatus:  models.DeliveryStatusSent,
-	}
-
-	// This should work fine as encryption uses default secret
-	err = db.SaveMessageMapping(ctx, mapping)
-	assert.NoError(t, err)
 }
 
 func TestGetMessageMappingErrors(t *testing.T) {
@@ -459,7 +463,9 @@ func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
 
 func TestEncryptorNonceGeneration(t *testing.T) {
 	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -544,6 +550,8 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 func TestEncryptorEdgeCases(t *testing.T) {
 	// Test with encryption disabled
 	os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -581,7 +589,9 @@ func TestEncryptorEdgeCases(t *testing.T) {
 
 func TestDecryptInvalidData(t *testing.T) {
 	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -634,8 +644,8 @@ func TestDatabaseOperationsWithClosedDB(t *testing.T) {
 }
 
 func TestNewEncryptorWithCustomSecret(t *testing.T) {
-	// Test with custom encryption secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "custom-secret-key")
+	// Test with custom encryption secret (must be at least 32 characters)
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
 	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
 	encryptor, err := NewEncryptor()

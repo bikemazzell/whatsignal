@@ -13,6 +13,8 @@ import (
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp/types"
+
+	"github.com/sirupsen/logrus"
 )
 
 type MessageBridge interface {
@@ -37,6 +39,7 @@ type bridge struct {
 	db          DatabaseService
 	media       media.Handler
 	retryConfig models.RetryConfig
+	logger      *logrus.Logger
 }
 
 func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig) MessageBridge {
@@ -46,6 +49,7 @@ func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseServ
 		db:          db,
 		media:       mh,
 		retryConfig: rc,
+		logger:      logrus.New(),
 	}
 }
 
@@ -250,9 +254,23 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 }
 
 func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	return fmt.Errorf("group messages are not supported yet")
+	// Log the group message but don't fail - graceful degradation
+	b.logger.WithFields(logrus.Fields{
+		"messageID": msg.MessageID,
+		"sender":    msg.Sender,
+	}).Warn("Group messages are not yet supported - message ignored")
+
+	// Return nil to indicate successful handling (even though we ignored it)
+	return nil
 }
 
 func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	return fmt.Errorf("new thread creation is not supported yet")
+	// Log the new thread but don't fail - graceful degradation
+	b.logger.WithFields(logrus.Fields{
+		"messageID": msg.MessageID,
+		"sender":    msg.Sender,
+	}).Warn("New thread creation is not yet supported - message ignored")
+
+	// Return nil to indicate successful handling (even though we ignored it)
+	return nil
 }

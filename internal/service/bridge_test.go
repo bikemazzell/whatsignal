@@ -188,18 +188,13 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	// Create media handler with temp directory
 	mediaHandler := &mockMediaHandler{}
 
-	// Create bridge with mocks
-	bridge := &bridge{
-		db:        mockDB,
-		waClient:  mockWAClient,
-		sigClient: mockSignalClient,
-		media:     mediaHandler,
-		retryConfig: models.RetryConfig{
-			InitialBackoffMs: 1,
-			MaxBackoffMs:     5,
-			MaxAttempts:      3,
-		},
+	// Create bridge with mocks using the constructor
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 1,
+		MaxBackoffMs:     5,
+		MaxAttempts:      3,
 	}
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig).(*bridge)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -664,8 +659,7 @@ func TestHandleSignalGroupMessage(t *testing.T) {
 	}
 
 	err := bridge.handleSignalGroupMessage(ctx, msg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "group messages are not supported yet")
+	assert.NoError(t, err) // Should not error with graceful degradation
 }
 
 func TestHandleNewSignalThread(t *testing.T) {
@@ -682,8 +676,7 @@ func TestHandleNewSignalThread(t *testing.T) {
 	}
 
 	err := bridge.handleNewSignalThread(ctx, msg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "new thread creation is not supported yet")
+	assert.NoError(t, err) // Should not error with graceful degradation
 }
 
 func TestNewBridge(t *testing.T) {

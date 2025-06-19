@@ -1,18 +1,15 @@
 {
   // WhatsApp configuration
   // - api_base_url: URL of your Waha instance (WhatsApp HTTP API)
-  // - api_key: API key for authenticating with WAHA (must match WAHA's WHATSAPP_API_KEY)
   // - session_name: Name of the WhatsApp session (used in API endpoints)
   // - timeout_ms: Timeout for API requests
   // - retry_count: Maximum number of retry attempts
-  // - webhook_secret: Secret for authenticating incoming webhooks
+  
   "whatsapp": {
     "api_base_url": "http://localhost:3000",
-    "api_key": "your-waha-api-key",
     "session_name": "default",
     "timeout_ms": 10000,
-    "retry_count": 3,
-    "webhook_secret": "your-whatsapp-webhook-secret"
+    "retry_count": 3
   },
 
   // Signal configuration
@@ -20,13 +17,11 @@
   // - auth_token: Authentication token for Signal API access
   // - phone_number: Phone number for Signal API access
   // - device_name: Device name for Signal API access
-  // - webhook_secret: Secret for authenticating incoming webhooks
   "signal": {
     "rpc_url": "http://localhost:8080/jsonrpc",
     "auth_token": "your-signal-auth-token",
     "phone_number": "+1234567890",
-    "device_name": "whatsignal-device",
-    "webhook_secret": "your-signal-webhook-secret"
+    "device_name": "whatsignal-device"
   },
 
   // Message retry configuration

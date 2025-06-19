@@ -78,7 +78,12 @@ func (e *encryptor) Decrypt(ciphertext string) (string, error) {
 func deriveKey() ([]byte, error) {
 	secret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
 	if secret == "" {
-		secret = "whatsignal-default-secret-change-in-production"
+		return nil, fmt.Errorf("WHATSIGNAL_ENCRYPTION_SECRET environment variable is required when encryption is enabled")
+	}
+
+	// Validate secret strength
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
 	}
 
 	salt := []byte("whatsignal-salt-v1")

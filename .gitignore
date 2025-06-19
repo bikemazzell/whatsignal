@@ -49,3 +49,6 @@ config.json
 # Debug files
 __debug_bin
 debug.test 
+
+#Binaries
+build/***

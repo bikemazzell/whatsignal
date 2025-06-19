@@ -151,21 +151,37 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 			return
 		}
 
-		// Validate data field is present
-		if payload.Data.ID == "" && payload.Data.ChatID == "" && payload.Data.Sender == "" && payload.Data.Type == "" && payload.Data.Content == "" && payload.Data.MediaPath == "" {
-			http.Error(w, "Missing or invalid data field", http.StatusBadRequest)
-			return
-		}
-
 		if payload.Event != "message" {
 			s.logger.Infof("Skipping non-message WhatsApp event: %s", payload.Event)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		// Validate required fields
-		if payload.Data.ID == "" || payload.Data.ChatID == "" || payload.Data.Sender == "" || payload.Data.Type == "" {
-			http.Error(w, "Missing required fields for message event", http.StatusBadRequest)
+		// Validate required fields for message events
+		if payload.Data.ID == "" {
+			http.Error(w, "Missing required field: ID", http.StatusBadRequest)
+			return
+		}
+		if payload.Data.ChatID == "" {
+			http.Error(w, "Missing required field: ChatID", http.StatusBadRequest)
+			return
+		}
+		if payload.Data.Sender == "" {
+			http.Error(w, "Missing required field: Sender", http.StatusBadRequest)
+			return
+		}
+		if payload.Data.Type == "" {
+			http.Error(w, "Missing required field: Type", http.StatusBadRequest)
+			return
+		}
+
+		// Additional validation for specific message types
+		if payload.Data.Type == "text" && payload.Data.Content == "" {
+			http.Error(w, "Text messages must have content", http.StatusBadRequest)
+			return
+		}
+		if payload.Data.Type == "media" && payload.Data.MediaPath == "" {
+			http.Error(w, "Media messages must have media path", http.StatusBadRequest)
 			return
 		}
 
@@ -206,8 +222,22 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 		}
 
 		// Validate required fields
-		if payload.MessageID == "" || payload.Sender == "" || payload.Type == "" {
-			http.Error(w, "Missing required fields", http.StatusBadRequest)
+		if payload.MessageID == "" {
+			http.Error(w, "Missing required field: MessageID", http.StatusBadRequest)
+			return
+		}
+		if payload.Sender == "" {
+			http.Error(w, "Missing required field: Sender", http.StatusBadRequest)
+			return
+		}
+		if payload.Type == "" {
+			http.Error(w, "Missing required field: Type", http.StatusBadRequest)
+			return
+		}
+
+		// Additional validation for message content
+		if payload.Type == "text" && payload.Message == "" {
+			http.Error(w, "Text messages must have content", http.StatusBadRequest)
 			return
 		}
 

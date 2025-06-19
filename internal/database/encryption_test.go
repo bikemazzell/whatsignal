@@ -10,6 +10,9 @@ import (
 )
 
 func TestEncryptor_EncryptDecrypt(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
 
@@ -60,6 +63,9 @@ func TestEncryptor_EncryptDecrypt(t *testing.T) {
 }
 
 func TestEncryptor_EncryptionUniqueness(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
 
@@ -84,6 +90,9 @@ func TestEncryptor_EncryptionUniqueness(t *testing.T) {
 }
 
 func TestEncryptor_DecryptInvalidData(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
 
@@ -114,6 +123,9 @@ func TestEncryptor_DecryptInvalidData(t *testing.T) {
 }
 
 func TestEncryptor_EncryptIfEnabled(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
 
@@ -140,6 +152,9 @@ func TestEncryptor_EncryptIfEnabled(t *testing.T) {
 }
 
 func TestEncryptor_DecryptIfEnabled(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
 
@@ -177,13 +192,13 @@ func TestDeriveKey_WithCustomSecret(t *testing.T) {
 		}
 	}()
 
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "custom-secret-key")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
 
 	key1, err := deriveKey()
 	require.NoError(t, err)
 	assert.Len(t, key1, models.KeySize)
 
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "different-secret-key")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-different-very-long-secret-key-for-testing-purposes")
 
 	key2, err := deriveKey()
 	require.NoError(t, err)
@@ -204,9 +219,9 @@ func TestDeriveKey_WithDefaultSecret(t *testing.T) {
 
 	os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
-	key, err := deriveKey()
-	require.NoError(t, err)
-	assert.Len(t, key, models.KeySize)
+	_, err := deriveKey()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "WHATSIGNAL_ENCRYPTION_SECRET environment variable is required")
 }
 
 func TestIsEncryptionEnabled(t *testing.T) {

@@ -329,9 +329,16 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			useSignature: true,
 		},
 		{
-			name: "invalid payload",
-			payload: map[string]string{
-				"invalid": "payload",
+			name: "invalid payload - message event with missing ID",
+			payload: map[string]interface{}{
+				"event": "message",
+				"data": map[string]interface{}{
+					"chatId":  "chat123",
+					"sender":  "sender123",
+					"type":    "text",
+					"content": "Hello",
+					// Missing required "id" field
+				},
 			},
 			wantStatus:   http.StatusBadRequest,
 			useSignature: true,

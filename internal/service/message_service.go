@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -56,10 +58,15 @@ func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache)
 	}
 }
 
-func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// generateUniqueID generates a unique ID for message mapping
+func generateUniqueID() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
 
+func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) error {
+	// Process media outside of mutex
 	if msg.MediaURL != "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -68,14 +75,18 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 		msg.MediaPath = cachePath
 	}
 
+	// Send message outside of mutex
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
+	// Generate unique IDs for mapping
+	signalMsgID := generateUniqueID()
+
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  msg.ChatID,
 		WhatsAppMsgID:   msg.ID,
-		SignalMsgID:     msg.ID,
+		SignalMsgID:     signalMsgID,
 		SignalTimestamp: msg.Timestamp,
 		ForwardedAt:     msg.Timestamp,
 		DeliveryStatus:  models.DeliveryStatusSent,
@@ -84,7 +95,12 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 		mapping.MediaPath = &msg.MediaPath
 	}
 
-	if err := s.db.SaveMessageMapping(ctx, mapping); err != nil {
+	// Only protect database operations with mutex
+	s.mu.Lock()
+	err := s.db.SaveMessageMapping(ctx, mapping)
+	s.mu.Unlock()
+
+	if err != nil {
 		return fmt.Errorf("failed to save message mapping: %w", err)
 	}
 
@@ -92,11 +108,16 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 }
 
 func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message) error {
+	// Check for existing mapping with read lock
+	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msg.ID)
+	s.mu.RUnlock()
+
 	if err == nil && existingMapping != nil {
 		return nil
 	}
 
+	// Process media outside of mutex
 	if msg.MediaURL != "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -105,15 +126,19 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		msg.MediaPath = cachePath
 	}
 
+	// Send message outside of mutex
 	err = s.bridge.SendMessage(ctx, msg)
 	if err != nil {
 		return err
 	}
 
+	// Generate unique Signal message ID
+	signalMsgID := generateUniqueID()
+
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  msg.ChatID,
 		WhatsAppMsgID:   msg.ID,
-		SignalMsgID:     msg.ID,
+		SignalMsgID:     signalMsgID,
 		SignalTimestamp: msg.Timestamp,
 		ForwardedAt:     msg.Timestamp,
 		DeliveryStatus:  "received",
@@ -123,7 +148,12 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		mapping.MediaPath = &msg.MediaPath
 	}
 
-	return s.db.SaveMessageMapping(ctx, mapping)
+	// Only protect database write with mutex
+	s.mu.Lock()
+	err = s.db.SaveMessageMapping(ctx, mapping)
+	s.mu.Unlock()
+
+	return err
 }
 
 func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models.Message, error) {
@@ -156,7 +186,10 @@ func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models
 }
 
 func (s *messageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
+	s.mu.RLock()
 	mapping, err := s.db.GetMessageMapping(ctx, threadID)
+	s.mu.RUnlock()
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message thread: %w", err)
 	}
@@ -190,10 +223,11 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 }
 
 func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	// Check for existing mapping with read lock
+	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msgID)
+	s.mu.RUnlock()
+
 	if err == nil && existingMapping != nil {
 		return nil
 	}
@@ -213,13 +247,11 @@ func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgI
 		msg.MediaURL = mediaPath
 	}
 
+	// ReceiveMessage handles its own locking
 	return s.ReceiveMessage(ctx, msg)
 }
 
 func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if msg.Platform != "signal" {
 		return fmt.Errorf("HandleSignalMessage called with non-Signal platform: %s", msg.Platform)
 	}
@@ -228,6 +260,7 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 		return fmt.Errorf("group messages are not supported yet")
 	}
 
+	// Process media outside of mutex
 	if msg.MediaURL != "" && msg.MediaPath == "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -236,6 +269,7 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 		msg.MediaPath = cachePath
 	}
 
+	// Send message outside of mutex
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send Signal message via bridge: %w", err)
 	}
@@ -243,14 +277,12 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 }
 
 func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.logger.WithFields(logrus.Fields{
 		"signalMsgID": rawSignalMsg.MessageID,
 		"sender":      rawSignalMsg.Sender,
 	}).Info("Processing incoming Signal message in service layer (ProcessIncomingSignalMessage)")
 
+	// Bridge operations don't need mutex protection
 	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
 }
 

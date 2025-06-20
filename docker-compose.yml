@@ -1,28 +1,28 @@
 version: '3.8'
 
 services:
-  signal-cli:
-    image: registry.gitlab.com/packaging/signal-cli/signal-cli:latest
-    container_name: signal-cli
-    command: daemon --socket 0.0.0.0:8080 --json-rpc
-    ports:
-      - "8080:8080"
-    volumes:
-      - ~/.local/share/signal-cli:/home/.local/share/signal-cli
-      - ~/.config/signal-cli:/home/.config/signal-cli
-    restart: unless-stopped
+  # signal-cli:
+  #   image: registry.gitlab.com/packaging/signal-cli/signal-cli:latest
+  #   container_name: signal-cli
+  #   command: daemon --socket 0.0.0.0:8080 --json-rpc
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ~/.local/share/signal-cli:/home/.local/share/signal-cli
+  #     - ~/.config/signal-cli:/home/.config/signal-cli
+  #   restart: unless-stopped
 
-  waha:
-    image: devlikeapro/whatsapp-http-api
-    container_name: waha
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-    environment:
-      - WEBHOOK_URL=http://whatsignal:8082/webhook/whatsapp
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret}
+  # waha:
+  #   image: devlikeapro/whatsapp-http-api
+  #   container_name: waha
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./data:/app/data
+  #   restart: unless-stopped
+  #   environment:
+  #     - WEBHOOK_URL=http://whatsignal:8082/webhook/whatsapp
+  #     - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-secret}
 
   whatsignal:
     build:

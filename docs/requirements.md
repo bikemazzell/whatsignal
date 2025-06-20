@@ -258,7 +258,7 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
 
 ## 12. References
 - WhatsApp REST API: https://github.com/devlikeapro/waha
-- Signal CLI: https://github.com/AsamK/signal-cli
+- Signal CLI REST API: https://github.com/bbernhard/signal-cli-rest-api
 - Previous effort at bridging: https://github.com/meinto/whatsapp-signal-bridge
 
 ## 13. Legal Considerations ✅ **IMPLEMENTED**

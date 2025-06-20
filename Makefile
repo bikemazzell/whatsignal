@@ -58,6 +58,7 @@ help:
 	@echo "  install    - Install debug version to GOPATH/bin"
 	@echo "  run        - Run debug version"
 	@echo "  run-release - Run release version"
+	@echo "  run-verbose - Run debug version with verbose logging"
 	@echo "  docker     - Build Docker image"
 	@echo "  help       - Show this help"
 
@@ -162,13 +163,31 @@ install: debug
 .PHONY: run
 run: debug
 	@echo "Running debug version..."
-	@./$(DEBUG_DIR)/$(APP_NAME)
+	@if [ -f .env ]; then \
+		export $$(grep -v '^#' .env | xargs) && ./$(DEBUG_DIR)/$(APP_NAME); \
+	else \
+		./$(DEBUG_DIR)/$(APP_NAME); \
+	fi
 
 # Run release version
 .PHONY: run-release
 run-release: release
 	@echo "Running release version..."
-	@./$(RELEASE_DIR)/$(APP_NAME)
+	@if [ -f .env ]; then \
+		export $$(grep -v '^#' .env | xargs) && ./$(RELEASE_DIR)/$(APP_NAME); \
+	else \
+		./$(RELEASE_DIR)/$(APP_NAME); \
+	fi
+
+# Run debug version with verbose logging
+.PHONY: run-verbose
+run-verbose: debug
+	@echo "Running debug version with verbose logging..."
+	@if [ -f .env ]; then \
+		export $$(grep -v '^#' .env | xargs) && ./$(DEBUG_DIR)/$(APP_NAME) --verbose; \
+	else \
+		./$(DEBUG_DIR)/$(APP_NAME) --verbose; \
+	fi
 
 # Build Docker image
 .PHONY: docker

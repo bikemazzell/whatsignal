@@ -49,6 +49,37 @@ type SendMessageResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// Contact represents a WhatsApp contact from WAHA API
+type Contact struct {
+	ID          string `json:"id"`
+	Number      string `json:"number"`
+	Name        string `json:"name"`
+	PushName    string `json:"pushname"`
+	ShortName   string `json:"shortName"`
+	IsMe        bool   `json:"isMe"`
+	IsGroup     bool   `json:"isGroup"`
+	IsWAContact bool   `json:"isWAContact"`
+	IsMyContact bool   `json:"isMyContact"`
+	IsBlocked   bool   `json:"isBlocked"`
+}
+
+// GetDisplayName returns the best available display name for the contact
+func (c *Contact) GetDisplayName() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	if c.PushName != "" {
+		return c.PushName
+	}
+	return c.Number
+}
+
+// ContactsResponse represents the response from contacts API calls
+type ContactsResponse struct {
+	Contacts []Contact `json:"contacts,omitempty"`
+	Contact  *Contact  `json:",omitempty"` // For single contact responses
+}
+
 // ClientConfig represents the configuration for WhatsApp client
 type ClientConfig struct {
 	BaseURL     string

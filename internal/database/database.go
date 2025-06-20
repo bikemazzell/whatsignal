@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
@@ -84,12 +85,12 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 		return fmt.Errorf("failed to encrypt chat ID: %w", err)
 	}
 
-	encryptedWhatsAppMsgID, err := d.encryptor.EncryptIfEnabled(mapping.WhatsAppMsgID)
+	encryptedWhatsAppMsgID, err := d.encryptor.EncryptForLookupIfEnabled(mapping.WhatsAppMsgID)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt WhatsApp message ID: %w", err)
 	}
 
-	encryptedSignalMsgID, err := d.encryptor.EncryptIfEnabled(mapping.SignalMsgID)
+	encryptedSignalMsgID, err := d.encryptor.EncryptForLookupIfEnabled(mapping.SignalMsgID)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt Signal message ID: %w", err)
 	}
@@ -144,7 +145,7 @@ func (d *Database) GetMessageMapping(ctx context.Context, id string) (*models.Me
 }
 
 func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
-	encryptedWhatsAppID, err := d.encryptor.EncryptIfEnabled(whatsappID)
+	encryptedWhatsAppID, err := d.encryptor.EncryptForLookupIfEnabled(whatsappID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt WhatsApp ID: %w", err)
 	}
@@ -209,7 +210,7 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 
 // GetMessageMappingBySignalID retrieves a message mapping by Signal message ID
 func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error) {
-	encryptedSignalID, err := d.encryptor.EncryptIfEnabled(signalID)
+	encryptedSignalID, err := d.encryptor.EncryptForLookupIfEnabled(signalID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt Signal ID: %w", err)
 	}
@@ -273,7 +274,7 @@ func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID str
 }
 
 func (d *Database) UpdateDeliveryStatusByWhatsAppID(ctx context.Context, whatsappID string, status string) error {
-	encryptedID, err := d.encryptor.EncryptIfEnabled(whatsappID)
+	encryptedID, err := d.encryptor.EncryptForLookupIfEnabled(whatsappID)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt WhatsApp ID: %w", err)
 	}
@@ -302,7 +303,7 @@ func (d *Database) UpdateDeliveryStatusByWhatsAppID(ctx context.Context, whatsap
 }
 
 func (d *Database) UpdateDeliveryStatusBySignalID(ctx context.Context, signalID string, status string) error {
-	encryptedID, err := d.encryptor.EncryptIfEnabled(signalID)
+	encryptedID, err := d.encryptor.EncryptForLookupIfEnabled(signalID)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt Signal ID: %w", err)
 	}
@@ -357,6 +358,125 @@ func (d *Database) CleanupOldRecords(retentionDays int) error {
 	_, err := d.db.Exec(query, retentionDays)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old records: %w", err)
+	}
+
+	return nil
+}
+
+// Contact operations
+
+// SaveContact saves or updates a contact in the database
+func (d *Database) SaveContact(ctx context.Context, contact *models.Contact) error {
+	encryptedContactID, err := d.encryptor.EncryptIfEnabled(contact.ContactID)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt contact ID: %w", err)
+	}
+
+	encryptedPhone, err := d.encryptor.EncryptIfEnabled(contact.PhoneNumber)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt phone number: %w", err)
+	}
+
+	encryptedName, err := d.encryptor.EncryptIfEnabled(contact.Name)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt name: %w", err)
+	}
+
+	encryptedPushName, err := d.encryptor.EncryptIfEnabled(contact.PushName)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt push name: %w", err)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO contacts (
+			contact_id, phone_number, name, push_name, short_name,
+			is_blocked, is_group, is_my_contact, cached_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+
+	_, err = d.db.ExecContext(ctx, query,
+		encryptedContactID, encryptedPhone, encryptedName, encryptedPushName, contact.ShortName,
+		contact.IsBlocked, contact.IsGroup, contact.IsMyContact)
+	if err != nil {
+		return fmt.Errorf("failed to save contact: %w", err)
+	}
+
+	return nil
+}
+
+// GetContact retrieves a contact by contact ID
+func (d *Database) GetContact(ctx context.Context, contactID string) (*models.Contact, error) {
+	encryptedContactID, err := d.encryptor.EncryptIfEnabled(contactID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt contact ID: %w", err)
+	}
+
+	query := `
+		SELECT contact_id, phone_number, name, push_name, short_name,
+			   is_blocked, is_group, is_my_contact, cached_at
+		FROM contacts
+		WHERE contact_id = ?
+	`
+
+	row := d.db.QueryRowContext(ctx, query, encryptedContactID)
+
+	var contact models.Contact
+	var encryptedPhone, encryptedName, encryptedPushName string
+
+	err = row.Scan(&contact.ContactID, &encryptedPhone, &encryptedName, &encryptedPushName,
+		&contact.ShortName, &contact.IsBlocked, &contact.IsGroup, &contact.IsMyContact, &contact.CachedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Contact not found
+		}
+		return nil, fmt.Errorf("failed to scan contact: %w", err)
+	}
+
+	// Decrypt fields
+	contact.ContactID, err = d.encryptor.DecryptIfEnabled(contact.ContactID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt contact ID: %w", err)
+	}
+
+	contact.PhoneNumber, err = d.encryptor.DecryptIfEnabled(encryptedPhone)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt phone number: %w", err)
+	}
+
+	contact.Name, err = d.encryptor.DecryptIfEnabled(encryptedName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt name: %w", err)
+	}
+
+	contact.PushName, err = d.encryptor.DecryptIfEnabled(encryptedPushName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt push name: %w", err)
+	}
+
+	return &contact, nil
+}
+
+// GetContactByPhone retrieves a contact by phone number
+func (d *Database) GetContactByPhone(ctx context.Context, phoneNumber string) (*models.Contact, error) {
+	// Add @c.us suffix if not present
+	contactID := phoneNumber
+	if !strings.HasSuffix(contactID, "@c.us") {
+		contactID = phoneNumber + "@c.us"
+	}
+	
+	return d.GetContact(ctx, contactID)
+}
+
+// CleanupOldContacts removes contacts older than the specified days
+func (d *Database) CleanupOldContacts(retentionDays int) error {
+	query := `
+		DELETE FROM contacts
+		WHERE cached_at < datetime('now', '-' || ? || ' days')
+	`
+
+	_, err := d.db.Exec(query, retentionDays)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup old contacts: %w", err)
 	}
 
 	return nil

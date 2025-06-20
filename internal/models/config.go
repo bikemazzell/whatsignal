@@ -4,32 +4,38 @@ import "time"
 
 // Config holds the application configuration
 type Config struct {
-	WhatsApp      WhatsAppConfig `mapstructure:"whatsapp"`
-	Signal        SignalConfig   `mapstructure:"signal"`
-	Database      DatabaseConfig `mapstructure:"database"`
-	Media         MediaConfig    `mapstructure:"media"`
-	Retry         RetryConfig    `mapstructure:"retry"`
-	LogLevel      string         `mapstructure:"log_level"`
+	WhatsApp      WhatsAppConfig `json:"whatsapp" mapstructure:"whatsapp"`
+	Signal        SignalConfig   `json:"signal" mapstructure:"signal"`
+	Database      DatabaseConfig `json:"database" mapstructure:"database"`
+	Media         MediaConfig    `json:"media" mapstructure:"media"`
+	Retry         RetryConfig    `json:"retry" mapstructure:"retry"`
+	LogLevel      string         `json:"log_level" mapstructure:"log_level"`
 	RetentionDays int            `json:"retentionDays"`
 }
 
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
-	APIBaseURL      string        `mapstructure:"api_base_url"`
-	SessionName     string        `mapstructure:"session_name"`
-	Timeout         time.Duration `mapstructure:"timeout_ms"`
-	RetryCount      int           `mapstructure:"retry_count"`
-	WebhookSecret   string        `mapstructure:"webhook_secret"`
-	PollIntervalSec int           `json:"pollIntervalSec"`
+	APIBaseURL           string        `json:"api_base_url" mapstructure:"api_base_url"`
+	SessionName          string        `json:"session_name" mapstructure:"session_name"`
+	Timeout              time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
+	RetryCount           int           `json:"retry_count" mapstructure:"retry_count"`
+	WebhookSecret        string        `json:"webhook_secret" mapstructure:"webhook_secret"`
+	PollIntervalSec      int           `json:"pollIntervalSec"`
+	ContactSyncOnStartup bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
+	ContactCacheHours    int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
 }
 
 // SignalConfig holds Signal related configurations
 type SignalConfig struct {
-	RPCURL        string `mapstructure:"rpc_url"`
-	AuthToken     string `mapstructure:"auth_token"`
-	PhoneNumber   string `mapstructure:"phone_number"`
-	DeviceName    string `mapstructure:"device_name"`
-	WebhookSecret string `mapstructure:"webhook_secret"`
+	RPCURL                   string `json:"rpc_url" mapstructure:"rpc_url"`
+	AuthToken                string `json:"auth_token" mapstructure:"auth_token"`
+	IntermediaryPhoneNumber  string `json:"intermediaryPhoneNumber" mapstructure:"intermediaryPhoneNumber"`   // Signal-CLI service number
+	DestinationPhoneNumber   string `json:"destinationPhoneNumber" mapstructure:"destinationPhoneNumber"`    // Your Signal number to receive messages
+	DeviceName               string `json:"device_name" mapstructure:"device_name"`
+	WebhookSecret            string `json:"webhook_secret" mapstructure:"webhook_secret"`
+	PollIntervalSec          int    `json:"pollIntervalSec" mapstructure:"pollIntervalSec"`
+	PollTimeoutSec           int    `json:"pollTimeoutSec" mapstructure:"pollTimeoutSec"`
+	PollingEnabled           bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`
 }
 
 // DatabaseConfig holds database related configurations
@@ -39,7 +45,7 @@ type DatabaseConfig struct {
 
 // MediaConfig holds media related configurations
 type MediaConfig struct {
-	CacheDir     string            `json:"cacheDir"`
+	CacheDir     string            `json:"cache_dir"`
 	MaxSizeMB    MediaSizeLimits   `json:"maxSizeMB"`
 	AllowedTypes MediaAllowedTypes `json:"allowedTypes"`
 }

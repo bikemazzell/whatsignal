@@ -9,7 +9,7 @@ Before installing WhatSignal, ensure you have the following prerequisites:
 - Go 1.22 or later
 - SQLite 3
 - [Waha](https://github.com/devlikeapro/waha) - WhatsApp HTTP API
-- [signal-cli](https://github.com/AsamK/signal-cli) - Signal CLI daemon
+- [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) - Signal CLI REST API
 
 ## Step-by-Step Installation
 

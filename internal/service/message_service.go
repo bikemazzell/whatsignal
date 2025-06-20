@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"whatsignal/internal/models"
+	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
@@ -19,6 +19,7 @@ type Database interface {
 	SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error
 	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
+	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 }
 
@@ -38,23 +39,28 @@ type MessageService interface {
 	HandleSignalMessage(ctx context.Context, msg *models.Message) error
 	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
+	PollSignalMessages(ctx context.Context) error
 }
 
 type messageService struct {
-	logger     *logrus.Logger
-	db         Database
-	bridge     MessageBridge
-	mediaCache MediaCache
-	mu         sync.RWMutex
+	logger       *logrus.Logger
+	db           Database
+	bridge       MessageBridge
+	mediaCache   MediaCache
+	signalClient signal.Client
+	signalConfig models.SignalConfig
+	mu           sync.RWMutex
 }
 
-func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache) MessageService {
+func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig) MessageService {
 	return &messageService{
-		logger:     logrus.New(),
-		bridge:     bridge,
-		db:         db,
-		mediaCache: mediaCache,
-		mu:         sync.RWMutex{},
+		logger:       logrus.New(),
+		bridge:       bridge,
+		db:           db,
+		mediaCache:   mediaCache,
+		signalClient: signalClient,
+		signalConfig: signalConfig,
+		mu:           sync.RWMutex{},
 	}
 }
 
@@ -229,26 +235,14 @@ func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgI
 	s.mu.RUnlock()
 
 	if err == nil && existingMapping != nil {
+		s.logger.Debug("Message already processed, skipping")
 		return nil
 	}
 
-	msg := &models.Message{
-		ID:        msgID,
-		ChatID:    chatID,
-		Content:   content,
-		Platform:  "whatsapp",
-		Type:      models.TextMessage,
-		Timestamp: time.Now(),
-		Sender:    sender,
-	}
+	LogMessageProcessing(ctx, s.logger, "WhatsApp", chatID, msgID, sender, content)
 
-	if mediaPath != "" {
-		msg.Type = models.ImageMessage
-		msg.MediaURL = mediaPath
-	}
-
-	// ReceiveMessage handles its own locking
-	return s.ReceiveMessage(ctx, msg)
+	// Forward WhatsApp message to Signal via bridge
+	return s.bridge.HandleWhatsAppMessage(ctx, chatID, msgID, sender, content, mediaPath)
 }
 
 func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Message) error {
@@ -277,10 +271,7 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 }
 
 func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error {
-	s.logger.WithFields(logrus.Fields{
-		"signalMsgID": rawSignalMsg.MessageID,
-		"sender":      rawSignalMsg.Sender,
-	}).Info("Processing incoming Signal message in service layer (ProcessIncomingSignalMessage)")
+	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
 	// Bridge operations don't need mutex protection
 	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
@@ -291,4 +282,33 @@ func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string,
 	defer s.mu.Unlock()
 
 	return s.db.UpdateDeliveryStatus(ctx, msgID, status)
+}
+
+func (s *messageService) PollSignalMessages(ctx context.Context) error {
+	
+	// Poll for messages with configured timeout
+	pollTimeout := s.signalConfig.PollTimeoutSec
+	if pollTimeout <= 0 {
+		pollTimeout = s.signalConfig.PollIntervalSec // Fallback to interval if timeout not set
+	}
+	messages, err := s.signalClient.ReceiveMessages(ctx, pollTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to poll Signal messages: %w", err)
+	}
+
+	LogSignalPolling(ctx, s.logger, len(messages))
+
+	// Process each message
+	for _, msg := range messages {
+		if err := s.ProcessIncomingSignalMessage(ctx, &msg); err != nil {
+			if IsVerboseLogging(ctx) {
+				s.logger.WithError(err).WithField("messageID", msg.MessageID).Error("Failed to process Signal message from polling")
+			} else {
+				s.logger.WithError(err).Error("Failed to process Signal message from polling")
+			}
+			// Continue processing other messages even if one fails
+		}
+	}
+
+	return nil
 }

@@ -19,13 +19,13 @@ func TestLoadConfig(t *testing.T) {
 	// Create a valid config file
 	validConfig := `{
 		"whatsapp": {
-			"apiBaseUrl": "https://whatsapp.example.com",
-			"webhookSecret": "secret123",
+			"api_base_url": "https://whatsapp.example.com",
+			"webhook_secret": "secret123",
 			"pollIntervalSec": 30
 		},
 		"signal": {
-			"rpcUrl": "https://signal.example.com",
-			"authToken": "token123"
+			"rpc_url": "https://signal.example.com",
+			"auth_token": "token123"
 		},
 		"retry": {
 			"initialBackoffMs": 1000,
@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 			"path": "/path/to/db.sqlite"
 		},
 		"media": {
-			"cacheDir": "/path/to/cache"
+			"cache_dir": "/path/to/cache"
 		},
 		"retentionDays": 30
 	}`

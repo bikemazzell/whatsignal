@@ -67,6 +67,14 @@ func (m *mockDB) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID s
 	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
+func (m *mockDB) GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error) {
+	args := m.Called(ctx, signalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
+}
+
 func (m *mockDB) UpdateDeliveryStatus(ctx context.Context, id string, status string) error {
 	args := m.Called(ctx, id, status)
 	return args.Error(0)
@@ -91,9 +99,23 @@ func setupTestService(t *testing.T) (MessageService, context.Context) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	signalClient := &mockSignalClient{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollTimeoutSec: 10,
+	}
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
 	require.NotNil(t, service)
 	return service, ctx
+}
+
+func createTestMessageService(bridge *mockBridge, db *mockDB, mediaCache *mockMediaCache) MessageService {
+	signalClient := &mockSignalClient{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollTimeoutSec: 10,
+	}
+	return NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
 }
 
 func TestNewMessageService(t *testing.T) {
@@ -164,7 +186,7 @@ func TestSendMessage(t *testing.T) {
 			bridge := new(mockBridge)
 			db := new(mockDB)
 			mediaCache := new(mockMediaCache)
-			service := NewMessageService(bridge, db, mediaCache)
+			service := createTestMessageService(bridge, db, mediaCache)
 
 			if tt.setup != nil {
 				tt.setup(bridge, db, mediaCache)
@@ -189,7 +211,7 @@ func TestReceiveMessage(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 
 	ctx := context.Background()
 
@@ -254,7 +276,7 @@ func TestGetMessageByID(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 
 	ctx := context.Background()
 
@@ -319,7 +341,7 @@ func TestGetMessageThread(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 	ctx := context.Background()
 
 	// Test getting non-existent thread
@@ -334,7 +356,7 @@ func TestMarkMessageDelivered(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 
 	ctx := context.Background()
 
@@ -387,7 +409,7 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 
 	ctx := context.Background()
 
@@ -481,7 +503,7 @@ func TestMessageService_HandleSignalMessageDetailed(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 
 	ctx := context.Background()
 
@@ -569,7 +591,7 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
-	service := NewMessageService(bridge, db, mediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
 
 	ctx := context.Background()
 

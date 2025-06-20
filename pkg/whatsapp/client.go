@@ -61,35 +61,39 @@ func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, 
 
 func (c *WhatsAppClient) sendSeen(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
-		"chatId": chatID,
+		"chatId":  chatID,
+		"session": c.sessionName,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointSendSeen, c.sessionName), payload)
+	_, err := c.sendRequest(ctx, types.APIBase+types.EndpointSendSeen, payload)
 	return err
 }
 
 func (c *WhatsAppClient) startTyping(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
-		"chatId": chatID,
+		"chatId":  chatID,
+		"session": c.sessionName,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointStartTyping, c.sessionName), payload)
+	_, err := c.sendRequest(ctx, types.APIBase+types.EndpointStartTyping, payload)
 	return err
 }
 
 func (c *WhatsAppClient) stopTyping(ctx context.Context, chatID string) error {
 	payload := map[string]interface{}{
-		"chatId": chatID,
+		"chatId":  chatID,
+		"session": c.sessionName,
 	}
-	_, err := c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointStopTyping, c.sessionName), payload)
+	_, err := c.sendRequest(ctx, types.APIBase+types.EndpointStopTyping, payload)
 	return err
 }
 
 func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+	// Try to send seen status and typing indicators (optional)
 	if err := c.sendSeen(ctx, chatID); err != nil {
-		return nil, fmt.Errorf("failed to send seen: %w", err)
+		// Continue if this fails - it's optional
 	}
 
 	if err := c.startTyping(ctx, chatID); err != nil {
-		return nil, fmt.Errorf("failed to start typing: %w", err)
+		// Continue if this fails - it's optional
 	}
 
 	typingDuration := time.Duration(len(text)) * TypingDurationPerChar
@@ -108,15 +112,16 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 	}
 
 	if err := c.stopTyping(ctx, chatID); err != nil {
-		return nil, fmt.Errorf("failed to stop typing: %w", err)
+		// Continue if this fails - it's optional
 	}
 
 	payload := map[string]interface{}{
-		"chatId": chatID,
-		"text":   text,
+		"chatId":  chatID,
+		"text":    text,
+		"session": c.sessionName,
 	}
 
-	return c.sendRequest(ctx, fmt.Sprintf(types.APIBase+types.EndpointSendText, c.sessionName), payload)
+	return c.sendRequest(ctx, types.APIBase+types.EndpointSendText, payload)
 }
 
 func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType) (*types.SendMessageResponse, error) {
@@ -146,6 +151,9 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 	if err := writer.WriteField("chatId", chatID); err != nil {
 		return nil, fmt.Errorf("failed to write chatId field: %w", err)
 	}
+	if err := writer.WriteField("session", c.sessionName); err != nil {
+		return nil, fmt.Errorf("failed to write session field: %w", err)
+	}
 	if caption != "" {
 		if err := writer.WriteField("caption", caption); err != nil {
 			return nil, fmt.Errorf("failed to write caption field: %w", err)
@@ -170,7 +178,7 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 		return nil, fmt.Errorf("unsupported media type: %s", mediaType)
 	}
 
-	endpoint := fmt.Sprintf(types.APIBase+apiActionPath, c.sessionName)
+	endpoint := types.APIBase + apiActionPath
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -192,7 +200,7 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return &result, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, result.Error)
 	}
 
@@ -246,9 +254,80 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return &result, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, result.Error)
 	}
 
 	return &result, nil
+}
+
+// GetContact retrieves a specific contact by ID (phone number or chat ID)
+func (c *WhatsAppClient) GetContact(ctx context.Context, contactID string) (*types.Contact, error) {
+	// Build the URL with query parameters (session and contactId as query params)
+	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointContacts)
+	url := fmt.Sprintf("%s%s?contactId=%s&session=%s", c.baseURL, endpoint, contactID, c.sessionName)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // Contact not found
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
+	}
+
+	var contact types.Contact
+	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &contact, nil
+}
+
+// GetAllContacts retrieves all contacts with pagination
+func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) ([]types.Contact, error) {
+	// Build the URL with query parameters (session as query param)
+	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointContactsAll)
+	url := fmt.Sprintf("%s%s?session=%s&limit=%d&offset=%d&sortBy=name&sortOrder=asc", 
+		c.baseURL, endpoint, c.sessionName, limit, offset)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
+	}
+
+	var contacts []types.Contact
+	if err := json.NewDecoder(resp.Body).Decode(&contacts); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return contacts, nil
 }

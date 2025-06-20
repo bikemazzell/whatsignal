@@ -92,11 +92,36 @@ func deriveKey() ([]byte, error) {
 	return key, nil
 }
 
+// EncryptForLookup creates deterministic encryption for database lookups
+// Uses a fixed nonce derived from the plaintext for consistent results
+func (e *encryptor) EncryptForLookup(plaintext string) (string, error) {
+	if plaintext == "" {
+		return "", nil
+	}
+
+	// Create deterministic nonce from plaintext hash
+	hash := sha256.Sum256([]byte(plaintext + "lookup-salt"))
+	nonce := hash[:models.NonceSize]
+
+	ciphertext := e.gcm.Seal(nil, nonce, []byte(plaintext), nil)
+	// Prepend nonce to ciphertext for consistency
+	result := append(nonce, ciphertext...)
+	return base64.StdEncoding.EncodeToString(result), nil
+}
+
 func (e *encryptor) EncryptIfEnabled(plaintext string) (string, error) {
 	if !isEncryptionEnabled() {
 		return plaintext, nil
 	}
 	return e.Encrypt(plaintext)
+}
+
+// EncryptForLookupIfEnabled encrypts with deterministic method for database lookups
+func (e *encryptor) EncryptForLookupIfEnabled(plaintext string) (string, error) {
+	if !isEncryptionEnabled() {
+		return plaintext, nil
+	}
+	return e.EncryptForLookup(plaintext)
 }
 
 func (e *encryptor) DecryptIfEnabled(ciphertext string) (string, error) {

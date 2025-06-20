@@ -85,6 +85,11 @@ func (m *mockMessageService) ProcessIncomingSignalMessage(ctx context.Context, r
 	return args.Error(0)
 }
 
+func (m *mockMessageService) PollSignalMessages(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func TestVerifySignature(t *testing.T) {
 	secretKey := "test-secret-key"
 	payload := []byte(`{"test": "data"}`)

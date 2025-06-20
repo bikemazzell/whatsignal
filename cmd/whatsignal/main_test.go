@@ -104,7 +104,8 @@ func TestValidateConfig(t *testing.T) {
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{
-					PhoneNumber: "+1234567890",
+					IntermediaryPhoneNumber: "+1234567890",
+					DestinationPhoneNumber:  "+0987654321",
 				},
 				Database: models.DatabaseConfig{
 					Path: "/tmp/test.db",
@@ -120,7 +121,8 @@ func TestValidateConfig(t *testing.T) {
 			config: &models.Config{
 				WhatsApp: models.WhatsAppConfig{},
 				Signal: models.SignalConfig{
-					PhoneNumber: "+1234567890",
+					IntermediaryPhoneNumber: "+1234567890",
+					DestinationPhoneNumber:  "+0987654321",
 				},
 				Database: models.DatabaseConfig{
 					Path: "/tmp/test.db",
@@ -156,7 +158,8 @@ func TestValidateConfig(t *testing.T) {
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{
-					PhoneNumber: "+1234567890",
+					IntermediaryPhoneNumber: "+1234567890",
+					DestinationPhoneNumber:  "+0987654321",
 				},
 				Database: models.DatabaseConfig{},
 				Media: models.MediaConfig{
@@ -173,7 +176,8 @@ func TestValidateConfig(t *testing.T) {
 					APIBaseURL: "http://localhost:8080",
 				},
 				Signal: models.SignalConfig{
-					PhoneNumber: "+1234567890",
+					IntermediaryPhoneNumber: "+1234567890",
+					DestinationPhoneNumber:  "+0987654321",
 				},
 				Database: models.DatabaseConfig{
 					Path: "/tmp/test.db",

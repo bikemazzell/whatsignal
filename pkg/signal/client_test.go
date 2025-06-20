@@ -15,16 +15,13 @@ import (
 
 func TestClient_SendMessage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := types.SendMessageResponse{
-			Jsonrpc: "2.0",
-			Result: struct {
-				Timestamp int64  `json:"timestamp"`
-				MessageID string `json:"messageId"`
-			}{
-				Timestamp: time.Now().UnixMilli(),
-				MessageID: "test-msg-id",
-			},
-			ID: 1,
+		// Verify the request is to the correct endpoint
+		assert.Equal(t, "/v2/send", r.URL.Path)
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		resp := types.SendResponse{
+			Timestamp: types.FlexibleInt64(time.Now().UnixMilli()),
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
@@ -37,25 +34,14 @@ func TestClient_SendMessage(t *testing.T) {
 	ctx := context.Background()
 	resp, err := client.SendMessage(ctx, "recipient", "test message", nil)
 	require.NoError(t, err)
-	assert.Equal(t, "test-msg-id", resp.Result.MessageID)
+	assert.NotEmpty(t, resp.MessageID)
+	assert.Greater(t, resp.Timestamp, int64(0))
 }
 
 func TestClient_SendMessageError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := types.SendMessageResponse{
-			Jsonrpc: "2.0",
-			Error: &struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			}{
-				Code:    500,
-				Message: "test error",
-			},
-			ID: 1,
-		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		}
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Failed to send message"))
 	}))
 	defer server.Close()
 
@@ -64,16 +50,17 @@ func TestClient_SendMessageError(t *testing.T) {
 	ctx := context.Background()
 	_, err := client.SendMessage(ctx, "recipient", "test message", nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "test error")
+	assert.Contains(t, err.Error(), "signal API error")
 }
 
 func TestClient_ReceiveMessages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := types.ReceiveMessageResponse{
-			Jsonrpc: "2.0",
-			Result:  []types.SignalMessage{},
-			ID:      1,
-		}
+		// Verify the request is to the correct endpoint
+		assert.Contains(t, r.URL.Path, "/v1/receive/")
+		assert.Equal(t, "GET", r.Method)
+
+		// Return empty array of messages
+		resp := []types.RestMessage{}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
@@ -90,20 +77,8 @@ func TestClient_ReceiveMessages(t *testing.T) {
 
 func TestClient_ReceiveMessagesError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := types.ReceiveMessageResponse{
-			Jsonrpc: "2.0",
-			Error: &struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			}{
-				Code:    500,
-				Message: "test error",
-			},
-			ID: 1,
-		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		}
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal server error"))
 	}))
 	defer server.Close()
 
@@ -112,7 +87,7 @@ func TestClient_ReceiveMessagesError(t *testing.T) {
 	ctx := context.Background()
 	_, err := client.ReceiveMessages(ctx, 1)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "test error")
+	assert.Contains(t, err.Error(), "signal API error")
 }
 
 func TestNewClient(t *testing.T) {
@@ -125,12 +100,20 @@ func TestNewClient(t *testing.T) {
 
 func TestClient_InitializeDevice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&reqBody)
-		require.NoError(t, err)
-		assert.Equal(t, "register", reqBody["method"])
+		// Verify the request is to the correct endpoint
+		assert.Equal(t, "/v1/about", r.URL.Path)
+		assert.Equal(t, "GET", r.Method)
 
-		w.WriteHeader(http.StatusOK)
+		// Return a valid about response
+		resp := types.AboutResponse{
+			Versions: []string{"v1", "v2"},
+			Build:    1,
+			Mode:     "native",
+			Version:  "0.92",
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 

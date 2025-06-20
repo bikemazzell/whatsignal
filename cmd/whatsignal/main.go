@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"whatsignal/internal/config"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/database"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
@@ -20,14 +22,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	// MaxDatabaseRetryAttempts is the maximum number of times to retry database initialization
-	MaxDatabaseRetryAttempts = 3
-	// GracefulShutdownTimeout is the maximum time to wait for graceful shutdown
-	GracefulShutdownTimeout = 30 * time.Second
+var (
+	verbose = flag.Bool("verbose", false, "Enable verbose logging (includes sensitive information)")
+	configPath = flag.String("config", "config.json", "Path to configuration file")
 )
 
 func main() {
+	flag.Parse()
+	
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -40,7 +42,7 @@ func run(ctx context.Context) error {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
-	cfg, err := config.LoadConfig("config.json")
+	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -49,23 +51,33 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	if cfg.LogLevel != "" {
+	// Set log level based on config and verbose flag
+	if *verbose {
+		logger.SetLevel(logrus.DebugLevel)
+		logger.Info("Verbose logging enabled - sensitive information will be logged")
+	} else if cfg.LogLevel != "" {
 		level, err := logrus.ParseLevel(cfg.LogLevel)
 		if err != nil {
 			logger.Warnf("Invalid log level %q, defaulting to info", cfg.LogLevel)
 			logger.SetLevel(logrus.InfoLevel)
 		} else {
+			// In non-verbose mode, limit to info level maximum for privacy
+			if level > logrus.InfoLevel {
+				level = logrus.InfoLevel
+			}
 			logger.SetLevel(level)
 		}
+	} else {
+		logger.SetLevel(logrus.InfoLevel)
 	}
 
 	var db *database.Database
-	for attempts := 0; attempts < MaxDatabaseRetryAttempts; attempts++ {
+	for attempts := 0; attempts < constants.DefaultDatabaseRetryAttempts; attempts++ {
 		db, err = database.New(cfg.Database.Path)
 		if err == nil {
 			break
 		}
-		logger.Warnf("Failed to initialize database (attempt %d/%d): %v", attempts+1, MaxDatabaseRetryAttempts, err)
+		logger.Warnf("Failed to initialize database (attempt %d/%d): %v", attempts+1, constants.DefaultDatabaseRetryAttempts, err)
 		time.Sleep(time.Second * time.Duration(attempts+1))
 	}
 	if err != nil {
@@ -94,7 +106,7 @@ func run(ctx context.Context) error {
 	sigClient := signalapi.NewClient(
 		cfg.Signal.RPCURL,
 		cfg.Signal.AuthToken,
-		cfg.Signal.PhoneNumber,
+		cfg.Signal.IntermediaryPhoneNumber,
 		cfg.Signal.DeviceName,
 		nil,
 	)
@@ -103,16 +115,51 @@ func run(ctx context.Context) error {
 		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
 	}
 
+	// Create contact service for better message formatting
+	cacheHours := cfg.WhatsApp.ContactCacheHours
+	if cacheHours <= 0 {
+		cacheHours = 24 // Default to 24 hours
+	}
+	contactService := service.NewContactServiceWithConfig(db, waClient, cacheHours)
+
+	// Sync all contacts on startup if enabled (default: true for better UX)  
+	syncOnStartup := cfg.WhatsApp.ContactSyncOnStartup
+	if syncOnStartup {
+		logger.Info("Syncing WhatsApp contacts on startup...")
+		if err := contactService.SyncAllContacts(ctx); err != nil {
+			logger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
+		} else {
+			logger.Info("Contact sync completed successfully")
+		}
+	} else {
+		logger.Info("Contact sync on startup is disabled")
+	}
+
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, models.RetryConfig{
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:      cfg.Retry.MaxAttempts,
-	})
+	}, cfg.Signal.DestinationPhoneNumber, contactService)
 
-	messageService := service.NewMessageService(bridge, db, mediaHandler)
+	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal)
 
 	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, logger)
 	go scheduler.Start(ctx)
+
+	// Start Signal poller
+	// Create context with verbose flag for services
+	ctxWithVerbose := context.WithValue(ctx, "verbose", *verbose)
+	
+	signalPoller := service.NewSignalPoller(sigClient, messageService, cfg.Signal, models.RetryConfig{
+		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
+		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
+		MaxAttempts:      cfg.Retry.MaxAttempts,
+	}, logger)
+
+	if err := signalPoller.Start(ctxWithVerbose); err != nil {
+		logger.Warnf("Failed to start Signal poller: %v", err)
+	}
+	defer signalPoller.Stop()
 
 	server := NewServer(cfg, messageService, logger)
 	serverErrCh := make(chan error, 1)
@@ -130,7 +177,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), GracefulShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(constants.DefaultGracefulShutdownSec)*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
@@ -145,8 +192,11 @@ func validateConfig(cfg *models.Config) error {
 	if cfg.WhatsApp.APIBaseURL == "" {
 		return fmt.Errorf("whatsApp API base URL is required")
 	}
-	if cfg.Signal.PhoneNumber == "" {
-		return fmt.Errorf("signal phone number is required")
+	if cfg.Signal.IntermediaryPhoneNumber == "" {
+		return fmt.Errorf("signal intermediary phone number is required")
+	}
+	if cfg.Signal.DestinationPhoneNumber == "" {
+		return fmt.Errorf("signal destination phone number is required")
 	}
 	if cfg.Database.Path == "" {
 		return fmt.Errorf("database path is required")

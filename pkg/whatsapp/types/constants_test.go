@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,19 +105,13 @@ func TestAPIEndpointConstants(t *testing.T) {
 }
 
 func TestAPIBaseConstant(t *testing.T) {
-	// Test the API base format string
-	assert.Equal(t, "/api/%s", APIBase)
-
-	// Test formatting with session name
-	sessionName := "test-session"
-	formattedBase := fmt.Sprintf(APIBase, sessionName)
-	assert.Equal(t, "/api/test-session", formattedBase)
+	// Test the API base constant
+	assert.Equal(t, "/api", APIBase)
 }
 
 func TestAPIEndpointFormatting(t *testing.T) {
 	// Test building complete API paths
-	sessionName := "test-session"
-	baseURL := fmt.Sprintf(APIBase, sessionName)
+	baseURL := APIBase
 
 	tests := []struct {
 		name     string
@@ -128,17 +121,17 @@ func TestAPIEndpointFormatting(t *testing.T) {
 		{
 			name:     "complete send text URL",
 			endpoint: EndpointSendText,
-			expected: "/api/test-session/sendText",
+			expected: "/api/sendText",
 		},
 		{
 			name:     "complete send image URL",
 			endpoint: EndpointSendImage,
-			expected: "/api/test-session/sendImage",
+			expected: "/api/sendImage",
 		},
 		{
 			name:     "complete send file URL",
 			endpoint: EndpointSendFile,
-			expected: "/api/test-session/sendFile",
+			expected: "/api/sendFile",
 		},
 	}
 

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	XWahaSignatureHeader   = "X-Waha-Signature-256"
+	XWahaSignatureHeader   = "X-Webhook-Hmac"
 	XSignalSignatureHeader = "X-Signal-Signature-256"
 )
 
@@ -74,9 +74,10 @@ func (s *Server) setupRoutes() {
 	whatsapp := s.router.PathPrefix("/webhook/whatsapp").Subrouter()
 	whatsapp.HandleFunc("", s.handleWhatsAppWebhook()).Methods(http.MethodPost)
 
-	// Signal webhook
+	// Signal webhook (for future versions that support it)
 	signal := s.router.PathPrefix("/webhook/signal").Subrouter()
 	signal.HandleFunc("", s.handleSignalWebhook()).Methods(http.MethodPost)
+	
 }
 
 func (s *Server) setupWebhookHandlers() {
@@ -135,6 +136,8 @@ func (s *Server) handleHealth() http.HandlerFunc {
 
 func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		s.logger.Debug("Processing WhatsApp webhook request")
+		
 		// Verify signature first
 		bodyBytes, err := verifySignature(r, s.cfg.WhatsApp.WebhookSecret, XWahaSignatureHeader)
 		if err != nil {
@@ -147,51 +150,61 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 		// Decode from the bodyBytes we got from verifySignature, as r.Body was replaced
 		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&payload); err != nil {
 			s.logger.WithError(err).Error("Failed to decode webhook payload after signature verification")
+			// Log the raw body for debugging
+			s.logger.Debugf("Raw webhook body: %s", string(bodyBytes))
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
+		s.logger.Debug("Received WhatsApp webhook payload")
+
+		// Only process "message" events, skip "message.any" to avoid duplicates
 		if payload.Event != "message" {
-			s.logger.Infof("Skipping non-message WhatsApp event: %s", payload.Event)
+			s.logger.Debug("Skipping non-message WhatsApp event")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Skip messages from ourselves (fromMe: true) to avoid loops
+		if payload.Payload.FromMe {
+			s.logger.Debug("Skipping message from ourselves")
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
 		// Validate required fields for message events
-		if payload.Data.ID == "" {
-			http.Error(w, "Missing required field: ID", http.StatusBadRequest)
+		if payload.Payload.ID == "" {
+			s.logger.Error("Missing required field: Payload.ID")
+			http.Error(w, "Missing required field: Payload.ID", http.StatusBadRequest)
 			return
 		}
-		if payload.Data.ChatID == "" {
-			http.Error(w, "Missing required field: ChatID", http.StatusBadRequest)
+		if payload.Payload.From == "" {
+			s.logger.Error("Missing required field: Payload.From")
+			http.Error(w, "Missing required field: Payload.From", http.StatusBadRequest)
 			return
 		}
-		if payload.Data.Sender == "" {
-			http.Error(w, "Missing required field: Sender", http.StatusBadRequest)
-			return
-		}
-		if payload.Data.Type == "" {
-			http.Error(w, "Missing required field: Type", http.StatusBadRequest)
-			return
-		}
-
-		// Additional validation for specific message types
-		if payload.Data.Type == "text" && payload.Data.Content == "" {
-			http.Error(w, "Text messages must have content", http.StatusBadRequest)
-			return
-		}
-		if payload.Data.Type == "media" && payload.Data.MediaPath == "" {
-			http.Error(w, "Media messages must have media path", http.StatusBadRequest)
+		if payload.Payload.Body == "" && !payload.Payload.HasMedia {
+			s.logger.Error("Message must have either body or media")
+			http.Error(w, "Message must have either body or media", http.StatusBadRequest)
 			return
 		}
 
+		// Extract media URL if present
+		var mediaURL string
+		if payload.Payload.HasMedia && payload.Payload.Media != nil {
+			mediaURL = payload.Payload.Media.URL
+		}
+
+		// The "from" field is the chat ID in WhatsApp
+		chatID := payload.Payload.From
+		
 		err = s.msgService.HandleWhatsAppMessage(
 			r.Context(),
-			payload.Data.ChatID,
-			payload.Data.ID,
-			payload.Data.Sender,
-			payload.Data.Content,
-			payload.Data.MediaPath,
+			chatID,
+			payload.Payload.ID,
+			payload.Payload.From,
+			payload.Payload.Body,
+			mediaURL,
 		)
 		if err != nil {
 			s.logger.WithError(err).Error("Failed to handle WhatsApp message")
@@ -205,6 +218,8 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 
 func (s *Server) handleSignalWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		s.logger.Info("Received Signal webhook request")
+		
 		// Verify signature first
 		bodyBytes, err := verifySignature(r, s.cfg.Signal.WebhookSecret, XSignalSignatureHeader)
 		if err != nil {
@@ -258,3 +273,4 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 	}
 }
+

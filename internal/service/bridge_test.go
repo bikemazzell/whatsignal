@@ -16,170 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type mockWhatsAppClient struct {
-	mock.Mock
-	sendTextResp  *types.SendMessageResponse
-	sendTextErr   error
-	sendImageResp *types.SendMessageResponse
-	sendImageErr  error
-}
-
-func (m *mockWhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
-	return m.sendTextResp, m.sendTextErr
-}
-
-func (m *mockWhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) CreateSession(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-func (m *mockWhatsAppClient) StartSession(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-func (m *mockWhatsAppClient) StopSession(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-func (m *mockWhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
-	args := m.Called(ctx)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.Session), args.Error(1)
-}
-
-func (m *mockWhatsAppClient) SendSeen(ctx context.Context, chatID string) error {
-	args := m.Called(ctx, chatID)
-	return args.Error(0)
-}
-
-func (m *mockWhatsAppClient) StartTyping(ctx context.Context, chatID string) error {
-	args := m.Called(ctx, chatID)
-	return args.Error(0)
-}
-
-func (m *mockWhatsAppClient) StopTyping(ctx context.Context, chatID string) error {
-	args := m.Called(ctx, chatID)
-	return args.Error(0)
-}
-
-type mockSignalClient struct {
-	mock.Mock
-	sendMessageResp     *signaltypes.SendMessageResponse
-	sendMessageErr      error
-	initializeDeviceErr error
-}
-
-func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*signaltypes.SendMessageResponse, error) {
-	if m.sendMessageResp != nil || m.sendMessageErr != nil {
-		return m.sendMessageResp, m.sendMessageErr
-	}
-	args := m.Called(ctx, recipient, message, attachments)
-	if args.Get(0) == nil && args.Error(1) == nil {
-		return nil, nil
-	}
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*signaltypes.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockSignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]signaltypes.SignalMessage, error) {
-	args := m.Called(ctx, timeoutSeconds)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]signaltypes.SignalMessage), args.Error(1)
-}
-
-func (m *mockSignalClient) InitializeDevice(ctx context.Context) error {
-	if m.initializeDeviceErr != nil {
-		return m.initializeDeviceErr
-	}
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-// Mock media handler
-type mockMediaHandler struct {
-	mock.Mock
-}
-
-func (h *mockMediaHandler) ProcessMedia(sourcePath string) (string, error) {
-	args := h.Called(sourcePath)
-	return args.String(0), args.Error(1)
-}
-
-func (h *mockMediaHandler) CleanupOldFiles(maxAge int64) error {
-	args := h.Called(maxAge)
-	return args.Error(0)
-}
-
-// Mock database
-type mockDatabase struct {
-	mock.Mock
-}
-
-func (m *mockDatabase) SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error {
-	args := m.Called(ctx, mapping)
-	return args.Error(0)
-}
-
-func (m *mockDatabase) GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error) {
-	args := m.Called(ctx, id)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*models.MessageMapping), args.Error(1)
-}
-
-func (m *mockDatabase) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
-	args := m.Called(ctx, whatsappID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*models.MessageMapping), args.Error(1)
-}
-
-func (m *mockDatabase) UpdateDeliveryStatus(ctx context.Context, id string, status string) error {
-	args := m.Called(ctx, id, status)
-	return args.Error(0)
-}
-
-func (m *mockDatabase) CleanupOldRecords(retentionDays int) error {
-	args := m.Called(retentionDays)
-	return args.Error(0)
-}
 
 func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-bridge-test")
 	require.NoError(t, err)
 
 	// Create mock database
-	mockDB := &mockDatabase{}
+	mockDB := &mockDatabaseService{}
 
 	// Create mock clients
 	mockWAClient := &mockWhatsAppClient{}
@@ -194,7 +37,8 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 		MaxBackoffMs:     5,
 		MaxAttempts:      3,
 	}
-	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig).(*bridge)
+	// Create bridge without contact service for basic tests (contact service has its own tests)
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, "+1234567890", nil).(*bridge)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -301,15 +145,10 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			wantErr: false,
 			setup: func() {
 				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
-					Result: struct {
-						Timestamp int64  `json:"timestamp"`
-						MessageID string `json:"messageId"`
-					}{
-						MessageID: "sig123",
-						Timestamp: time.Now().UnixMilli(),
-					},
+					MessageID: "sig123",
+					Timestamp: time.Now().UnixMilli(),
 				}
-				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
 					return m.WhatsAppChatID == "chat123" &&
 						m.WhatsAppMsgID == "msg123" &&
 						m.SignalMsgID == "sig123" &&
@@ -328,15 +167,10 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			setup: func() {
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
 				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
-					Result: struct {
-						Timestamp int64  `json:"timestamp"`
-						MessageID string `json:"messageId"`
-					}{
-						MessageID: "sig124",
-						Timestamp: time.Now().UnixMilli(),
-					},
+					MessageID: "sig124",
+					Timestamp: time.Now().UnixMilli(),
 				}
-				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
 					return m.WhatsAppChatID == "chat123" &&
 						m.WhatsAppMsgID == "msg124" &&
 						m.SignalMsgID == "sig124" &&
@@ -397,7 +231,7 @@ func TestHandleSignalMessage(t *testing.T) {
 	}
 
 	// Set up mock expectations for the initial message mapping
-	bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+	bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
 		return m.WhatsAppChatID == "chat123" &&
 			m.WhatsAppMsgID == "msg123" &&
 			m.SignalMsgID == "sig123" &&
@@ -432,12 +266,12 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 			wantErr: false,
 			setup: func() {
-				bridge.db.(*mockDatabase).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.db.(*mockDatabaseService).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.waClient.(*mockWhatsAppClient).sendTextResp = &types.SendMessageResponse{
 					MessageID: "msg124",
 					Status:    "sent",
 				}
-				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
 					return m.WhatsAppChatID == "chat123" &&
 						m.WhatsAppMsgID == "msg124" &&
 						m.SignalMsgID == "sig124" &&
@@ -465,13 +299,13 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 			wantErr: false,
 			setup: func() {
-				bridge.db.(*mockDatabase).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.db.(*mockDatabaseService).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
 				bridge.waClient.(*mockWhatsAppClient).sendImageResp = &types.SendMessageResponse{
 					MessageID: "msg125",
 					Status:    "sent",
 				}
-				bridge.db.(*mockDatabase).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
 					return m.WhatsAppChatID == "chat123" &&
 						m.WhatsAppMsgID == "msg125" &&
 						m.SignalMsgID == "sig125" &&
@@ -501,7 +335,7 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 			wantErr: true,
 			setup: func() {
-				bridge.db.(*mockDatabase).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.db.(*mockDatabaseService).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return("", assert.AnError).Once()
 			},
 		},
@@ -529,13 +363,13 @@ func TestUpdateDeliveryStatus(t *testing.T) {
 	ctx := context.Background()
 
 	// Set up mock expectations
-	bridge.db.(*mockDatabase).On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(nil).Once()
+	bridge.db.(*mockDatabaseService).On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(nil).Once()
 
 	err := bridge.UpdateDeliveryStatus(ctx, "msg123", models.DeliveryStatusDelivered)
 	assert.NoError(t, err)
 
 	// Test error case
-	bridge.db.(*mockDatabase).On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(assert.AnError).Once()
+	bridge.db.(*mockDatabaseService).On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(assert.AnError).Once()
 
 	err = bridge.UpdateDeliveryStatus(ctx, "msg123", models.DeliveryStatusDelivered)
 	assert.Error(t, err)
@@ -625,20 +459,20 @@ func TestCleanupOldRecords(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful cleanup
-	bridge.db.(*mockDatabase).On("CleanupOldRecords", 7).Return(nil).Once()
+	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", 7).Return(nil).Once()
 	bridge.media.(*mockMediaHandler).On("CleanupOldFiles", int64(7*24*60*60)).Return(nil).Once()
 
 	err := bridge.CleanupOldRecords(ctx, 7)
 	assert.NoError(t, err)
 
 	// Test database cleanup error
-	bridge.db.(*mockDatabase).On("CleanupOldRecords", 7).Return(assert.AnError).Once()
+	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", 7).Return(assert.AnError).Once()
 	err = bridge.CleanupOldRecords(ctx, 7)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to cleanup old records")
 
 	// Test media cleanup error
-	bridge.db.(*mockDatabase).On("CleanupOldRecords", 7).Return(nil).Once()
+	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", 7).Return(nil).Once()
 	bridge.media.(*mockMediaHandler).On("CleanupOldFiles", int64(7*24*60*60)).Return(assert.AnError).Once()
 	err = bridge.CleanupOldRecords(ctx, 7)
 	assert.Error(t, err)
@@ -682,7 +516,7 @@ func TestHandleNewSignalThread(t *testing.T) {
 func TestNewBridge(t *testing.T) {
 	waClient := &mockWhatsAppClient{}
 	sigClient := &mockSignalClient{}
-	db := &mockDatabase{}
+	db := &mockDatabaseService{}
 	mediaHandler := &mockMediaHandler{}
 	retryConfig := models.RetryConfig{
 		InitialBackoffMs: 1,
@@ -690,7 +524,9 @@ func TestNewBridge(t *testing.T) {
 		MaxAttempts:      3,
 	}
 
-	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig)
+	destinationPhoneNumber := "+1234567890"
+	// For constructor test, use nil contact service to keep test simple
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, destinationPhoneNumber, nil)
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
@@ -703,4 +539,5 @@ func TestNewBridge(t *testing.T) {
 	assert.Equal(t, db, bridgeImpl.db)
 	assert.Equal(t, mediaHandler, bridgeImpl.media)
 	assert.Equal(t, retryConfig, bridgeImpl.retryConfig)
+	assert.Equal(t, destinationPhoneNumber, bridgeImpl.signalDestinationPhoneNumber)
 }

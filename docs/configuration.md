@@ -51,17 +51,35 @@ This document describes all configuration options available in `config.json`.
 
 ## Signal Configuration
 
-- `signal.rpc_url`: URL of your signal-cli JSON-RPC daemon
-  - Default: `http://localhost:8080/jsonrpc`
-  - Example: `http://signal-cli:8080/jsonrpc` (if running in Docker)
+### Phone Number Configuration
+
+Signal configuration requires **two phone numbers** for the bridge to work:
+
+- `signal.intermediaryPhoneNumber`: The phone number that the Signal-CLI service runs on
+  - This is the "intermediate" number that receives WhatsApp messages and forwards them
+  - Must be registered with Signal-CLI beforehand
+  - Format: International format with country code (e.g., "+1234567890")
+
+- `signal.destinationPhoneNumber`: YOUR Signal phone number that receives the forwarded messages
+  - This is your personal Signal number where you'll receive WhatsApp messages
+  - Format: International format with country code (e.g., "+0987654321")
+
+### Message Flow
+
+```
+WhatsApp User → WAHA → WhatsSignal → Signal-CLI (intermediaryPhoneNumber) → Your Signal App (destinationPhoneNumber)
+Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber) → WhatsSignal → WAHA → WhatsApp User
+```
+
+### Other Signal Settings
+
+- `signal.rpc_url`: URL of your signal-cli REST API daemon
+  - Default: `http://localhost:8080`
+  - Example: `http://signal-cli:8080` (if running in Docker)
 
 - `signal.auth_token`: Authentication token for Signal API access
   - Required if your signal-cli daemon requires authentication
   - Leave empty if authentication is not enabled
-
-- `signal.phone_number`: Your Signal phone number
-  - Required for registration and message sending
-  - Format: International format with country code (e.g., "+1234567890")
 
 - `signal.device_name`: Name for this Signal device
   - Default: "whatsignal-device"
@@ -141,9 +159,10 @@ This document describes all configuration options available in `config.json`.
     "webhook_secret": "your-whatsapp-webhook-secret"
   },
   "signal": {
-    "rpc_url": "http://localhost:8080/jsonrpc",
+    "rpc_url": "http://localhost:8080",
     "auth_token": "your-signal-auth-token",
-    "phone_number": "+1234567890",
+    "intermediaryPhoneNumber": "+1234567890",
+    "destinationPhoneNumber": "+0987654321",
     "device_name": "whatsignal-device",
     "webhook_secret": "your-signal-webhook-secret"
   },

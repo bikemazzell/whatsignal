@@ -18,7 +18,7 @@ import (
 // Define constants in the test file for clarity if they are used in switch cases
 // or directly in assertions. This mirrors the constants in client.go.
 const (
-	testAPIBase             = "/api/test-session"
+	testAPIBase             = "/api"
 	testEndpointSendText    = "/sendText"
 	testEndpointSendImage   = "/sendImage"
 	testEndpointSendFile    = "/sendFile"
@@ -198,6 +198,7 @@ func TestClient_SendImage(t *testing.T) {
 
 		// Verify form fields
 		assert.Equal(t, "123456", r.FormValue("chatId"))
+		assert.Equal(t, "test-session", r.FormValue("session"))
 		assert.Equal(t, "Test image", r.FormValue("caption"))
 
 		// Send response
@@ -255,6 +256,7 @@ func TestClient_SendFile(t *testing.T) {
 
 		// Verify form fields
 		assert.Equal(t, "123456", r.FormValue("chatId"))
+		assert.Equal(t, "test-session", r.FormValue("session"))
 		assert.Equal(t, "Test file", r.FormValue("caption"))
 
 		// Send response
@@ -307,6 +309,7 @@ func TestClient_SendVoice(t *testing.T) {
 
 		// Verify form fields
 		assert.Equal(t, "123456", r.FormValue("chatId"))
+		assert.Equal(t, "test-session", r.FormValue("session"))
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
@@ -358,6 +361,7 @@ func TestClient_SendVideo(t *testing.T) {
 
 		// Verify form fields
 		assert.Equal(t, "123456", r.FormValue("chatId"))
+		assert.Equal(t, "test-session", r.FormValue("session"))
 		assert.Equal(t, "Test video", r.FormValue("caption"))
 
 		// Send response

@@ -46,15 +46,8 @@ func TestMockClientSendMessage(t *testing.T) {
 
 	// Test successful send
 	expectedResponse := &SendMessageResponse{
-		Jsonrpc: "2.0",
-		Result: struct {
-			Timestamp int64  `json:"timestamp"`
-			MessageID string `json:"messageId"`
-		}{
-			Timestamp: 1234567890,
-			MessageID: "msg-123",
-		},
-		ID: 1,
+		Timestamp: 1234567890,
+		MessageID: "msg-123",
 	}
 
 	mockClient.On("SendMessage", ctx, "+1234567890", "Hello, World!", []string{}).Return(expectedResponse, nil)
@@ -71,15 +64,8 @@ func TestMockClientSendMessageWithAttachments(t *testing.T) {
 	ctx := context.Background()
 
 	expectedResponse := &SendMessageResponse{
-		Jsonrpc: "2.0",
-		Result: struct {
-			Timestamp int64  `json:"timestamp"`
-			MessageID string `json:"messageId"`
-		}{
-			Timestamp: 1234567890,
-			MessageID: "msg-456",
-		},
-		ID: 2,
+		Timestamp: 1234567890,
+		MessageID: "msg-456",
 	}
 
 	attachments := []string{"/path/to/image.jpg", "/path/to/document.pdf"}
@@ -194,7 +180,10 @@ func TestClientInterfaceMethods(t *testing.T) {
 	ctx := context.Background()
 
 	// Test SendMessage method signature
-	mockClient.On("SendMessage", ctx, "+1234567890", "test", []string{}).Return(&SendMessageResponse{}, nil)
+	mockClient.On("SendMessage", ctx, "+1234567890", "test", []string{}).Return(&SendMessageResponse{
+		Timestamp: 1234567890,
+		MessageID: "test-msg",
+	}, nil)
 	_, err := mockClient.SendMessage(ctx, "+1234567890", "test", []string{})
 	assert.NoError(t, err)
 
@@ -220,7 +209,10 @@ func TestClientInterfaceCompliance(t *testing.T) {
 	ctx := context.Background()
 
 	// Setup expectations
-	mockClient.On("SendMessage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&SendMessageResponse{}, nil)
+	mockClient.On("SendMessage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&SendMessageResponse{
+		Timestamp: 1234567890,
+		MessageID: "test-msg",
+	}, nil)
 	mockClient.On("ReceiveMessages", mock.Anything, mock.Anything).Return([]SignalMessage{}, nil)
 	mockClient.On("InitializeDevice", mock.Anything).Return(nil)
 

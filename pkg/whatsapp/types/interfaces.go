@@ -15,6 +15,10 @@ type WAClient interface {
 	StartSession(ctx context.Context) error
 	StopSession(ctx context.Context) error
 	GetSessionStatus(ctx context.Context) (*Session, error)
+	
+	// Contact methods
+	GetContact(ctx context.Context, contactID string) (*Contact, error)
+	GetAllContacts(ctx context.Context, limit, offset int) ([]Contact, error)
 }
 
 type SessionManager interface {

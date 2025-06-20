@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -29,27 +28,32 @@ type DatabaseService interface {
 	SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error
 	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
+	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(retentionDays int) error
 }
 
 type bridge struct {
-	waClient    types.WAClient
-	sigClient   signal.Client
-	db          DatabaseService
-	media       media.Handler
-	retryConfig models.RetryConfig
-	logger      *logrus.Logger
+	waClient                   types.WAClient
+	sigClient                  signal.Client
+	db                         DatabaseService
+	media                      media.Handler
+	retryConfig                models.RetryConfig
+	logger                     *logrus.Logger
+	signalDestinationPhoneNumber string
+	contactService             ContactServiceInterface
 }
 
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, signalDestinationPhoneNumber string, contactService ContactServiceInterface) MessageBridge {
 	return &bridge{
-		waClient:    waClient,
-		sigClient:   sigClient,
-		db:          db,
-		media:       mh,
-		retryConfig: rc,
-		logger:      logrus.New(),
+		waClient:                     waClient,
+		sigClient:                    sigClient,
+		db:                           db,
+		media:                        mh,
+		retryConfig:                  rc,
+		logger:                       logrus.New(),
+		signalDestinationPhoneNumber: signalDestinationPhoneNumber,
+		contactService:               contactService,
 	}
 }
 
@@ -82,20 +86,20 @@ func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 }
 
 func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
-	metadata := models.MessageMetadata{
-		Sender:   sender,
-		Chat:     chatID,
-		Time:     time.Now(),
-		MsgID:    msgID,
-		ThreadID: fmt.Sprintf("wa-%s", msgID),
+	// Extract phone number from WhatsApp ID (remove @c.us suffix)
+	senderPhone := sender
+	if strings.HasSuffix(sender, "@c.us") {
+		senderPhone = strings.TrimSuffix(sender, "@c.us")
 	}
 
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
+	// Get display name for the sender (contact name if available, otherwise phone number)
+	displayName := senderPhone // fallback
+	if b.contactService != nil {
+		displayName = b.contactService.GetContactDisplayName(ctx, senderPhone)
 	}
 
-	message := fmt.Sprintf("%s\n---\n%s", string(metadataJSON), content)
+	// Format message with contact name instead of phone number
+	message := fmt.Sprintf("%s: %s", displayName, content)
 	var attachments []string
 
 	if mediaPath != "" {
@@ -106,16 +110,22 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 		attachments = append(attachments, processedPath)
 	}
 
-	resp, err := b.sigClient.SendMessage(ctx, chatID, message, attachments)
+	// Send to the configured Signal destination number, not the WhatsApp chatID
+	resp, err := b.sigClient.SendMessage(ctx, b.signalDestinationPhoneNumber, message, attachments)
 	if err != nil {
 		return fmt.Errorf("failed to send signal message: %w", err)
 	}
+	
+	b.logger.WithFields(logrus.Fields{
+		"whatsappMsgID": msgID,
+		"signalMsgID": resp.MessageID,
+	}).Debug("Saving message mapping - WhatsApp to Signal")
 
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  chatID,
 		WhatsAppMsgID:   msgID,
-		SignalMsgID:     resp.Result.MessageID,
-		SignalTimestamp: time.Unix(resp.Result.Timestamp/1000, 0),
+		SignalMsgID:     resp.MessageID,
+		SignalTimestamp: time.Unix(resp.Timestamp/1000, 0),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
 	}
@@ -140,14 +150,75 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 		return b.handleNewSignalThread(ctx, msg)
 	}
 
-	mapping, err := b.db.GetMessageMappingByWhatsAppID(ctx, msg.QuotedMessage.ID)
+	// Look up the original WhatsApp message mapping using the Signal message ID from the quoted message
+	b.logger.WithFields(logrus.Fields{
+		"quotedMessageID": msg.QuotedMessage.ID,
+	}).Debug("Looking up message mapping for quoted message")
+	
+	mapping, err := b.db.GetMessageMappingBySignalID(ctx, msg.QuotedMessage.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get message mapping: %w", err)
+		b.logger.WithFields(logrus.Fields{
+			"quotedMessageID": msg.QuotedMessage.ID,
+			"error": err,
+		}).Error("Failed to get message mapping for quoted message")
+		return fmt.Errorf("failed to get message mapping for quoted message: %w", err)
+	}
+	
+	if mapping != nil {
+		b.logger.WithFields(logrus.Fields{
+			"quotedMessageID": msg.QuotedMessage.ID,
+		}).Debug("Found message mapping in database")
+	} else {
+		b.logger.WithFields(logrus.Fields{
+			"quotedMessageID": msg.QuotedMessage.ID,
+		}).Debug("No message mapping found in database, trying fallback")
 	}
 
 	if mapping == nil {
-		return fmt.Errorf("no mapping found for quoted message")
+		// Try to extract the WhatsApp phone number from the quoted text
+		// This handles both old format (📱 phone: message) and new format (ContactName: message)
+		if strings.Contains(msg.QuotedMessage.Text, ": ") {
+			parts := strings.SplitN(msg.QuotedMessage.Text, ": ", 2)
+			if len(parts) == 2 {
+				senderInfo := parts[0]
+				
+				b.logger.Debug("Attempting fallback extraction from quoted text")
+				
+				// Remove emoji prefix if present (old format)
+				senderInfo = strings.TrimPrefix(senderInfo, "📱 ")
+				
+				// First try: if it looks like a phone number (old format)
+				var phoneNumber string
+				if len(senderInfo) >= 10 && strings.ContainsAny(senderInfo, "0123456789") {
+					// Extract digits (simple heuristic)
+					for _, char := range senderInfo {
+						if char >= '0' && char <= '9' {
+							phoneNumber += string(char)
+						}
+					}
+					if len(phoneNumber) >= 10 {
+						whatsappChatID := phoneNumber + "@c.us"
+						b.logger.Debug("Extracted phone number from quoted text for fallback")
+						// Create a synthetic mapping to handle the reply
+						mapping = &models.MessageMapping{
+							WhatsAppChatID: whatsappChatID,
+						}
+					}
+				}
+				
+				// TODO: Second try: reverse lookup contact name to phone number
+				// This would require extending the contact service to support reverse lookups
+				// For now, we'll rely on the database mappings being correct
+			}
+		}
+		
+		if mapping == nil {
+			b.logger.WithField("quotedMessageID", msg.QuotedMessage.ID).Error("No mapping found for quoted message")
+			return fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
+		}
 	}
+	
+	whatsappChatID := mapping.WhatsAppChatID
 
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
@@ -159,13 +230,13 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 
 	switch {
 	case len(attachments) > 0 && isImageAttachment(attachments[0]):
-		resp, sendErr = b.waClient.SendImage(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
+		resp, sendErr = b.waClient.SendImage(ctx, whatsappChatID, attachments[0], msg.Message)
 	case len(attachments) > 0 && isVideoAttachment(attachments[0]):
-		resp, sendErr = b.waClient.SendVideo(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
+		resp, sendErr = b.waClient.SendVideo(ctx, whatsappChatID, attachments[0], msg.Message)
 	case len(attachments) > 0 && isDocumentAttachment(attachments[0]):
-		resp, sendErr = b.waClient.SendDocument(ctx, mapping.WhatsAppChatID, attachments[0], msg.Message)
+		resp, sendErr = b.waClient.SendDocument(ctx, whatsappChatID, attachments[0], msg.Message)
 	default:
-		resp, sendErr = b.waClient.SendText(ctx, mapping.WhatsAppChatID, msg.Message)
+		resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
 	}
 
 	if sendErr != nil {
@@ -173,7 +244,7 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	}
 
 	newMapping := &models.MessageMapping{
-		WhatsAppChatID:  mapping.WhatsAppChatID,
+		WhatsAppChatID:  whatsappChatID,
 		WhatsAppMsgID:   resp.MessageID,
 		SignalMsgID:     msg.MessageID,
 		SignalTimestamp: time.Unix(msg.Timestamp/1000, 0),

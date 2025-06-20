@@ -10,12 +10,19 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Reply correlation and threading support
   - Message metadata preservation
 
+- **Smart Contact Management**:
+  - **Automatic contact name display**: Messages show "John Doe: message" instead of "+1234567890: message"
+  - **Startup contact sync**: All WhatsApp contacts cached on startup for instant performance
+  - **Intelligent caching**: 24-hour contact cache with configurable refresh intervals
+  - **Fallback handling**: Graceful degradation to phone numbers when contacts unavailable
+
 - **WAHA API Integration**:
   - Full WAHA API compliance with best practices
   - Natural typing simulation
   - Message seen status
   - Proper message flow handling
   - Session management and recovery
+  - **Contact API integration**: Automatic WhatsApp contact name retrieval and caching
 
 - **Comprehensive Media Support**:
   - Images (JPEG, PNG) - up to 5MB
@@ -31,14 +38,17 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Reply context preservation across platforms
   - Media attachments in replies
   - Message delivery status tracking
+  - **Contact name display**: Shows "Bob McBob: message" instead of phone numbers
+  - **Intelligent contact caching**: Automatic contact sync on startup for instant name resolution
 
 - **Security & Privacy**:
-  - Database encryption at rest (AES-256-GCM)
+  - Database encryption at rest (AES-256-GCM with deterministic lookups)
   - Webhook authentication and validation
   - Path traversal protection
   - Configurable data retention
   - Automated cleanup scheduling
   - Comprehensive security scanning
+  - Contact information encryption for privacy protection
 
 - **System Features**:
   - Health monitoring endpoint
@@ -46,6 +56,7 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Comprehensive test coverage (>80%)
   - Type-safe message handling
   - Graceful error handling and retries
+  - **Enhanced reply correlation**: Improved message threading across platforms
   - Docker deployment ready
 
 ## Building
@@ -152,6 +163,36 @@ docker compose up -d --build
     docker compose logs -f signal-cli
     ```
 
+## Contact Name Configuration
+
+WhatSignal automatically displays contact names instead of phone numbers for better message readability:
+
+- **Messages display as**: `"John Doe: Hello there"` instead of `"+1234567890: Hello there"`
+- **Automatic sync**: All WhatsApp contacts are synced on startup (configurable)
+- **Performance optimized**: Contact names cached for 24 hours (configurable)
+
+### Configuration Options
+
+In your `config.json`:
+
+```json
+{
+  "whatsapp": {
+    "contactSyncOnStartup": true,    // Sync contacts on startup (recommended)
+    "contactCacheHours": 24          // Hours to cache contact info (default: 24)
+  }
+}
+```
+
+### Expected Startup Logs
+
+When contact sync is enabled, you'll see:
+```
+INFO: Syncing WhatsApp contacts on startup...
+INFO: Synced 150 contacts (batch 1)
+INFO: Contact sync completed successfully
+```
+
 ## Documentation
 
 - [Installation Guide](docs/installation.md) - Detailed setup instructions
@@ -179,4 +220,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - [Waha](https://github.com/devlikeapro/waha) for the WhatsApp HTTP API
-- [signal-cli](https://github.com/AsamK/signal-cli) for the Signal CLI interface 
+- [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) for the Signal CLI interface 

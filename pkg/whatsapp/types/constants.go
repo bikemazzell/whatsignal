@@ -10,7 +10,7 @@ const (
 )
 
 const (
-	APIBase             = "/api/%s"
+	APIBase             = "/api"
 	EndpointSendText    = "/sendText"
 	EndpointSendSeen    = "/sendSeen"
 	EndpointStartTyping = "/startTyping"
@@ -19,4 +19,8 @@ const (
 	EndpointSendFile    = "/sendFile"
 	EndpointSendVoice   = "/sendVoice"
 	EndpointSendVideo   = "/sendVideo"
+	
+	// Contact endpoints
+	EndpointContactsAll = "/contacts/all"
+	EndpointContacts    = "/contacts"
 )

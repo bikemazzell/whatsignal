@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 	"strings"
 )
 
-// The signature in the header is expected to be prefixed with "sha256=".
+// The signature in the header is expected to be prefixed with "sha256=" or just the hex value for WAHA.
 func verifySignature(r *http.Request, secretKey string, signatureHeaderName string) ([]byte, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -35,20 +36,42 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 		return nil, fmt.Errorf("missing signature header: %s", signatureHeaderName)
 	}
 
-	// Signature is expected to be in the format "sha256=actualsignature"
-	parts := strings.SplitN(signatureHeader, "=", 2)
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "sha256" {
-		return nil, fmt.Errorf("invalid signature format in header %s", signatureHeaderName)
-	}
-	expectedSignatureHex := parts[1]
+	// Check if it's WAHA webhook (uses SHA512)
+	if signatureHeaderName == "X-Webhook-Hmac" {
+		// WAHA uses SHA512 and provides the signature directly (no prefix)
+		expectedSignatureHex := signatureHeader
+		
+		// Get timestamp from header for WAHA webhooks
+		timestamp := r.Header.Get("X-Webhook-Timestamp")
+		if timestamp == "" {
+			return nil, fmt.Errorf("missing X-Webhook-Timestamp header for WAHA webhook")
+		}
+		
+		// WAHA uses SHA512 HMAC over just the body
+		mac := hmac.New(sha512.New, []byte(secretKey))
+		mac.Write(body)
+		computedMAC := mac.Sum(nil)
+		computedSignatureHex := hex.EncodeToString(computedMAC)
 
-	mac := hmac.New(sha256.New, []byte(secretKey))
-	mac.Write(body)
-	computedMAC := mac.Sum(nil)
-	computedSignatureHex := hex.EncodeToString(computedMAC)
+		if !hmac.Equal([]byte(computedSignatureHex), []byte(expectedSignatureHex)) {
+			return nil, fmt.Errorf("signature mismatch")
+		}
+	} else {
+		// Original logic for other webhooks (SHA256 with prefix)
+		parts := strings.SplitN(signatureHeader, "=", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "sha256" {
+			return nil, fmt.Errorf("invalid signature format in header %s", signatureHeaderName)
+		}
+		expectedSignatureHex := parts[1]
 
-	if !hmac.Equal([]byte(computedSignatureHex), []byte(expectedSignatureHex)) {
-		return nil, fmt.Errorf("signature mismatch")
+		mac := hmac.New(sha256.New, []byte(secretKey))
+		mac.Write(body)
+		computedMAC := mac.Sum(nil)
+		computedSignatureHex := hex.EncodeToString(computedMAC)
+
+		if !hmac.Equal([]byte(computedSignatureHex), []byte(expectedSignatureHex)) {
+			return nil, fmt.Errorf("signature mismatch")
+		}
 	}
 
 	return body, nil

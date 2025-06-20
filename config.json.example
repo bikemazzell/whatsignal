@@ -4,7 +4,7 @@
   // - session_name: Name of the WhatsApp session (used in API endpoints)
   // - timeout_ms: Timeout for API requests
   // - retry_count: Maximum number of retry attempts
-  // - contactSyncOnStartup: Sync all contacts on startup for better performance (true/false)
+  // - contactSyncOnStartup: Sync all contacts on startup for better performance (recommended: true)
   // - contactCacheHours: How many hours to cache contact info before refreshing (default: 24)
   
   "whatsapp": {

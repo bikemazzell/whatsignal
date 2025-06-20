@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+docs/
+TODO.md
+Claude.md
+
+# Build artifacts
+build/
+bin/
+*.test
+whatsignal
+
+# Data and cache
+whatsignal.db
+whatsignal.db-*
+media_cache/
+cache/
+data/
+
+# Development files
+.env
+.env.*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.out
+*.prof

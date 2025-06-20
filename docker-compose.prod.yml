@@ -37,11 +37,9 @@ services:
       timeout: 10s
       retries: 3
 
-  # WhatSignal - main bridge application
+  # WhatSignal - main bridge application (uses pre-built image)
   whatsignal:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/bikemazzell/whatsignal:latest
     container_name: whatsignal
     ports:
       - "8082:8082"
@@ -72,4 +70,4 @@ volumes:
   signal_cli_data:
   waha_data:
   whatsignal_data:
-  whatsignal_cache: 
+  whatsignal_cache:

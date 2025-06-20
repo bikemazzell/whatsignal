@@ -31,6 +31,14 @@ This document describes all configuration options available in `config.json`.
   - Default: `3`
   - Set to `0` to disable retries
 
+- `whatsapp.contactSyncOnStartup`: Sync all contacts on startup for better performance
+  - Default: `true`
+  - Recommended for better user experience
+
+- `whatsapp.contactCacheHours`: How many hours to cache contact info before refreshing
+  - Default: `24` hours
+  - Adjust based on how frequently contact names change
+
 - `whatsapp.media`: Media handling configuration (moved from nested mediaConfig)
   ```json
   {

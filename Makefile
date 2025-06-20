@@ -14,9 +14,10 @@ MAIN_PACKAGE := ./cmd/whatsignal
 GO_FILES := $(shell find . -name "*.go" -type f)
 
 # Version information
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION := $(shell cat VERSION 2>/dev/null || echo "0.50.0")
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_TAG := $(shell git describe --tags --exact-match 2>/dev/null || echo "")
 
 # Go build flags
 GO_VERSION := $(shell go version | cut -d' ' -f3)
@@ -44,10 +45,14 @@ all: debug
 .PHONY: help
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Build targets:"
 	@echo "  debug      - Build debug version (default)"
 	@echo "  release    - Build release version"
 	@echo "  both       - Build both debug and release versions"
 	@echo "  clean      - Clean build artifacts"
+	@echo ""
+	@echo "Development targets:"
 	@echo "  test       - Run tests"
 	@echo "  test-race  - Run tests with race detection"
 	@echo "  lint       - Run linter (requires golangci-lint)"
@@ -55,12 +60,32 @@ help:
 	@echo "  vet        - Run go vet"
 	@echo "  deps       - Download dependencies"
 	@echo "  tidy       - Tidy go modules"
-	@echo "  install    - Install debug version to GOPATH/bin"
+	@echo ""
+	@echo "Run targets:"
 	@echo "  run        - Run debug version"
 	@echo "  run-release - Run release version"
 	@echo "  run-verbose - Run debug version with verbose logging"
-	@echo "  docker     - Build Docker image"
+	@echo "  install    - Install debug version to GOPATH/bin"
+	@echo ""
+	@echo "Docker targets:"
+	@echo "  docker-up      - Start all services with Docker Compose"
+	@echo "  docker-down    - Stop all services"
+	@echo "  docker-logs    - Follow logs for all services"
+	@echo "  docker-status  - Show service status"
+	@echo "  docker-restart - Restart all services"
+	@echo "  docker-clean   - Clean up Docker resources"
+	@echo "  docker-build   - Build Docker image only"
+	@echo ""
+	@echo "Version targets:"
+	@echo "  version             - Show current version"
+	@echo "  version-bump-patch  - Bump patch version (0.0.X)"
+	@echo "  version-bump-minor  - Bump minor version (0.X.0)"
+	@echo "  version-bump-major  - Bump major version (X.0.0)"
+	@echo "  release-tag         - Create git tag for current version"
+	@echo ""
+	@echo "Utility targets:"
 	@echo "  help       - Show this help"
+	@echo "  info       - Show build information"
 
 # Create build directories
 $(DEBUG_DIR):
@@ -189,13 +214,52 @@ run-verbose: debug
 		./$(DEBUG_DIR)/$(APP_NAME) --verbose; \
 	fi
 
-# Build Docker image
+# Docker operations
 .PHONY: docker
 docker:
 	@echo "Building Docker image..."
 	@docker build -t $(APP_NAME):$(VERSION) .
 	@docker tag $(APP_NAME):$(VERSION) $(APP_NAME):latest
 	@echo "Docker image built: $(APP_NAME):$(VERSION)"
+
+.PHONY: docker-build
+docker-build: docker
+
+.PHONY: docker-up
+docker-up:
+	@echo "Starting all services with Docker Compose..."
+	@docker compose up -d --build
+
+.PHONY: docker-down
+docker-down:
+	@echo "Stopping all services..."
+	@docker compose down
+
+.PHONY: docker-logs
+docker-logs:
+	@echo "Following logs for all services..."
+	@docker compose logs -f
+
+.PHONY: docker-logs-whatsignal
+docker-logs-whatsignal:
+	@echo "Following logs for WhatSignal..."
+	@docker compose logs -f whatsignal
+
+.PHONY: docker-status
+docker-status:
+	@echo "Service status:"
+	@docker compose ps
+
+.PHONY: docker-clean
+docker-clean:
+	@echo "Cleaning up Docker resources..."
+	@docker compose down -v
+	@docker system prune -f
+
+.PHONY: docker-restart
+docker-restart:
+	@echo "Restarting all services..."
+	@docker compose restart
 
 # Check if required tools are available
 .PHONY: check-tools
@@ -229,3 +293,29 @@ rebuild: clean all
 
 .PHONY: rebuild-release
 rebuild-release: clean release
+
+# Version management
+.PHONY: version
+version:
+	@echo "Current version: $(VERSION)"
+
+.PHONY: version-bump-patch
+version-bump-patch:
+	@echo "Bumping patch version..."
+	@./scripts/bump-version.sh patch
+
+.PHONY: version-bump-minor
+version-bump-minor:
+	@echo "Bumping minor version..."
+	@./scripts/bump-version.sh minor
+
+.PHONY: version-bump-major
+version-bump-major:
+	@echo "Bumping major version..."
+	@./scripts/bump-version.sh major
+
+.PHONY: release-tag
+release-tag:
+	@echo "Creating release tag v$(VERSION)..."
+	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
+	@echo "Don't forget to push tags: git push origin v$(VERSION)"

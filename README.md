@@ -1,5 +1,9 @@
 # WhatSignal
 
+[![Version](https://img.shields.io/badge/version-0.50.0-blue.svg)](CHANGELOG.md)
+[![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](go.mod)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and Signal. It forwards messages (text, images, videos, audio) between the platforms while maintaining conversation context and supporting replies.
 
 ## Features
@@ -7,13 +11,12 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 - **Core Bridging**:
   - One-to-one chat bridging between WhatsApp and Signal
   - Bidirectional message forwarding with context preservation
-  - Reply correlation and threading support
   - Message metadata preservation
 
 - **Smart Contact Management**:
   - **Automatic contact name display**: Messages show "John Doe: message" instead of "+1234567890: message"
-  - **Startup contact sync**: All WhatsApp contacts cached on startup for instant performance
-  - **Intelligent caching**: 24-hour contact cache with configurable refresh intervals
+  - **Startup contact sync**: All WhatsApp contacts cached on startup for instant performance (configurable)
+  - **Intelligent caching**: 24-hour contact cache with configurable refresh intervals (default: 24 hours)
   - **Fallback handling**: Graceful degradation to phone numbers when contacts unavailable
 
 - **WAHA API Integration**:
@@ -22,8 +25,7 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Message seen status
   - Proper message flow handling
   - Session management and recovery
-  - **Contact API integration**: Automatic WhatsApp contact name retrieval and caching
-
+  
 - **Comprehensive Media Support**:
   - Images (JPEG, PNG) - up to 5MB
   - Videos (MP4, MOV) - up to 100MB
@@ -35,20 +37,17 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 - **Message Features**:
   - Text with formatting preservation
   - URL previews
-  - Reply context preservation across platforms
   - Media attachments in replies
   - Message delivery status tracking
-  - **Contact name display**: Shows "Bob McBob: message" instead of phone numbers
-  - **Intelligent contact caching**: Automatic contact sync on startup for instant name resolution
-
+  
 - **Security & Privacy**:
-  - Database encryption at rest (AES-256-GCM with deterministic lookups)
+  - Database encryption at rest
   - Webhook authentication and validation
   - Path traversal protection
   - Configurable data retention
   - Automated cleanup scheduling
-  - Comprehensive security scanning
-  - Contact information encryption for privacy protection
+  - Contact information encryption
+  - Deterministic encryption for message lookup optimization
 
 - **System Features**:
   - Health monitoring endpoint
@@ -56,7 +55,6 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Comprehensive test coverage (>80%)
   - Type-safe message handling
   - Graceful error handling and retries
-  - **Enhanced reply correlation**: Improved message threading across platforms
   - Docker deployment ready
 
 ## Building
@@ -87,10 +85,9 @@ make help
 ### Build Output
 
 Binaries are created in:
-- `build/debug/whatsignal` - Debug version (~14MB)
-- `build/release/whatsignal` - Release version (~8MB)
+- `build/debug/whatsignal` - Debug version
+- `build/release/whatsignal` - Release version
 
-The release version is significantly smaller due to symbol stripping and optimizations.
 
 ## Prerequisite Accounts
 To use WhatSignal, you must have:
@@ -99,109 +96,101 @@ To use WhatSignal, you must have:
 2. **Signal Bridge Number**: Dedicated for the bridge, used by Signal-CLI, and different from the destination number.
 3. **Signal Destination Number**: The final recipient, typically on your mobile or desktop Signal app. This must not be the same as the bridge number.
 
-## System Requirements
-
-**Minimum Hardware Requirements:**
-- **CPU**: 2 cores (1 GHz+)
-- **RAM**: 2 GB
-- **Disk Space**: 5 GB (includes Docker images, logs, and media cache)
-- **Network**: Stable internet connection for WhatsApp and Signal APIs
-
-**Recommended Hardware:**
-- **CPU**: 4 cores (2 GHz+)
-- **RAM**: 4 GB
-- **Disk Space**: 10 GB
-- **Network**: High-speed internet for media file transfers
-
-**Software Requirements:**
-- Docker 20.10+
-- Docker Compose 2.0+
-- Linux/macOS/Windows with Docker support
 
 ## Quick Start
 
-**One-liner to start the service:**
+### 🚀 Deploy with Pre-built Image (Easiest)
+
+**One-liner deployment (no source code needed):**
 ```bash
-docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.sh | bash
 ```
 
-1.  **Prerequisites**:
-    *   Docker and Docker Compose installed
-    *   Create a `.env` file in the project root:
-        ```bash
-        cp env.example .env
-        # Edit .env with your actual values
-        nano .env
-        ```
-    *   **Required**: Set your `WHATSAPP_API_KEY` and `WEBHOOK_SECRET` (minimum 32 characters)
-    *   **Recommended**: Enable encryption by setting `WHATSIGNAL_ENABLE_ENCRYPTION=true` and `WHATSIGNAL_ENCRYPTION_SECRET`
+📋 **Then follow the [Quick Start Checklist](docs/quickstart.md) for complete setup steps.**
 
-2.  **Clone and Configure**:
-    ```bash
-    git clone https://github.com/yourusername/whatsignal.git
-    cd whatsignal
-    cp config.json.example config.json
-    nano config.json # Configure your Signal and WhatsApp settings
-    ```
+**Manual deployment:**
+```bash
+# Download deployment script
+curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.sh -o deploy.sh
+chmod +x deploy.sh
+./deploy.sh
 
-3.  **Run with Docker Compose**:
-    ```bash
-    docker compose up -d --build
-    ```
-    This will build the `whatsignal` image and start all services (`whatsignal`, `waha`, and `signal-cli`).
+# Configure your settings
+cd whatsignal-deploy
+nano .env          # API keys and secrets
+nano config.json   # Signal/WhatsApp phone numbers
 
-4.  **Check Health**:
-    ```bash
-    curl http://localhost:8082/health # Check WhatSignal health
-    # You can also check waha (localhost:3000) and signal-cli (localhost:8080) if they expose health/status endpoints.
-    ```
+# Start services
+docker compose up -d
 
-5.  **View Logs**:
-    ```bash
-    docker compose logs -f whatsignal
-    docker compose logs -f waha
-    docker compose logs -f signal-cli
-    ```
-
-## Contact Name Configuration
-
-WhatSignal automatically displays contact names instead of phone numbers for better message readability:
-
-- **Messages display as**: `"John Doe: Hello there"` instead of `"+1234567890: Hello there"`
-- **Automatic sync**: All WhatsApp contacts are synced on startup (configurable)
-- **Performance optimized**: Contact names cached for 24 hours (configurable)
-
-### Configuration Options
-
-In your `config.json`:
-
-```json
-{
-  "whatsapp": {
-    "contactSyncOnStartup": true,    // Sync contacts on startup (recommended)
-    "contactCacheHours": 24          // Hours to cache contact info (default: 24)
-  }
-}
+# Check status
+docker compose ps
+curl http://localhost:8082/health
 ```
 
-### Expected Startup Logs
+📖 **For detailed deployment instructions, see:** [Deployment Guide](docs/deployment.md)
 
-When contact sync is enabled, you'll see:
+### 🐳 Build from Source (Developers)
+
+**For development or customization:**
+```bash
+git clone https://github.com/bikemazzell/whatsignal.git
+cd whatsignal
+./setup.sh         # Creates .env and config.json
+make docker-up      # Build and start all services
 ```
-INFO: Syncing WhatsApp contacts on startup...
-INFO: Synced 150 contacts (batch 1)
-INFO: Contact sync completed successfully
+
+### 🔧 Docker Commands
+
+```bash
+make docker-up         # Start all services
+make docker-down       # Stop all services  
+make docker-logs       # Follow logs
+make docker-status     # Check service status
+make docker-restart    # Restart services
+make docker-clean      # Clean up everything
+```
+
+### 🔧 Troubleshooting
+
+**Services won't start:**
+```bash
+# Check service status
+make docker-status
+
+# View logs for issues
+make docker-logs
+
+# Restart services
+make docker-restart
+```
+
+**Port conflicts:**
+- WhatSignal: 8082
+- WAHA: 3000  
+- Signal-CLI: 8080
+
+**Clean slate restart:**
+```bash
+make docker-clean  # Removes all data!
+./setup.sh         # Recreate config
+make docker-up     # Start fresh
 ```
 
 ## Documentation
 
-- [Installation Guide](docs/installation.md) - Detailed setup instructions
-- [Configuration Guide](docs/configuration.md) - Configuration options
+### Getting Started
+- [Quick Start Checklist](docs/quickstart.md) - Step-by-step deployment checklist
+- [Deployment Guide](docs/deployment.md) - Complete deployment instructions
+
+### Configuration & Operations  
+- [Configuration Guide](docs/configuration.md) - Configuration options and settings
 - [Security Guide](docs/security.md) - Encryption and security features
-- [Operations Guide](docs/operations.md) - Production deployment and maintenance
-- [Usage Guide](docs/usage.md) - How to use WhatSignal
-- [Development Guide](docs/development.md) - Contributing and development
+
+### Development
+- [Development Guide](docs/development.md) - Contributing and development setup
 - [Technical Requirements](docs/requirements.md) - Design specifications
+- [Release Process](docs/release.md) - Version management and releases
 
 ## Contributing
 

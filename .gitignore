@@ -42,6 +42,7 @@ Thumbs.db
 config.json
 !config.json.example
 Claude.md
+/media-cache/
 
 # Environment variables
 .env
@@ -54,3 +55,5 @@ debug.test
 #Binaries
 build/***
 whatsignal
+whatsignal.db
+whatsignal.test

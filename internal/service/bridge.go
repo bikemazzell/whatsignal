@@ -26,7 +26,6 @@ type MessageBridge interface {
 
 type DatabaseService interface {
 	SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error
-	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
@@ -86,19 +85,16 @@ func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 }
 
 func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
-	// Extract phone number from WhatsApp ID (remove @c.us suffix)
 	senderPhone := sender
 	if strings.HasSuffix(sender, "@c.us") {
 		senderPhone = strings.TrimSuffix(sender, "@c.us")
 	}
 
-	// Get display name for the sender (contact name if available, otherwise phone number)
 	displayName := senderPhone // fallback
 	if b.contactService != nil {
 		displayName = b.contactService.GetContactDisplayName(ctx, senderPhone)
 	}
 
-	// Format message with contact name instead of phone number
 	message := fmt.Sprintf("%s: %s", displayName, content)
 	var attachments []string
 
@@ -110,7 +106,6 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 		attachments = append(attachments, processedPath)
 	}
 
-	// Send to the configured Signal destination number, not the WhatsApp chatID
 	resp, err := b.sigClient.SendMessage(ctx, b.signalDestinationPhoneNumber, message, attachments)
 	if err != nil {
 		return fmt.Errorf("failed to send signal message: %w", err)
@@ -150,7 +145,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 		return b.handleNewSignalThread(ctx, msg)
 	}
 
-	// Look up the original WhatsApp message mapping using the Signal message ID from the quoted message
 	b.logger.WithFields(logrus.Fields{
 		"quotedMessageID": msg.QuotedMessage.ID,
 	}).Debug("Looking up message mapping for quoted message")
@@ -175,8 +169,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	}
 
 	if mapping == nil {
-		// Try to extract the WhatsApp phone number from the quoted text
-		// This handles both old format (📱 phone: message) and new format (ContactName: message)
 		if strings.Contains(msg.QuotedMessage.Text, ": ") {
 			parts := strings.SplitN(msg.QuotedMessage.Text, ": ", 2)
 			if len(parts) == 2 {
@@ -184,13 +176,10 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 				
 				b.logger.Debug("Attempting fallback extraction from quoted text")
 				
-				// Remove emoji prefix if present (old format)
 				senderInfo = strings.TrimPrefix(senderInfo, "📱 ")
 				
-				// First try: if it looks like a phone number (old format)
 				var phoneNumber string
 				if len(senderInfo) >= 10 && strings.ContainsAny(senderInfo, "0123456789") {
-					// Extract digits (simple heuristic)
 					for _, char := range senderInfo {
 						if char >= '0' && char <= '9' {
 							phoneNumber += string(char)
@@ -199,16 +188,12 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 					if len(phoneNumber) >= 10 {
 						whatsappChatID := phoneNumber + "@c.us"
 						b.logger.Debug("Extracted phone number from quoted text for fallback")
-						// Create a synthetic mapping to handle the reply
 						mapping = &models.MessageMapping{
 							WhatsAppChatID: whatsappChatID,
 						}
 					}
 				}
 				
-				// TODO: Second try: reverse lookup contact name to phone number
-				// This would require extending the contact service to support reverse lookups
-				// For now, we'll rely on the database mappings being correct
 			}
 		}
 		
@@ -325,23 +310,19 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 }
 
 func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	// Log the group message but don't fail - graceful degradation
 	b.logger.WithFields(logrus.Fields{
 		"messageID": msg.MessageID,
 		"sender":    msg.Sender,
 	}).Warn("Group messages are not yet supported - message ignored")
 
-	// Return nil to indicate successful handling (even though we ignored it)
 	return nil
 }
 
 func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	// Log the new thread but don't fail - graceful degradation
 	b.logger.WithFields(logrus.Fields{
 		"messageID": msg.MessageID,
 		"sender":    msg.Sender,
 	}).Warn("New thread creation is not yet supported - message ignored")
 
-	// Return nil to indicate successful handling (even though we ignored it)
 	return nil
 }

@@ -128,21 +128,6 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 	return nil
 }
 
-// GetMessageMapping retrieves a message mapping by trying both WhatsApp and Signal IDs
-// Deprecated: Use GetMessageMappingByWhatsAppID or GetMessageMappingBySignalID for better performance
-func (d *Database) GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error) {
-	// Try WhatsApp ID first
-	mapping, err := d.GetMessageMappingByWhatsAppID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if mapping != nil {
-		return mapping, nil
-	}
-
-	// If not found, try Signal ID
-	return d.GetMessageMappingBySignalID(ctx, id)
-}
 
 func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
 	encryptedWhatsAppID, err := d.encryptor.EncryptForLookupIfEnabled(whatsappID)
@@ -331,8 +316,6 @@ func (d *Database) UpdateDeliveryStatusBySignalID(ctx context.Context, signalID 
 	return nil
 }
 
-// UpdateDeliveryStatus updates delivery status by trying both WhatsApp and Signal IDs
-// This is kept for backward compatibility but should be avoided for performance
 func (d *Database) UpdateDeliveryStatus(ctx context.Context, id string, status string) error {
 	// Try WhatsApp ID first
 	err := d.UpdateDeliveryStatusByWhatsAppID(ctx, id, status)

@@ -64,7 +64,6 @@ func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache,
 	}
 }
 
-// generateUniqueID generates a unique ID for message mapping
 func generateUniqueID() string {
 	bytes := make([]byte, 16)
 	rand.Read(bytes)
@@ -72,7 +71,6 @@ func generateUniqueID() string {
 }
 
 func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) error {
-	// Process media outside of mutex
 	if msg.MediaURL != "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -81,12 +79,10 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 		msg.MediaPath = cachePath
 	}
 
-	// Send message outside of mutex
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	// Generate unique IDs for mapping
 	signalMsgID := generateUniqueID()
 
 	mapping := &models.MessageMapping{
@@ -101,7 +97,6 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 		mapping.MediaPath = &msg.MediaPath
 	}
 
-	// Only protect database operations with mutex
 	s.mu.Lock()
 	err := s.db.SaveMessageMapping(ctx, mapping)
 	s.mu.Unlock()
@@ -114,7 +109,6 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 }
 
 func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message) error {
-	// Check for existing mapping with read lock
 	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msg.ID)
 	s.mu.RUnlock()
@@ -123,7 +117,6 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		return nil
 	}
 
-	// Process media outside of mutex
 	if msg.MediaURL != "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -132,13 +125,11 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		msg.MediaPath = cachePath
 	}
 
-	// Send message outside of mutex
 	err = s.bridge.SendMessage(ctx, msg)
 	if err != nil {
 		return err
 	}
 
-	// Generate unique Signal message ID
 	signalMsgID := generateUniqueID()
 
 	mapping := &models.MessageMapping{
@@ -154,7 +145,6 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		mapping.MediaPath = &msg.MediaPath
 	}
 
-	// Only protect database write with mutex
 	s.mu.Lock()
 	err = s.db.SaveMessageMapping(ctx, mapping)
 	s.mu.Unlock()
@@ -166,9 +156,15 @@ func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	mapping, err := s.db.GetMessageMapping(ctx, id)
+	mapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if mapping == nil {
+		mapping, err = s.db.GetMessageMappingBySignalID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if mapping == nil {
 		return nil, fmt.Errorf("message not found: %s", id)
@@ -193,7 +189,18 @@ func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models
 
 func (s *messageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	s.mu.RLock()
-	mapping, err := s.db.GetMessageMapping(ctx, threadID)
+	mapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, threadID)
+	if err != nil {
+		s.mu.RUnlock()
+		return nil, err
+	}
+	if mapping == nil {
+		mapping, err = s.db.GetMessageMappingBySignalID(ctx, threadID)
+		if err != nil {
+			s.mu.RUnlock()
+			return nil, err
+		}
+	}
 	s.mu.RUnlock()
 
 	if err != nil {
@@ -229,7 +236,6 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 }
 
 func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
-	// Check for existing mapping with read lock
 	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msgID)
 	s.mu.RUnlock()
@@ -241,7 +247,6 @@ func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgI
 
 	LogMessageProcessing(ctx, s.logger, "WhatsApp", chatID, msgID, sender, content)
 
-	// Forward WhatsApp message to Signal via bridge
 	return s.bridge.HandleWhatsAppMessage(ctx, chatID, msgID, sender, content, mediaPath)
 }
 
@@ -254,7 +259,6 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 		return fmt.Errorf("group messages are not supported yet")
 	}
 
-	// Process media outside of mutex
 	if msg.MediaURL != "" && msg.MediaPath == "" {
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
@@ -263,7 +267,6 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 		msg.MediaPath = cachePath
 	}
 
-	// Send message outside of mutex
 	if err := s.bridge.SendMessage(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send Signal message via bridge: %w", err)
 	}
@@ -273,7 +276,6 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error {
 	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
-	// Bridge operations don't need mutex protection
 	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
 }
 
@@ -286,10 +288,9 @@ func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string,
 
 func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	
-	// Poll for messages with configured timeout
 	pollTimeout := s.signalConfig.PollTimeoutSec
 	if pollTimeout <= 0 {
-		pollTimeout = s.signalConfig.PollIntervalSec // Fallback to interval if timeout not set
+		pollTimeout = s.signalConfig.PollIntervalSec
 	}
 	messages, err := s.signalClient.ReceiveMessages(ctx, pollTimeout)
 	if err != nil {
@@ -298,7 +299,6 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 
 	LogSignalPolling(ctx, s.logger, len(messages))
 
-	// Process each message
 	for _, msg := range messages {
 		if err := s.ProcessIncomingSignalMessage(ctx, &msg); err != nil {
 			if IsVerboseLogging(ctx) {
@@ -306,7 +306,6 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			} else {
 				s.logger.WithError(err).Error("Failed to process Signal message from polling")
 			}
-			// Continue processing other messages even if one fails
 		}
 	}
 

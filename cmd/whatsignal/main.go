@@ -23,12 +23,26 @@ import (
 )
 
 var (
-	verbose = flag.Bool("verbose", false, "Enable verbose logging (includes sensitive information)")
+	// Version information (set at build time)
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+
+	// CLI flags
+	verbose    = flag.Bool("verbose", false, "Enable verbose logging (includes sensitive information)")
 	configPath = flag.String("config", "config.json", "Path to configuration file")
+	version    = flag.Bool("version", false, "Show version information")
 )
 
 func main() {
 	flag.Parse()
+	
+	if *version {
+		fmt.Printf("WhatSignal %s\n", Version)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+		os.Exit(0)
+	}
 	
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -41,6 +55,12 @@ func main() {
 func run(ctx context.Context) error {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
+	
+	logger.WithFields(logrus.Fields{
+		"version":   Version,
+		"build":     BuildTime,
+		"commit":    GitCommit,
+	}).Info("Starting WhatSignal")
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
@@ -51,7 +71,6 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Set log level based on config and verbose flag
 	if *verbose {
 		logger.SetLevel(logrus.DebugLevel)
 		logger.Info("Verbose logging enabled - sensitive information will be logged")
@@ -61,7 +80,6 @@ func run(ctx context.Context) error {
 			logger.Warnf("Invalid log level %q, defaulting to info", cfg.LogLevel)
 			logger.SetLevel(logrus.InfoLevel)
 		} else {
-			// In non-verbose mode, limit to info level maximum for privacy
 			if level > logrus.InfoLevel {
 				level = logrus.InfoLevel
 			}
@@ -115,14 +133,12 @@ func run(ctx context.Context) error {
 		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
 	}
 
-	// Create contact service for better message formatting
 	cacheHours := cfg.WhatsApp.ContactCacheHours
 	if cacheHours <= 0 {
-		cacheHours = 24 // Default to 24 hours
+		cacheHours = 24
 	}
 	contactService := service.NewContactServiceWithConfig(db, waClient, cacheHours)
 
-	// Sync all contacts on startup if enabled (default: true for better UX)  
 	syncOnStartup := cfg.WhatsApp.ContactSyncOnStartup
 	if syncOnStartup {
 		logger.Info("Syncing WhatsApp contacts on startup...")
@@ -146,8 +162,6 @@ func run(ctx context.Context) error {
 	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, logger)
 	go scheduler.Start(ctx)
 
-	// Start Signal poller
-	// Create context with verbose flag for services
 	ctxWithVerbose := context.WithValue(ctx, "verbose", *verbose)
 	
 	signalPoller := service.NewSignalPoller(sigClient, messageService, cfg.Signal, models.RetryConfig{

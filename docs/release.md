@@ -74,10 +74,10 @@ The GitHub Actions workflow will automatically:
 ## Docker Image Tags
 
 Each release creates multiple Docker image tags:
-- `ghcr.io/yourusername/whatsignal:latest` - Latest stable release
-- `ghcr.io/yourusername/whatsignal:0.50.0` - Specific version
-- `ghcr.io/yourusername/whatsignal:0.50` - Minor version (latest patch)
-- `ghcr.io/yourusername/whatsignal:main` - Latest main branch build
+- `ghcr.io/bikemazzell/whatsignal:latest` - Latest stable release
+- `ghcr.io/bikemazzell/whatsignal:0.50.0` - Specific version
+- `ghcr.io/bikemazzell/whatsignal:0.50` - Minor version (latest patch)
+- `ghcr.io/bikemazzell/whatsignal:main` - Latest main branch build
 
 ## Version Information
 

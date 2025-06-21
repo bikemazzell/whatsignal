@@ -662,3 +662,160 @@ func TestNewEncryptorWithCustomSecret(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, plaintext, decrypted)
 }
+
+func TestDatabase_SaveContact(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	contact := &models.Contact{
+		ContactID:   "123456@c.us",
+		PhoneNumber: "+1234567890",
+		Name:        "John Doe",
+		PushName:    "JD",
+		ShortName:   "John",
+		IsBlocked:   false,
+		IsGroup:     false,
+		IsMyContact: true,
+	}
+
+	// Test saving a contact
+	err := db.SaveContact(ctx, contact)
+	assert.NoError(t, err)
+
+	// Test updating existing contact (INSERT OR REPLACE)
+	contact.Name = "John Updated"
+	err = db.SaveContact(ctx, contact)
+	assert.NoError(t, err)
+}
+
+func TestDatabase_GetContact(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test getting non-existent contact
+	result, err := db.GetContact(ctx, "nonexistent@c.us")
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+
+	// Save a contact first
+	contact := &models.Contact{
+		ContactID:   "123456@c.us",
+		PhoneNumber: "+1234567890",
+		Name:        "Jane Doe",
+		PushName:    "Jane",
+		ShortName:   "Jane",
+		IsBlocked:   false,
+		IsGroup:     false,
+		IsMyContact: true,
+	}
+
+	err = db.SaveContact(ctx, contact)
+	require.NoError(t, err)
+
+	// Test getting existing contact
+	retrieved, err := db.GetContact(ctx, "123456@c.us")
+	assert.NoError(t, err)
+	assert.Equal(t, contact.ContactID, retrieved.ContactID)
+	assert.Equal(t, contact.PhoneNumber, retrieved.PhoneNumber)
+	assert.Equal(t, contact.Name, retrieved.Name)
+	assert.Equal(t, contact.PushName, retrieved.PushName)
+	assert.Equal(t, contact.ShortName, retrieved.ShortName)
+	assert.Equal(t, contact.IsBlocked, retrieved.IsBlocked)
+	assert.Equal(t, contact.IsGroup, retrieved.IsGroup)
+	assert.Equal(t, contact.IsMyContact, retrieved.IsMyContact)
+}
+
+func TestDatabase_GetContactByPhone(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test getting non-existent contact
+	result, err := db.GetContactByPhone(ctx, "+9999999999")
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+
+	// Save a contact first
+	contact := &models.Contact{
+		ContactID:   "+0987654321@c.us",
+		PhoneNumber: "+0987654321",
+		Name:        "Bob Smith",
+		PushName:    "Bob",
+		ShortName:   "Bob",
+		IsBlocked:   false,
+		IsGroup:     false,
+		IsMyContact: true,
+	}
+
+	err = db.SaveContact(ctx, contact)
+	require.NoError(t, err)
+
+	// Test getting existing contact by phone
+	retrieved, err := db.GetContactByPhone(ctx, "+0987654321")
+	assert.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, contact.ContactID, retrieved.ContactID)
+	assert.Equal(t, contact.PhoneNumber, retrieved.PhoneNumber)
+	assert.Equal(t, contact.Name, retrieved.Name)
+}
+
+func TestDatabase_CleanupOldContacts(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Save some contacts with different cached_at times
+	now := time.Now()
+	oldTime := now.AddDate(0, 0, -40) // 40 days ago
+
+	// Create old contact (should be deleted)
+	oldContact := &models.Contact{
+		ContactID:   "old@c.us",
+		PhoneNumber: "+1111111111",
+		Name:        "Old Contact",
+		IsMyContact: true,
+	}
+
+	// Create recent contact (should not be deleted)
+	recentContact := &models.Contact{
+		ContactID:   "recent@c.us",
+		PhoneNumber: "+2222222222",
+		Name:        "Recent Contact",
+		IsMyContact: true,
+	}
+
+	// Save contacts
+	err := db.SaveContact(ctx, oldContact)
+	require.NoError(t, err)
+	err = db.SaveContact(ctx, recentContact)
+	require.NoError(t, err)
+
+	// Manually update the cached_at for the old contact to simulate old data
+	_, err = db.db.ExecContext(ctx, `
+		UPDATE contacts 
+		SET cached_at = ? 
+		WHERE contact_id = ?
+	`, oldTime.Format(time.RFC3339), oldContact.ContactID)
+	require.NoError(t, err)
+
+	// Run cleanup with 30 day retention
+	err = db.CleanupOldContacts(30)
+	assert.NoError(t, err)
+
+	// Verify old contact was deleted
+	deletedContact, err := db.GetContact(ctx, "old@c.us")
+	assert.NoError(t, err)
+	assert.Nil(t, deletedContact)
+
+	// Verify recent contact still exists
+	contact, err := db.GetContact(ctx, "recent@c.us")
+	assert.NoError(t, err)
+	require.NotNil(t, contact)
+	assert.Equal(t, "recent@c.us", contact.ContactID)
+}

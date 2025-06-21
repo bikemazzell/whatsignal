@@ -9,20 +9,23 @@ type Config struct {
 	Database      DatabaseConfig `json:"database" mapstructure:"database"`
 	Media         MediaConfig    `json:"media" mapstructure:"media"`
 	Retry         RetryConfig    `json:"retry" mapstructure:"retry"`
+	Server        ServerConfig   `json:"server" mapstructure:"server"`
 	LogLevel      string         `json:"log_level" mapstructure:"log_level"`
 	RetentionDays int            `json:"retentionDays"`
 }
 
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
-	APIBaseURL           string        `json:"api_base_url" mapstructure:"api_base_url"`
-	SessionName          string        `json:"session_name" mapstructure:"session_name"`
-	Timeout              time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
-	RetryCount           int           `json:"retry_count" mapstructure:"retry_count"`
-	WebhookSecret        string        `json:"webhook_secret" mapstructure:"webhook_secret"`
-	PollIntervalSec      int           `json:"pollIntervalSec"`
-	ContactSyncOnStartup bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
-	ContactCacheHours    int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
+	APIBaseURL               string        `json:"api_base_url" mapstructure:"api_base_url"`
+	SessionName              string        `json:"session_name" mapstructure:"session_name"`
+	Timeout                  time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
+	RetryCount               int           `json:"retry_count" mapstructure:"retry_count"`
+	WebhookSecret            string        `json:"webhook_secret" mapstructure:"webhook_secret"`
+	PollIntervalSec          int           `json:"pollIntervalSec"`
+	ContactSyncOnStartup     bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
+	ContactCacheHours        int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
+	SessionHealthCheckSec    int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
+	SessionAutoRestart       bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
 }
 
 // SignalConfig holds Signal related configurations
@@ -72,6 +75,13 @@ type RetryConfig struct {
 	InitialBackoffMs int `json:"initialBackoffMs"`
 	MaxBackoffMs     int `json:"maxBackoffMs"`
 	MaxAttempts      int `json:"maxAttempts"`
+}
+
+// ServerConfig holds server related configurations
+type ServerConfig struct {
+	ReadTimeoutSec  int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
+	WriteTimeoutSec int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
+	IdleTimeoutSec  int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
 }
 
 type ConfigError struct {

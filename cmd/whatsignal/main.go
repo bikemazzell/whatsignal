@@ -141,11 +141,18 @@ func run(ctx context.Context) error {
 
 	syncOnStartup := cfg.WhatsApp.ContactSyncOnStartup
 	if syncOnStartup {
-		logger.Info("Syncing WhatsApp contacts on startup...")
-		if err := contactService.SyncAllContacts(ctx); err != nil {
-			logger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
+		logger.Info("Waiting for WhatsApp session to be ready...")
+		// Wait for session to be ready
+		sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
+		if err := waClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
+			logger.Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
 		} else {
-			logger.Info("Contact sync completed successfully")
+			logger.Info("WhatsApp session is ready. Syncing contacts...")
+			if err := contactService.SyncAllContacts(ctx); err != nil {
+				logger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
+			} else {
+				logger.Info("Contact sync completed successfully")
+			}
 		}
 	} else {
 		logger.Info("Contact sync on startup is disabled")
@@ -162,6 +169,18 @@ func run(ctx context.Context) error {
 	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, logger)
 	go scheduler.Start(ctx)
 
+	// Start session monitor if auto-restart is enabled
+	if cfg.WhatsApp.SessionAutoRestart {
+		checkInterval := time.Duration(cfg.WhatsApp.SessionHealthCheckSec) * time.Second
+		if checkInterval <= 0 {
+			checkInterval = time.Duration(constants.DefaultSessionHealthCheckSec) * time.Second
+		}
+		sessionMonitor := service.NewSessionMonitor(waClient, logger, checkInterval)
+		sessionMonitor.Start(ctx)
+		defer sessionMonitor.Stop()
+		logger.WithField("interval", checkInterval).Info("Session health monitor started")
+	}
+
 	ctxWithVerbose := context.WithValue(ctx, "verbose", *verbose)
 	
 	signalPoller := service.NewSignalPoller(sigClient, messageService, cfg.Signal, models.RetryConfig{
@@ -175,7 +194,7 @@ func run(ctx context.Context) error {
 	}
 	defer signalPoller.Stop()
 
-	server := NewServer(cfg, messageService, logger)
+	server := NewServer(cfg, messageService, logger, waClient)
 	serverErrCh := make(chan error, 1)
 	go func() {
 		if err := server.Start(); err != nil {

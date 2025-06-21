@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
 	"whatsignal/pkg/whatsapp/types"
 )
@@ -55,8 +56,143 @@ func (c *WhatsAppClient) StopSession(ctx context.Context) error {
 	return c.sessionMgr.Stop(ctx, c.sessionName)
 }
 
+func (c *WhatsAppClient) RestartSession(ctx context.Context) error {
+	// Use WAHA's restart endpoint
+	url := fmt.Sprintf("%s/api/sessions/%s/restart", c.baseURL, c.sessionName)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create restart request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to restart session: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		var errorResp map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+			if errMsg, ok := errorResp["error"].(string); ok {
+				return fmt.Errorf("restart failed with status %d: %s", resp.StatusCode, errMsg)
+			}
+		}
+		return fmt.Errorf("restart failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
-	return c.sessionMgr.Get(ctx, c.sessionName)
+	// Get the real-time status from WAHA API instead of cached value
+	url := fmt.Sprintf("%s/api/sessions", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sessions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get sessions, status: %d", resp.StatusCode)
+	}
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		return nil, fmt.Errorf("failed to decode sessions: %w", err)
+	}
+
+	// Find our session
+	for _, session := range sessions {
+		if name, ok := session["name"].(string); ok && name == c.sessionName {
+			status := "unknown"
+			if s, ok := session["status"].(string); ok {
+				status = s
+			}
+			return &types.Session{
+				Name:      c.sessionName,
+				Status:    types.SessionStatus(status),
+				UpdatedAt: time.Now(),
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("session %s not found", c.sessionName)
+}
+
+// WaitForSessionReady waits for the WhatsApp session to be in WORKING status
+func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	deadline := time.Now().Add(maxWaitTime)
+	backoff := time.Duration(constants.DefaultBackoffInitialMs) * time.Millisecond
+	maxBackoff := time.Duration(constants.DefaultBackoffMaxSec) * time.Second
+
+	for time.Now().Before(deadline) {
+		// Get session status directly from WAHA API
+		url := fmt.Sprintf("%s/api/sessions", c.baseURL)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		if c.apiKey != "" {
+			req.Header.Set("X-Api-Key", c.apiKey)
+		}
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to get sessions: %w", err)
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			var sessions []map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&sessions); err == nil {
+				resp.Body.Close()
+				
+				// Find our session
+				for _, session := range sessions {
+					if name, ok := session["name"].(string); ok && name == c.sessionName {
+						if status, ok := session["status"].(string); ok {
+							if status == "WORKING" {
+								return nil // Session is ready
+							}
+							// Log current status for debugging
+							fmt.Printf("Session %s status: %s, waiting...\n", c.sessionName, status)
+						}
+						break
+					}
+				}
+			} else {
+				resp.Body.Close()
+			}
+		} else {
+			resp.Body.Close()
+		}
+
+		// Wait with exponential backoff
+		select {
+		case <-time.After(backoff):
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return fmt.Errorf("timeout waiting for session to be ready after %v", maxWaitTime)
 }
 
 func (c *WhatsAppClient) sendSeen(ctx context.Context, chatID string) error {
@@ -321,6 +457,13 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// Try to decode error response
+		var errorResp map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+			if errMsg, ok := errorResp["error"].(string); ok {
+				return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errMsg)
+			}
+		}
 		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
 	}
 

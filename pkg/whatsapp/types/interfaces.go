@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"time"
 )
 
 type WAClient interface {
@@ -14,7 +15,9 @@ type WAClient interface {
 	CreateSession(ctx context.Context) error
 	StartSession(ctx context.Context) error
 	StopSession(ctx context.Context) error
+	RestartSession(ctx context.Context) error
 	GetSessionStatus(ctx context.Context) (*Session, error)
+	WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error
 	
 	// Contact methods
 	GetContact(ctx context.Context, contactID string) (*Contact, error)

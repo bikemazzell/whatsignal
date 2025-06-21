@@ -84,6 +84,22 @@ func (m *MockWAClient) GetSessionStatus(ctx context.Context) (*Session, error) {
 	return args.Get(0).(*Session), args.Error(1)
 }
 
+func (m *MockWAClient) GetContact(ctx context.Context, contactID string) (*Contact, error) {
+	args := m.Called(ctx, contactID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*Contact), args.Error(1)
+}
+
+func (m *MockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([]Contact, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]Contact), args.Error(1)
+}
+
 // MockSessionManager is a mock implementation of the SessionManager interface
 type MockSessionManager struct {
 	mock.Mock

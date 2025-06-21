@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -256,18 +257,18 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "valid text message",
 			payload: map[string]interface{}{
 				"event": "message",
-				"data": map[string]interface{}{
+				"payload": map[string]interface{}{
 					"id":      "msg123",
-					"chatId":  "chat123",
-					"sender":  "sender123",
-					"type":    "text",
-					"content": "Hello, World!",
+					"from":    "sender123",
+					"fromMe":  false,
+					"body":    "Hello, World!",
+					"hasMedia": false,
 				},
 			},
 			setup: func() {
 				msgService.On("HandleWhatsAppMessage",
 					mock.Anything,
-					"chat123",
+					"sender123",
 					"msg123",
 					"sender123",
 					"Hello, World!",
@@ -281,19 +282,21 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "valid media message",
 			payload: map[string]interface{}{
 				"event": "message",
-				"data": map[string]interface{}{
-					"id":        "msg124",
-					"chatId":    "chat124",
-					"sender":    "sender124",
-					"type":      "image",
-					"content":   "Check this out!",
-					"mediaPath": "/path/to/image.jpg",
+				"payload": map[string]interface{}{
+					"id":      "msg124",
+					"from":    "sender124",
+					"fromMe":  false,
+					"body":    "Check this out!",
+					"hasMedia": true,
+					"media": map[string]interface{}{
+						"url": "/path/to/image.jpg",
+					},
 				},
 			},
 			setup: func() {
 				msgService.On("HandleWhatsAppMessage",
 					mock.Anything,
-					"chat124",
+					"sender124",
 					"msg124",
 					"sender124",
 					"Check this out!",
@@ -307,7 +310,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "non-message event",
 			payload: map[string]interface{}{
 				"event": "status",
-				"data": map[string]interface{}{
+				"payload": map[string]interface{}{
 					"id": "status123",
 				},
 			},
@@ -315,7 +318,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			useSignature: true,
 		},
 		{
-			name: "missing data field",
+			name: "missing payload field",
 			payload: map[string]interface{}{
 				"event": "message",
 			},
@@ -326,8 +329,8 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "missing required fields",
 			payload: map[string]interface{}{
 				"event": "message",
-				"data": map[string]interface{}{
-					"content": "Hello",
+				"payload": map[string]interface{}{
+					"body": "Hello",
 				},
 			},
 			wantStatus:   http.StatusBadRequest,
@@ -337,11 +340,11 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "invalid payload - message event with missing ID",
 			payload: map[string]interface{}{
 				"event": "message",
-				"data": map[string]interface{}{
-					"chatId":  "chat123",
-					"sender":  "sender123",
-					"type":    "text",
-					"content": "Hello",
+				"payload": map[string]interface{}{
+					"from":    "sender123",
+					"fromMe":  false,
+					"body":    "Hello",
+					"hasMedia": false,
 					// Missing required "id" field
 				},
 			},
@@ -352,18 +355,18 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "service error",
 			payload: map[string]interface{}{
 				"event": "message",
-				"data": map[string]interface{}{
+				"payload": map[string]interface{}{
 					"id":      "msg125",
-					"chatId":  "chat125",
-					"sender":  "sender125",
-					"type":    "text",
-					"content": "Error message",
+					"from":    "sender125",
+					"fromMe":  false,
+					"body":    "Error message",
+					"hasMedia": false,
 				},
 			},
 			setup: func() {
 				msgService.On("HandleWhatsAppMessage",
 					mock.Anything,
-					"chat125",
+					"sender125",
 					"msg125",
 					"sender125",
 					"Error message",
@@ -377,12 +380,12 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "invalid signature",
 			payload: map[string]interface{}{
 				"event": "message",
-				"data": map[string]interface{}{
+				"payload": map[string]interface{}{
 					"id":      "msg126",
-					"chatId":  "chat126",
-					"sender":  "sender126",
-					"type":    "text",
-					"content": "Test message",
+					"from":    "sender126",
+					"fromMe":  false,
+					"body":    "Test message",
+					"hasMedia": false,
 				},
 			},
 			wantStatus:   http.StatusUnauthorized,
@@ -402,14 +405,16 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 
 			if tt.useSignature {
-				// Create valid signature
-				mac := hmac.New(sha256.New, []byte("test-secret"))
+				// Create valid signature for WAHA webhook (uses SHA-512 and requires timestamp)
+				mac := hmac.New(sha512.New, []byte("test-secret"))
 				mac.Write(payload)
-				signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+				signature := hex.EncodeToString(mac.Sum(nil))
 				req.Header.Set(XWahaSignatureHeader, signature)
+				req.Header.Set("X-Webhook-Timestamp", "1234567890")
 			} else {
 				// Create invalid signature
-				req.Header.Set(XWahaSignatureHeader, "sha256=invalidsignature")
+				req.Header.Set(XWahaSignatureHeader, "invalidsignature")
+				req.Header.Set("X-Webhook-Timestamp", "1234567890")
 			}
 
 			w := httptest.NewRecorder()

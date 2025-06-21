@@ -193,6 +193,21 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 	return mapping, nil
 }
 
+// GetMessageMapping retrieves a message mapping by either WhatsApp or Signal message ID
+func (d *Database) GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error) {
+	// First try as WhatsApp ID
+	mapping, err := d.GetMessageMappingByWhatsAppID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if mapping != nil {
+		return mapping, nil
+	}
+
+	// If not found, try as Signal ID
+	return d.GetMessageMappingBySignalID(ctx, id)
+}
+
 // GetMessageMappingBySignalID retrieves a message mapping by Signal message ID
 func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error) {
 	encryptedSignalID, err := d.encryptor.EncryptForLookupIfEnabled(signalID)

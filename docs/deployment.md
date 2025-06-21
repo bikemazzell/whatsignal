@@ -5,7 +5,7 @@
 Deploy WhatSignal using pre-built Docker images without needing the source code:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/scripts/deploy.sh | bash
 ```
 
 This will:

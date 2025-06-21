@@ -79,11 +79,11 @@ jobs:
           cp docker-compose.prod.yml deploy-artifacts/docker-compose.yml
           cp env.example deploy-artifacts/
           cp config.json.example deploy-artifacts/
-          cp deploy.sh deploy-artifacts/
+          cp scripts/deploy.sh deploy-artifacts/
 
       - name: Upload deployment artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: whatsignal-deployment
           path: deploy-artifacts/

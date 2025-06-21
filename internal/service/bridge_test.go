@@ -266,7 +266,7 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 			wantErr: false,
 			setup: func() {
-				bridge.db.(*mockDatabaseService).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.waClient.(*mockWhatsAppClient).sendTextResp = &types.SendMessageResponse{
 					MessageID: "msg124",
 					Status:    "sent",
@@ -299,7 +299,7 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 			wantErr: false,
 			setup: func() {
-				bridge.db.(*mockDatabaseService).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
 				bridge.waClient.(*mockWhatsAppClient).sendImageResp = &types.SendMessageResponse{
 					MessageID: "msg125",
@@ -335,7 +335,7 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 			wantErr: true,
 			setup: func() {
-				bridge.db.(*mockDatabaseService).On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return("", assert.AnError).Once()
 			},
 		},

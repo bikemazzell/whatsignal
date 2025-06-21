@@ -232,7 +232,7 @@ func TestReceiveMessage(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 			setup: func() {
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg1").Return(nil, nil)
+				db.On("GetMessageMapping", ctx, "msg1").Return(nil, nil)
 				bridge.On("SendMessage", ctx, mock.AnythingOfType("*models.Message")).Return(nil)
 				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
 			},
@@ -248,7 +248,7 @@ func TestReceiveMessage(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 			setup: func() {
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg2").Return(&models.MessageMapping{
+				db.On("GetMessageMapping", ctx, "msg2").Return(&models.MessageMapping{
 					WhatsAppMsgID:  "msg2",
 					DeliveryStatus: "delivered",
 				}, nil)
@@ -431,17 +431,8 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 			content: "Hello, World!",
 			setup: func() {
 				// Check if message exists
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(nil, nil).Once()
-
-				// Called by ReceiveMessage
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(nil, nil).Once()
-				bridge.On("SendMessage", ctx, mock.MatchedBy(func(msg *models.Message) bool {
-					return msg.ID == "msg123" &&
-						msg.ChatID == "chat123" &&
-						msg.Content == "Hello, World!" &&
-						msg.Type == models.TextMessage
-				})).Return(nil).Once()
-				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+				db.On("GetMessageMapping", ctx, "msg123").Return(nil, nil).Once()
+				bridge.On("HandleWhatsAppMessage", ctx, "chat123", "msg123", "sender123", "Hello, World!", "").Return(nil).Once()
 			},
 		},
 		{
@@ -453,19 +444,8 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 			mediaPath: "http://example.com/image.jpg",
 			setup: func() {
 				// Check if message exists
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg124").Return(nil, nil).Once()
-
-				// Called by ReceiveMessage
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg124").Return(nil, nil).Once()
-				mediaCache.On("ProcessMedia", "http://example.com/image.jpg").Return("/cache/image.jpg", nil).Once()
-				bridge.On("SendMessage", ctx, mock.MatchedBy(func(msg *models.Message) bool {
-					return msg.ID == "msg124" &&
-						msg.ChatID == "chat124" &&
-						msg.Content == "Check this out!" &&
-						msg.Type == models.ImageMessage &&
-						msg.MediaPath == "/cache/image.jpg"
-				})).Return(nil).Once()
-				db.On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+				db.On("GetMessageMapping", ctx, "msg124").Return(nil, nil).Once()
+				bridge.On("HandleWhatsAppMessage", ctx, "chat124", "msg124", "sender123", "Check this out!", "http://example.com/image.jpg").Return(nil).Once()
 			},
 		},
 		{
@@ -475,7 +455,7 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 			sender:  "sender123",
 			content: "Duplicate message",
 			setup: func() {
-				db.On("GetMessageMappingByWhatsAppID", ctx, "msg125").Return(&models.MessageMapping{
+				db.On("GetMessageMapping", ctx, "msg125").Return(&models.MessageMapping{
 					WhatsAppMsgID:  "msg125",
 					DeliveryStatus: "delivered",
 				}, nil).Once()

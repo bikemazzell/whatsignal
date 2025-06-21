@@ -110,7 +110,7 @@ func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) e
 
 func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message) error {
 	s.mu.RLock()
-	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msg.ID)
+	existingMapping, err := s.db.GetMessageMapping(ctx, msg.ID)
 	s.mu.RUnlock()
 
 	if err == nil && existingMapping != nil {
@@ -156,15 +156,9 @@ func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	mapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, id)
+	mapping, err := s.db.GetMessageMapping(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-	if mapping == nil {
-		mapping, err = s.db.GetMessageMappingBySignalID(ctx, id)
-		if err != nil {
-			return nil, err
-		}
 	}
 	if mapping == nil {
 		return nil, fmt.Errorf("message not found: %s", id)
@@ -189,26 +183,16 @@ func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models
 
 func (s *messageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	s.mu.RLock()
-	mapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, threadID)
+	mapping, err := s.db.GetMessageMapping(ctx, threadID)
 	if err != nil {
 		s.mu.RUnlock()
 		return nil, err
 	}
 	if mapping == nil {
-		mapping, err = s.db.GetMessageMappingBySignalID(ctx, threadID)
-		if err != nil {
-			s.mu.RUnlock()
-			return nil, err
-		}
-	}
-	s.mu.RUnlock()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get message thread: %w", err)
-	}
-	if mapping == nil {
+		s.mu.RUnlock()
 		return nil, fmt.Errorf("thread not found: %s", threadID)
 	}
+	s.mu.RUnlock()
 
 	msg := &models.Message{
 		ID:             mapping.WhatsAppMsgID,
@@ -237,7 +221,7 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 
 func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
 	s.mu.RLock()
-	existingMapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msgID)
+	existingMapping, err := s.db.GetMessageMapping(ctx, msgID)
 	s.mu.RUnlock()
 
 	if err == nil && existingMapping != nil {

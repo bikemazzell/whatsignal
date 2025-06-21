@@ -5,7 +5,20 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.50.0] - 2025-01-20
+## [0.51.0] - 21-06-2025
+
+### Added
+- Session health monitoring with automatic restart for WAHA disconnections
+- Session status endpoint at `/session/status` for monitoring
+- Configuration-driven timeouts and intervals
+- Server timeout configuration (`readTimeoutSec`, `writeTimeoutSec`, `idleTimeoutSec`)
+
+### Fixed
+- Contact sync startup failures when WAHA session not ready
+- Session getting stuck in bad states (OPENING, STOPPED)
+- Hardcoded timeout values replaced with configurable constants
+
+## [0.50.0] - 20-06-2025
 
 ### Added
 - Initial release of WhatSignal

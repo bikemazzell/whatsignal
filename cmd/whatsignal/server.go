@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
 	signaltypes "whatsignal/pkg/signal/types"
@@ -31,6 +33,7 @@ type Server struct {
 	waWebhook  whatsapp.WebhookHandler
 	server     *http.Server
 	cfg        *models.Config
+	waClient   types.WAClient
 }
 
 func convertWebhookPayloadToSignalMessage(payload *models.SignalWebhookPayload) *signaltypes.SignalMessage {
@@ -53,13 +56,14 @@ func convertWebhookPayloadToSignalMessage(payload *models.SignalWebhookPayload) 
 	}
 }
 
-func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger) *Server {
+func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient) *Server {
 	s := &Server{
 		router:     mux.NewRouter(),
 		logger:     logger,
 		msgService: msgService,
 		waWebhook:  whatsapp.NewWebhookHandler(),
 		cfg:        cfg,
+		waClient:   waClient,
 	}
 
 	s.setupRoutes()
@@ -69,6 +73,7 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 
 func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/health", s.handleHealth()).Methods(http.MethodGet)
+	s.router.HandleFunc("/session/status", s.handleSessionStatus()).Methods(http.MethodGet)
 
 	whatsapp := s.router.PathPrefix("/webhook/whatsapp").Subrouter()
 	whatsapp.HandleFunc("", s.handleWhatsAppWebhook()).Methods(http.MethodPost)
@@ -99,15 +104,31 @@ func (s *Server) setupWebhookHandlers() {
 func (s *Server) Start() error {
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8082"
+		port = strconv.Itoa(constants.DefaultServerPort)
+	}
+
+	// Use configured timeouts or defaults
+	readTimeout := time.Duration(s.cfg.Server.ReadTimeoutSec) * time.Second
+	if readTimeout <= 0 {
+		readTimeout = time.Duration(constants.DefaultServerReadTimeoutSec) * time.Second
+	}
+	
+	writeTimeout := time.Duration(s.cfg.Server.WriteTimeoutSec) * time.Second
+	if writeTimeout <= 0 {
+		writeTimeout = time.Duration(constants.DefaultServerWriteTimeoutSec) * time.Second
+	}
+	
+	idleTimeout := time.Duration(s.cfg.Server.IdleTimeoutSec) * time.Second
+	if idleTimeout <= 0 {
+		idleTimeout = time.Duration(constants.DefaultServerIdleTimeoutSec) * time.Second
 	}
 
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%s", port),
 		Handler:      s.router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  idleTimeout,
 	}
 
 	s.logger.Infof("Starting server on port %s", port)
@@ -136,6 +157,44 @@ func (s *Server) handleHealth() http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(health); err != nil {
 			s.logger.WithError(err).Error("Failed to write health check response")
+		}
+	}
+}
+
+func (s *Server) handleSessionStatus() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(constants.DefaultSessionStatusTimeoutSec)*time.Second)
+		defer cancel()
+
+		session, err := s.waClient.GetSessionStatus(ctx)
+		if err != nil {
+			s.logger.WithError(err).Error("Failed to get session status")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "Failed to get session status",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		sessionStatus := map[string]interface{}{
+			"name":       session.Name,
+			"status":     string(session.Status),
+			"healthy":    string(session.Status) == "WORKING",
+			"updated_at": session.UpdatedAt,
+		}
+
+		// Add config info
+		sessionStatus["config"] = map[string]interface{}{
+			"auto_restart_enabled": s.cfg.WhatsApp.SessionAutoRestart,
+			"health_check_interval_sec": s.cfg.WhatsApp.SessionHealthCheckSec,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(sessionStatus); err != nil {
+			s.logger.WithError(err).Error("Failed to write session status response")
 		}
 	}
 }

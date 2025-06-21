@@ -1,6 +1,6 @@
 # WhatSignal
 
-[![Version](https://img.shields.io/badge/version-0.50.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.51.0-blue.svg)](CHANGELOG.md)
 [![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

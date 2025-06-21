@@ -7,7 +7,7 @@
 - check that any videos are converted to WhatsApp understandable format (e.g. may need to use /api/{sesion}/media/convert/
 - check that any voice responses are converted to WhatsApp understandable format (e.g. may need to use /api/{sesion}/media/convert/voice POST command)video POST command)
 - make sure that URL previews work (if enabled, i.e. "linkPreview": true in /api/sendText body)
-- create a way for a WhatsApp user to pass along messages/images/videos/files to him/herself, e.g. by forwarding a message to 'Notes to Self' (i.e one's own account) those messages then get picked up by WhatSignal and relayed further into Signal
+
 
 -improve code coverage to at least 90% across all packages; currently they are at:
   - cmd/whatsignal: 78.8%

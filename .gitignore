@@ -41,7 +41,6 @@ Thumbs.db
 *.log
 config.json
 !config.json.example
-Claude.md
 /media-cache/
 
 # Environment variables

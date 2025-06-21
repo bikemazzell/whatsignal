@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
 )
@@ -126,7 +127,7 @@ func (cs *ContactService) RefreshContact(ctx context.Context, phoneNumber string
 
 // SyncAllContacts fetches all contacts from WhatsApp and updates the cache
 func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
-	const batchSize = 100
+	batchSize := constants.DefaultContactSyncBatchSize
 	offset := 0
 
 	for {
@@ -161,7 +162,7 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 
 		// Add a small delay to avoid overwhelming the API
 		select {
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(time.Duration(constants.DefaultContactSyncDelayMs) * time.Millisecond):
 		case <-ctx.Done():
 			return ctx.Err()
 		}

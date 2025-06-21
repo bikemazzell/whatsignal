@@ -183,6 +183,14 @@ func (m *mockDatabaseService) GetMessageMappingByWhatsAppID(ctx context.Context,
 	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
+func (m *mockDatabaseService) GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
+}
+
 func (m *mockDatabaseService) GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, signalID)
 	if args.Get(0) == nil {

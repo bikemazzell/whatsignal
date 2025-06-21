@@ -103,7 +103,7 @@ To use WhatSignal, you must have:
 
 **One-liner deployment (no source code needed):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/scripts/deploy.sh | bash
 ```
 
 📋 **Then follow the [Quick Start Checklist](docs/quickstart.md) for complete setup steps.**
@@ -111,7 +111,7 @@ curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.
 **Manual deployment:**
 ```bash
 # Download deployment script
-curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.sh -o deploy.sh
+curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/scripts/deploy.sh -o deploy.sh
 chmod +x deploy.sh
 ./deploy.sh
 
@@ -136,7 +136,7 @@ curl http://localhost:8082/health
 ```bash
 git clone https://github.com/bikemazzell/whatsignal.git
 cd whatsignal
-./setup.sh         # Creates .env and config.json
+./scripts/setup.sh  # Creates .env and config.json
 make docker-up      # Build and start all services
 ```
 
@@ -172,9 +172,9 @@ make docker-restart
 
 **Clean slate restart:**
 ```bash
-make docker-clean  # Removes all data!
-./setup.sh         # Recreate config
-make docker-up     # Start fresh
+make docker-clean     # Removes all data!
+./scripts/setup.sh    # Recreate config
+make docker-up        # Start fresh
 ```
 
 ## Documentation

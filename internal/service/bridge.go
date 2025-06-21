@@ -26,6 +26,7 @@ type MessageBridge interface {
 
 type DatabaseService interface {
 	SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error
+	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
@@ -149,7 +150,7 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 		"quotedMessageID": msg.QuotedMessage.ID,
 	}).Debug("Looking up message mapping for quoted message")
 	
-	mapping, err := b.db.GetMessageMappingBySignalID(ctx, msg.QuotedMessage.ID)
+	mapping, err := b.db.GetMessageMapping(ctx, msg.QuotedMessage.ID)
 	if err != nil {
 		b.logger.WithFields(logrus.Fields{
 			"quotedMessageID": msg.QuotedMessage.ID,

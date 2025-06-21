@@ -23,12 +23,6 @@ const (
 	XSignalSignatureHeader = "X-Signal-Signature-256"
 )
 
-// Version variables (defined in main.go)
-var (
-	Version   string
-	BuildTime string
-	GitCommit string
-)
 
 type Server struct {
 	router     *mux.Router

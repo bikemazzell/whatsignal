@@ -246,14 +246,9 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
 	
-	callCount := 0
-	mockMessageService.On("PollSignalMessages", mock.Anything).Return(func(ctx context.Context) error {
-		callCount++
-		if callCount <= 2 {
-			return errors.New("temporary failure")
-		}
-		return nil
-	})
+	// First two calls fail, subsequent calls succeed
+	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("temporary failure")).Twice()
+	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
 
@@ -266,6 +261,7 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	poller.Stop()
 
-	assert.GreaterOrEqual(t, callCount, 3, "Should have retried multiple times")
+	// Verify that retries happened
+	mockMessageService.AssertExpectations(t)
 	mockSignalClient.AssertExpectations(t)
 }

@@ -149,7 +149,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "signal phone number is required",
+			errorMsg:    "signal intermediary phone number is required",
 		},
 		{
 			name: "missing database path",
@@ -234,19 +234,19 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 	// Create a config with the file path as cache directory (this will cause mkdir to fail)
 	configContent := fmt.Sprintf(`{
 		"whatsapp": {
-			"apiBaseUrl": "http://localhost:8080",
-			"apiKey": "test-key",
-			"sessionName": "test-session",
-			"timeout": 5000000000,
-			"retryCount": 3,
-			"webhookSecret": "test-secret",
+			"api_base_url": "http://localhost:8080",
+			"session_name": "test-session",
+			"timeout_ms": 5000,
+			"retry_count": 3,
+			"webhook_secret": "test-secret",
 			"pollIntervalSec": 30
 		},
 		"signal": {
-			"rpcUrl": "http://localhost:8081",
-			"authToken": "test-token",
-			"phoneNumber": "+1234567890",
-			"deviceName": "test-device"
+			"rpc_url": "http://localhost:8081",
+			"auth_token": "test-token",
+			"intermediaryPhoneNumber": "+1234567890",
+			"destinationPhoneNumber": "+0987654321",
+			"device_name": "test-device"
 		},
 		"retry": {
 			"initialBackoffMs": 1000,
@@ -257,7 +257,7 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 			"path": "whatsignal.db"
 		},
 		"media": {
-			"cacheDir": "%s",
+			"cache_dir": "%s",
 			"maxSizeMB": {
 				"image": 10,
 				"video": 50,
@@ -273,7 +273,7 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 			}
 		},
 		"retentionDays": 7,
-		"logLevel": "info"
+		"log_level": "info"
 	}`, tmpFile.Name())
 
 	err = os.WriteFile("config.json", []byte(configContent), 0644)
@@ -314,19 +314,19 @@ func setupTestEnv(t *testing.T) {
 	// Create test config.json
 	configContent := `{
 		"whatsapp": {
-			"apiBaseUrl": "http://localhost:8080",
-			"apiKey": "test-key",
-			"sessionName": "test-session",
-			"timeout": 5000000000,
-			"retryCount": 3,
-			"webhookSecret": "test-secret",
+			"api_base_url": "http://localhost:8080",
+			"session_name": "test-session",
+			"timeout_ms": 5000000000,
+			"retry_count": 3,
+			"webhook_secret": "test-secret",
 			"pollIntervalSec": 30
 		},
 		"signal": {
-			"rpcUrl": "http://localhost:8081",
-			"authToken": "test-token",
-			"phoneNumber": "+1234567890",
-			"deviceName": "test-device"
+			"rpc_url": "http://localhost:8081",
+			"auth_token": "test-token",
+			"intermediaryPhoneNumber": "+1234567890",
+			"destinationPhoneNumber": "+1987654321",
+			"device_name": "test-device"
 		},
 		"retry": {
 			"initialBackoffMs": 1000,
@@ -337,10 +337,10 @@ func setupTestEnv(t *testing.T) {
 			"path": "whatsignal.db"
 		},
 		"media": {
-			"cacheDir": "cache"
+			"cache_dir": "cache"
 		},
 		"retentionDays": 7,
-		"logLevel": "info"
+		"log_level": "info"
 	}`
 
 	err = os.WriteFile("config.json", []byte(configContent), 0644)
@@ -348,7 +348,7 @@ func setupTestEnv(t *testing.T) {
 
 	// Set required environment variables
 	os.Setenv("WHATSAPP_API_KEY", "test-key")
-	os.Setenv("WHATSAPP_BASE_URL", "http://localhost:8080")
+	os.Setenv("WHATSAPP_API_URL", "http://localhost:8080")
 	os.Setenv("SIGNAL_CLI_PATH", "/usr/local/bin/signal-cli")
 	os.Setenv("SIGNAL_PHONE_NUMBER", "+1234567890")
 	os.Setenv("SIGNAL_CONFIG_PATH", tmpDir+"/signal")
@@ -368,7 +368,7 @@ func cleanupTestEnv(t *testing.T) {
 
 	vars := []string{
 		"WHATSAPP_API_KEY",
-		"WHATSAPP_BASE_URL",
+		"WHATSAPP_API_URL",
 		"SIGNAL_CLI_PATH",
 		"SIGNAL_PHONE_NUMBER",
 		"SIGNAL_CONFIG_PATH",

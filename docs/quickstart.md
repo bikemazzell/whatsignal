@@ -11,7 +11,7 @@
 
 ### 1. Deploy WhatSignal
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/scripts/deploy.sh | bash
 cd whatsignal-deploy
 ```
 

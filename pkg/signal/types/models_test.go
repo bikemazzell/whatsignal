@@ -153,13 +153,7 @@ func TestSendMessageRequest(t *testing.T) {
 				Message:    "Check this out!",
 				Number:     "+1234567890",
 				Recipients: []string{"+0987654321"},
-				Base64Attachments: []Attachment{
-					{
-						Filename:    "image.jpg",
-						ContentType: "image/jpeg",
-						Data:        "base64data",
-					},
-				},
+				Base64Attachments: []string{"base64data"},
 			},
 		},
 		{

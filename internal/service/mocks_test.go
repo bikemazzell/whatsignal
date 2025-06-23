@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 	"whatsignal/internal/models"
 	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp/types"
@@ -12,10 +13,16 @@ import (
 // Mock WhatsApp client
 type mockWhatsAppClient struct {
 	mock.Mock
-	sendTextResp  *types.SendMessageResponse
-	sendTextErr   error
-	sendImageResp *types.SendMessageResponse
-	sendImageErr  error
+	sendTextResp     *types.SendMessageResponse
+	sendTextErr      error
+	sendImageResp    *types.SendMessageResponse
+	sendImageErr     error
+	sendVideoResp    *types.SendMessageResponse
+	sendVideoErr     error
+	sendVoiceResp    *types.SendMessageResponse
+	sendVoiceErr     error
+	sendDocumentResp *types.SendMessageResponse
+	sendDocumentErr  error
 }
 
 func (m *mockWhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
@@ -27,19 +34,19 @@ func (m *mockWhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, c
 }
 
 func (m *mockWhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
+	return m.sendVideoResp, m.sendVideoErr
 }
 
 func (m *mockWhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
+	return m.sendDocumentResp, m.sendDocumentErr
 }
 
 func (m *mockWhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
+	return m.sendDocumentResp, m.sendDocumentErr
 }
 
 func (m *mockWhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
+	return m.sendVoiceResp, m.sendVoiceErr
 }
 
 func (m *mockWhatsAppClient) SendContact(ctx context.Context, chatID, contactID string) (*types.SendMessageResponse, error) {
@@ -87,6 +94,16 @@ func (m *mockWhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Sessi
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*types.Session), args.Error(1)
+}
+
+func (m *mockWhatsAppClient) RestartSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
 }
 
 
@@ -148,6 +165,22 @@ func (m *mockSignalClient) InitializeDevice(ctx context.Context) error {
 	}
 	args := m.Called(ctx)
 	return args.Error(0)
+}
+
+func (m *mockSignalClient) DownloadAttachment(ctx context.Context, attachmentID string) ([]byte, error) {
+	args := m.Called(ctx, attachmentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]byte), args.Error(1)
+}
+
+func (m *mockSignalClient) ListAttachments(ctx context.Context) ([]string, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
 }
 
 // Mock media handler

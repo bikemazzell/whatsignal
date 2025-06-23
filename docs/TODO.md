@@ -7,7 +7,7 @@
 - check that any videos are converted to WhatsApp understandable format (e.g. may need to use /api/{sesion}/media/convert/
 - check that any voice responses are converted to WhatsApp understandable format (e.g. may need to use /api/{sesion}/media/convert/voice POST command)video POST command)
 - make sure that URL previews work (if enabled, i.e. "linkPreview": true in /api/sendText body)
-
+- if a person replies without quoting a particular message, reply to the last sender
 
 -improve code coverage to at least 90% across all packages; currently they are at:
   - cmd/whatsignal: 78.8%

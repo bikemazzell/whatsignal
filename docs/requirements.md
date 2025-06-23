@@ -195,7 +195,7 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
       "path": "./whatsignal.db"
     },
     "media": {
-      "cache_dir": "./media_cache",
+      "cache_dir": "./media-cache",
       "maxSizeMB": {
         "image": 5,
         "video": 100,

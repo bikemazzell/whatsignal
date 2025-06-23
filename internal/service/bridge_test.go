@@ -316,6 +316,129 @@ func TestHandleSignalMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "voice message reply",
+			msg: &signaltypes.SignalMessage{
+				MessageID:   "sig126",
+				Sender:      "sender123",
+				Message:     "Listen to this!",
+				Attachments: []string{filepath.Join(tmpDir, "test.ogg")},
+				QuotedMessage: &struct {
+					ID        string `json:"id"`
+					Author    string `json:"author"`
+					Text      string `json:"text"`
+					Timestamp int64  `json:"timestamp"`
+				}{
+					ID:     "msg123",
+					Author: "sender123",
+					Text:   "Original message",
+				},
+			},
+			wantErr: false,
+			setup: func() {
+				// Create a test voice file
+				voicePath := filepath.Join(tmpDir, "test.ogg")
+				err := os.WriteFile(voicePath, []byte("test voice content"), 0644)
+				require.NoError(t, err)
+
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", voicePath).Return(voicePath, nil).Once()
+				bridge.waClient.(*mockWhatsAppClient).sendVoiceResp = &types.SendMessageResponse{
+					MessageID: "msg126",
+					Status:    "sent",
+				}
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg126" &&
+						m.SignalMsgID == "sig126" &&
+						m.DeliveryStatus == models.DeliveryStatusSent &&
+						*m.MediaPath == voicePath &&
+						m.MediaType == "voice"
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name: "video message reply",
+			msg: &signaltypes.SignalMessage{
+				MessageID:   "sig127",
+				Sender:      "sender123",
+				Message:     "Watch this!",
+				Attachments: []string{filepath.Join(tmpDir, "test.mp4")},
+				QuotedMessage: &struct {
+					ID        string `json:"id"`
+					Author    string `json:"author"`
+					Text      string `json:"text"`
+					Timestamp int64  `json:"timestamp"`
+				}{
+					ID:     "msg123",
+					Author: "sender123",
+					Text:   "Original message",
+				},
+			},
+			wantErr: false,
+			setup: func() {
+				// Create a test video file
+				videoPath := filepath.Join(tmpDir, "test.mp4")
+				err := os.WriteFile(videoPath, []byte("test video content"), 0644)
+				require.NoError(t, err)
+
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", videoPath).Return(videoPath, nil).Once()
+				bridge.waClient.(*mockWhatsAppClient).sendVideoResp = &types.SendMessageResponse{
+					MessageID: "msg127",
+					Status:    "sent",
+				}
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg127" &&
+						m.SignalMsgID == "sig127" &&
+						m.DeliveryStatus == models.DeliveryStatusSent &&
+						*m.MediaPath == videoPath &&
+						m.MediaType == "video"
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name: "document message reply",
+			msg: &signaltypes.SignalMessage{
+				MessageID:   "sig128",
+				Sender:      "sender123",
+				Message:     "Read this document!",
+				Attachments: []string{filepath.Join(tmpDir, "test.pdf")},
+				QuotedMessage: &struct {
+					ID        string `json:"id"`
+					Author    string `json:"author"`
+					Text      string `json:"text"`
+					Timestamp int64  `json:"timestamp"`
+				}{
+					ID:     "msg123",
+					Author: "sender123",
+					Text:   "Original message",
+				},
+			},
+			wantErr: false,
+			setup: func() {
+				// Create a test document file
+				docPath := filepath.Join(tmpDir, "test.pdf")
+				err := os.WriteFile(docPath, []byte("test document content"), 0644)
+				require.NoError(t, err)
+
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
+				bridge.media.(*mockMediaHandler).On("ProcessMedia", docPath).Return(docPath, nil).Once()
+				bridge.waClient.(*mockWhatsAppClient).sendDocumentResp = &types.SendMessageResponse{
+					MessageID: "msg128",
+					Status:    "sent",
+				}
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+					return m.WhatsAppChatID == "chat123" &&
+						m.WhatsAppMsgID == "msg128" &&
+						m.SignalMsgID == "sig128" &&
+						m.DeliveryStatus == models.DeliveryStatusSent &&
+						*m.MediaPath == docPath &&
+						m.MediaType == "document"
+				})).Return(nil).Once()
+			},
+		},
+		{
 			name: "media processing error",
 			msg: &signaltypes.SignalMessage{
 				MessageID:   "sig126",
@@ -333,10 +456,22 @@ func TestHandleSignalMessage(t *testing.T) {
 					Text:   "Original message",
 				},
 			},
-			wantErr: true,
+			wantErr: false, // Changed: media processing errors are now handled gracefully
 			setup: func() {
 				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "msg123").Return(mapping, nil).Once()
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return("", assert.AnError).Once()
+				// Set up text response for when media processing fails
+				bridge.waClient.(*mockWhatsAppClient).sendTextResp = &types.SendMessageResponse{
+					MessageID: "msg124", // Use consistent ID with other tests
+					Status:    "sent",
+				}
+				// Expect message mapping to be saved even when media processing fails
+				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(mapping *models.MessageMapping) bool {
+					return mapping.WhatsAppChatID == "chat123" &&
+						   mapping.WhatsAppMsgID == "msg124" &&
+						   mapping.SignalMsgID == "sig126" &&
+						   mapping.MediaPath == nil // No media path when processing fails
+				})).Return(nil).Once()
 			},
 		},
 	}
@@ -381,6 +516,7 @@ func TestMediaTypeDetection(t *testing.T) {
 		path      string
 		isImage   bool
 		isVideo   bool
+		isVoice   bool
 		isDoc     bool
 		mediaType string
 	}{
@@ -389,6 +525,7 @@ func TestMediaTypeDetection(t *testing.T) {
 			path:      "test.jpg",
 			isImage:   true,
 			isVideo:   false,
+			isVoice:   false,
 			isDoc:     false,
 			mediaType: "image",
 		},
@@ -397,6 +534,16 @@ func TestMediaTypeDetection(t *testing.T) {
 			path:      "test.png",
 			isImage:   true,
 			isVideo:   false,
+			isVoice:   false,
+			isDoc:     false,
+			mediaType: "image",
+		},
+		{
+			name:      "JPEG uppercase",
+			path:      "test.JPEG",
+			isImage:   true,
+			isVideo:   false,
+			isVoice:   false,
 			isDoc:     false,
 			mediaType: "image",
 		},
@@ -405,6 +552,7 @@ func TestMediaTypeDetection(t *testing.T) {
 			path:      "test.mp4",
 			isImage:   false,
 			isVideo:   true,
+			isVoice:   false,
 			isDoc:     false,
 			mediaType: "video",
 		},
@@ -413,14 +561,52 @@ func TestMediaTypeDetection(t *testing.T) {
 			path:      "test.mov",
 			isImage:   false,
 			isVideo:   true,
+			isVoice:   false,
 			isDoc:     false,
 			mediaType: "video",
+		},
+		{
+			name:      "OGG voice",
+			path:      "test.ogg",
+			isImage:   false,
+			isVideo:   false,
+			isVoice:   true,
+			isDoc:     false,
+			mediaType: "voice",
+		},
+		{
+			name:      "AAC voice",
+			path:      "test.aac",
+			isImage:   false,
+			isVideo:   false,
+			isVoice:   true,
+			isDoc:     false,
+			mediaType: "voice",
+		},
+		{
+			name:      "M4A voice",
+			path:      "test.m4a",
+			isImage:   false,
+			isVideo:   false,
+			isVoice:   true,
+			isDoc:     false,
+			mediaType: "voice",
+		},
+		{
+			name:      "OGG uppercase",
+			path:      "test.OGG",
+			isImage:   false,
+			isVideo:   false,
+			isVoice:   true,
+			isDoc:     false,
+			mediaType: "voice",
 		},
 		{
 			name:      "PDF document",
 			path:      "test.pdf",
 			isImage:   false,
 			isVideo:   false,
+			isVoice:   false,
 			isDoc:     true,
 			mediaType: "document",
 		},
@@ -429,6 +615,16 @@ func TestMediaTypeDetection(t *testing.T) {
 			path:      "test.docx",
 			isImage:   false,
 			isVideo:   false,
+			isVoice:   false,
+			isDoc:     true,
+			mediaType: "document",
+		},
+		{
+			name:      "DOC document",
+			path:      "test.doc",
+			isImage:   false,
+			isVideo:   false,
+			isVoice:   false,
 			isDoc:     true,
 			mediaType: "document",
 		},
@@ -437,6 +633,7 @@ func TestMediaTypeDetection(t *testing.T) {
 			path:      "test.xyz",
 			isImage:   false,
 			isVideo:   false,
+			isVoice:   false,
 			isDoc:     false,
 			mediaType: "unknown",
 		},
@@ -446,6 +643,7 @@ func TestMediaTypeDetection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.isImage, isImageAttachment(tt.path))
 			assert.Equal(t, tt.isVideo, isVideoAttachment(tt.path))
+			assert.Equal(t, tt.isVoice, isVoiceAttachment(tt.path))
 			assert.Equal(t, tt.isDoc, isDocumentAttachment(tt.path))
 			assert.Equal(t, tt.mediaType, getMediaType(tt.path))
 		})

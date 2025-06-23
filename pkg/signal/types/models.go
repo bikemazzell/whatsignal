@@ -35,11 +35,11 @@ func (f FlexibleInt64) Int64() int64 {
 
 // SendMessage types for REST API
 type SendMessageRequest struct {
-	Message           string       `json:"message"`
-	Number            string       `json:"number"`
-	Recipients        []string     `json:"recipients"`
-	Base64Attachments []Attachment `json:"base64_attachments,omitempty"`
-	TextMode          string       `json:"text_mode,omitempty"` // "normal" or "styled"
+	Message           string   `json:"message"`
+	Number            string   `json:"number"`
+	Recipients        []string `json:"recipients"`
+	Base64Attachments []string `json:"base64_attachments,omitempty"`
+	TextMode          string   `json:"text_mode,omitempty"` // "normal" or "styled"
 }
 
 type SendMessageResponse struct {

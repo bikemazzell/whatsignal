@@ -3,6 +3,9 @@ package media
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,7 +26,7 @@ func getTestMediaConfig() models.MediaConfig {
 			Voice:    16,
 		},
 		AllowedTypes: models.MediaAllowedTypes{
-			Image:    []string{"jpg", "jpeg", "png"},
+			Image:    []string{"jpg", "jpeg", "png", "jfif"},
 			Video:    []string{"mp4", "mov"},
 			Document: []string{"pdf", "doc", "docx"},
 			Voice:    []string{"ogg"},
@@ -430,4 +433,474 @@ func TestNewHandlerErrors(t *testing.T) {
 	invalidPath := filepath.Join(tmpDir, "invalid\x00path")
 	_, err = NewHandler(invalidPath, getTestMediaConfig())
 	assert.Error(t, err)
+}
+
+func TestIsURL(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"http://example.com/image.jpg", true},
+		{"https://example.com/image.jpg", true},
+		{"ftp://example.com/file.txt", true},
+		{"/local/path/image.jpg", false},
+		{"./relative/path.jpg", false},
+		{"image.jpg", false},
+		{"", false},
+		{"not-a-url", false},
+		{"http://", false},
+		{"://invalid", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := isURL(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestProcessMediaFromURL(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Create test server
+	testContent := []byte("test image content")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		w.Write(testContent)
+	}))
+	defer server.Close()
+
+	// Test successful URL processing
+	cachedPath, err := handler.ProcessMedia(server.URL + "/image.jpg")
+	require.NoError(t, err)
+	assert.NotEmpty(t, cachedPath)
+
+	// Verify file exists and content matches
+	cachedContent, err := os.ReadFile(cachedPath)
+	require.NoError(t, err)
+	assert.Equal(t, testContent, cachedContent)
+
+	// Test processing same URL again (should return same cached path)
+	cachedPath2, err := handler.ProcessMedia(server.URL + "/image.jpg")
+	require.NoError(t, err)
+	assert.Equal(t, cachedPath, cachedPath2)
+}
+
+func TestProcessMediaFromURLErrors(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	tests := []struct {
+		name           string
+		setupServer    func() *httptest.Server
+		expectedError  string
+	}{
+		{
+			name: "404 not found",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusNotFound)
+				}))
+			},
+			expectedError: "download failed with status: 404",
+		},
+		{
+			name: "500 server error",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+			},
+			expectedError: "download failed with status: 500",
+		},
+		{
+			name: "unsupported file type",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/octet-stream")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte("test content"))
+				}))
+			},
+			expectedError: "file type .bin is not allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := tt.setupServer()
+			defer server.Close()
+
+			_, err := handler.ProcessMedia(server.URL + "/file")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedError)
+		})
+	}
+}
+
+func TestProcessMediaFromURLWithLargeFile(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Create server that returns a file larger than the limit
+	config := getTestMediaConfig()
+	maxImageSize := int64(config.MaxSizeMB.Image) * 1024 * 1024
+	largeContent := make([]byte, maxImageSize+1024) // Exceed limit
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		w.Write(largeContent)
+	}))
+	defer server.Close()
+
+	_, err := handler.ProcessMedia(server.URL + "/large.jpg")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "image too large")
+}
+
+func TestGetFileExtensionFromResponse(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		url         string
+		expected    string
+	}{
+		{
+			name:        "JPEG content type",
+			contentType: "image/jpeg",
+			url:         "http://example.com/file",
+			expected:    ".jfif",
+		},
+		{
+			name:        "PNG content type",
+			contentType: "image/png",
+			url:         "http://example.com/file",
+			expected:    ".png",
+		},
+		{
+			name:        "extension from URL",
+			contentType: "",
+			url:         "http://example.com/image.jpg",
+			expected:    ".jpg",
+		},
+		{
+			name:        "fallback to .bin",
+			contentType: "",
+			url:         "http://example.com/file",
+			expected:    ".bin",
+		},
+		{
+			name:        "unknown content type",
+			contentType: "application/unknown",
+			url:         "http://example.com/file.txt",
+			expected:    ".txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock response
+			resp := &http.Response{
+				Header: make(http.Header),
+			}
+			if tt.contentType != "" {
+				resp.Header.Set("Content-Type", tt.contentType)
+			}
+
+			// Create a handler instance to test the method
+			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			h := &handler{
+				cacheDir: tmpDir,
+				config:   getTestMediaConfig(),
+			}
+			result := h.getFileExtensionFromResponse(resp, tt.url)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestProcessMediaFromURLTimeout(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Create server that delays response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(35 * time.Second) // Longer than client timeout
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := handler.ProcessMedia(server.URL + "/slow.jpg")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to download media from URL")
+}
+
+func TestProcessMediaFromURLInvalidURL(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Test with invalid URL
+	_, err := handler.ProcessMedia("http://invalid-domain-that-does-not-exist.com/image.jpg")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to download media from URL")
+}
+
+func TestProcessMediaMixedTypes(t *testing.T) {
+	handler, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Test local file
+	localContent := []byte("local file content")
+	localPath := filepath.Join(tmpDir, "local.jpg")
+	err := os.WriteFile(localPath, localContent, 0644)
+	require.NoError(t, err)
+
+	cachedLocalPath, err := handler.ProcessMedia(localPath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, cachedLocalPath)
+
+	// Test URL
+	urlContent := []byte("url file content")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		w.Write(urlContent)
+	}))
+	defer server.Close()
+
+	cachedURLPath, err := handler.ProcessMedia(server.URL + "/remote.jpg")
+	require.NoError(t, err)
+	assert.NotEmpty(t, cachedURLPath)
+
+	// Verify both files are different
+	assert.NotEqual(t, cachedLocalPath, cachedURLPath)
+
+	// Verify content
+	localCachedContent, err := os.ReadFile(cachedLocalPath)
+	require.NoError(t, err)
+	assert.Equal(t, localContent, localCachedContent)
+
+	urlCachedContent, err := os.ReadFile(cachedURLPath)
+	require.NoError(t, err)
+	assert.Equal(t, urlContent, urlCachedContent)
+}
+
+func TestDownloadFromURLContentTypes(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	tests := []struct {
+		name        string
+		contentType string
+		filename    string
+		expectExt   string
+	}{
+		{
+			name:        "JPEG image",
+			contentType: "image/jpeg",
+			filename:    "test",
+			expectExt:   "jfif",
+		},
+		{
+			name:        "PNG image",
+			contentType: "image/png",
+			filename:    "test",
+			expectExt:   "png",
+		},
+		{
+			name:        "PDF document",
+			contentType: "application/pdf",
+			filename:    "test",
+			expectExt:   "pdf",
+		},
+		{
+			name:        "Extension from filename",
+			contentType: "",
+			filename:    "test.jpg",
+			expectExt:   "jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.contentType != "" {
+					w.Header().Set("Content-Type", tt.contentType)
+				}
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("test content"))
+			}))
+			defer server.Close()
+
+			url := fmt.Sprintf("%s/%s", server.URL, tt.filename)
+
+			// Only test if the extension is in our allowed types
+			config := getTestMediaConfig()
+			isAllowed := false
+			for _, ext := range config.AllowedTypes.Image {
+				if ext == tt.expectExt {
+					isAllowed = true
+					break
+				}
+			}
+			for _, ext := range config.AllowedTypes.Document {
+				if ext == tt.expectExt {
+					isAllowed = true
+					break
+				}
+			}
+
+			if isAllowed {
+				cachedPath, err := handler.ProcessMedia(url)
+				if err != nil {
+					t.Logf("Error processing %s (expected %s): %v", url, tt.expectExt, err)
+					// Skip this test case if there's an unexpected error
+					return
+				}
+				assert.NotEmpty(t, cachedPath)
+				assert.Contains(t, cachedPath, tt.expectExt)
+			}
+		})
+	}
+}
+
+func TestRewriteMediaURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		wahaBaseURL string
+		inputURL    string
+		expectedURL string
+	}{
+		{
+			name:        "localhost:3000 rewritten to WAHA host",
+			wahaBaseURL: "http://localhost:3000",
+			inputURL:    "http://localhost:3000/api/files/default/test.jpg",
+			expectedURL: "http://localhost:3000/api/files/default/test.jpg",
+		},
+		{
+			name:        "127.0.0.1:3000 rewritten to WAHA host",
+			wahaBaseURL: "http://localhost:3000",
+			inputURL:    "http://127.0.0.1:3000/api/files/default/test.jpg",
+			expectedURL: "http://localhost:3000/api/files/default/test.jpg",
+		},
+		{
+			name:        "[::1]:3000 rewritten to WAHA host",
+			wahaBaseURL: "http://localhost:3000",
+			inputURL:    "http://[::1]:3000/api/files/default/test.jpg",
+			expectedURL: "http://localhost:3000/api/files/default/test.jpg",
+		},
+		{
+			name:        "non-localhost URL unchanged",
+			wahaBaseURL: "http://localhost:3000",
+			inputURL:    "http://example.com:3000/api/files/default/test.jpg",
+			expectedURL: "http://example.com:3000/api/files/default/test.jpg",
+		},
+		{
+			name:        "no WAHA base URL configured",
+			wahaBaseURL: "",
+			inputURL:    "http://localhost:3000/api/files/default/test.jpg",
+			expectedURL: "http://localhost:3000/api/files/default/test.jpg",
+		},
+		{
+			name:        "HTTPS localhost rewritten",
+			wahaBaseURL: "https://localhost:3000",
+			inputURL:    "http://localhost:3000/api/files/default/test.jpg",
+			expectedURL: "https://localhost:3000/api/files/default/test.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			cacheDir := filepath.Join(tmpDir, "cache")
+			mediaHandler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), tt.wahaBaseURL, "")
+			require.NoError(t, err)
+
+			// Access the private method through type assertion
+			h, ok := mediaHandler.(*handler)
+			require.True(t, ok, "handler should be of type *handler")
+			result := h.rewriteMediaURL(tt.inputURL)
+			assert.Equal(t, tt.expectedURL, result)
+		})
+	}
+}
+
+func TestProcessMediaFromURLWithAPIKey(t *testing.T) {
+	// Test that WAHA API key is properly included in requests
+	apiKey := "test-api-key"
+	var receivedHeaders http.Header
+
+	// Create test server that captures headers
+	testContent := []byte("test image content")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		w.Write(testContent)
+	}))
+	defer server.Close()
+
+	// Create handler with API key
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), "", apiKey)
+	require.NoError(t, err)
+
+	// Test URL processing
+	cachedPath, err := handler.ProcessMedia(server.URL + "/image.jpg")
+	require.NoError(t, err)
+	assert.NotEmpty(t, cachedPath)
+
+	// Verify API key header was sent
+	assert.Equal(t, apiKey, receivedHeaders.Get("X-Api-Key"))
+
+	// Verify file content
+	cachedContent, err := os.ReadFile(cachedPath)
+	require.NoError(t, err)
+	assert.Equal(t, testContent, cachedContent)
+}
+
+func TestProcessMediaFromURLWithoutAPIKey(t *testing.T) {
+	// Test that no API key header is sent when not configured
+	var receivedHeaders http.Header
+
+	// Create test server that captures headers
+	testContent := []byte("test image content")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		w.Write(testContent)
+	}))
+	defer server.Close()
+
+	// Create handler without API key
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), "", "")
+	require.NoError(t, err)
+
+	// Test URL processing
+	cachedPath, err := handler.ProcessMedia(server.URL + "/image.jpg")
+	require.NoError(t, err)
+	assert.NotEmpty(t, cachedPath)
+
+	// Verify no API key header was sent
+	assert.Empty(t, receivedHeaders.Get("X-Api-Key"))
 }

@@ -106,6 +106,17 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
 					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 				}
+			} else if r.Method == http.MethodGet {
+				// Return a list of sessions
+				sessions := []map[string]interface{}{
+					{
+						"name":   "test-session",
+						"status": types.SessionStatusRunning,
+					},
+				}
+				if err := json.NewEncoder(w).Encode(sessions); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
 			} else {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
@@ -190,16 +201,24 @@ func TestClient_SendImage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		assert.Equal(t, testAPIBase+testEndpointSendImage, r.URL.Path)
-		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Parse multipart form
-		err := r.ParseMultipartForm(10 << 20)
+		// Parse JSON body
+		var payload map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		require.NoError(t, err)
 
-		// Verify form fields
-		assert.Equal(t, "123456", r.FormValue("chatId"))
-		assert.Equal(t, "test-session", r.FormValue("session"))
-		assert.Equal(t, "Test image", r.FormValue("caption"))
+		// Verify JSON fields
+		assert.Equal(t, "123456", payload["chatId"])
+		assert.Equal(t, "test-session", payload["session"])
+		assert.Equal(t, "Test image", payload["caption"])
+
+		// Verify file structure
+		file, ok := payload["file"].(map[string]interface{})
+		require.True(t, ok, "file field should be an object")
+		assert.Equal(t, "image/jpeg", file["mimetype"])
+		assert.NotEmpty(t, file["data"], "file data should not be empty")
+		assert.Contains(t, file["filename"], ".jpg")
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
@@ -230,7 +249,7 @@ func TestClient_SendImage(t *testing.T) {
 	// Test file not found
 	_, err = client.SendImage(ctx, "123456", "/nonexistent/path.jpg", "Test image")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to open media file")
+	assert.Contains(t, err.Error(), "failed to read media file")
 }
 
 func TestClient_SendFile(t *testing.T) {
@@ -248,16 +267,24 @@ func TestClient_SendFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		assert.Equal(t, testAPIBase+testEndpointSendFile, r.URL.Path)
-		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Parse multipart form
-		err := r.ParseMultipartForm(10 << 20)
+		// Parse JSON body
+		var payload map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		require.NoError(t, err)
 
-		// Verify form fields
-		assert.Equal(t, "123456", r.FormValue("chatId"))
-		assert.Equal(t, "test-session", r.FormValue("session"))
-		assert.Equal(t, "Test file", r.FormValue("caption"))
+		// Verify JSON fields
+		assert.Equal(t, "123456", payload["chatId"])
+		assert.Equal(t, "test-session", payload["session"])
+		assert.Equal(t, "Test file", payload["caption"])
+
+		// Verify file structure
+		file, ok := payload["file"].(map[string]interface{})
+		require.True(t, ok, "file field should be an object")
+		assert.Equal(t, "application/pdf", file["mimetype"])
+		assert.NotEmpty(t, file["data"], "file data should not be empty")
+		assert.Contains(t, file["filename"], ".pdf")
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
@@ -301,15 +328,23 @@ func TestClient_SendVoice(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		assert.Equal(t, testAPIBase+testEndpointSendVoice, r.URL.Path)
-		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Parse multipart form
-		err := r.ParseMultipartForm(10 << 20)
+		// Parse JSON body
+		var payload map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		require.NoError(t, err)
 
-		// Verify form fields
-		assert.Equal(t, "123456", r.FormValue("chatId"))
-		assert.Equal(t, "test-session", r.FormValue("session"))
+		// Verify JSON fields
+		assert.Equal(t, "123456", payload["chatId"])
+		assert.Equal(t, "test-session", payload["session"])
+
+		// Verify file structure
+		file, ok := payload["file"].(map[string]interface{})
+		require.True(t, ok, "file field should be an object")
+		assert.Equal(t, "audio/ogg", file["mimetype"])
+		assert.NotEmpty(t, file["data"], "file data should not be empty")
+		assert.Contains(t, file["filename"], ".ogg")
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
@@ -353,16 +388,24 @@ func TestClient_SendVideo(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		assert.Equal(t, testAPIBase+testEndpointSendVideo, r.URL.Path)
-		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Parse multipart form
-		err := r.ParseMultipartForm(10 << 20)
+		// Parse JSON body
+		var payload map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		require.NoError(t, err)
 
-		// Verify form fields
-		assert.Equal(t, "123456", r.FormValue("chatId"))
-		assert.Equal(t, "test-session", r.FormValue("session"))
-		assert.Equal(t, "Test video", r.FormValue("caption"))
+		// Verify JSON fields
+		assert.Equal(t, "123456", payload["chatId"])
+		assert.Equal(t, "test-session", payload["session"])
+		assert.Equal(t, "Test video", payload["caption"])
+
+		// Verify file structure
+		file, ok := payload["file"].(map[string]interface{})
+		require.True(t, ok, "file field should be an object")
+		assert.Equal(t, "video/mp4", file["mimetype"])
+		assert.NotEmpty(t, file["data"], "file data should not be empty")
+		assert.Contains(t, file["filename"], ".mp4")
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
@@ -448,14 +491,23 @@ func TestSendDocument(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, testAPIBase+testEndpointSendFile, r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Check request body
-		err := r.ParseMultipartForm(10 << 20)
+		// Parse JSON body
+		var payload map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&payload)
 		require.NoError(t, err)
 
-		// Verify form fields
-		assert.Equal(t, "chat123", r.FormValue("chatId"))
-		assert.Equal(t, "Check this document", r.FormValue("caption"))
+		// Verify JSON fields
+		assert.Equal(t, "chat123", payload["chatId"])
+		assert.Equal(t, "Check this document", payload["caption"])
+
+		// Verify file structure
+		file, ok := payload["file"].(map[string]interface{})
+		require.True(t, ok, "file field should be an object")
+		assert.Equal(t, "application/pdf", file["mimetype"])
+		assert.NotEmpty(t, file["data"], "file data should not be empty")
+		assert.Contains(t, file["filename"], ".pdf")
 
 		// Send response
 		resp := types.SendMessageResponse{

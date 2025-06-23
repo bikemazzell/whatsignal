@@ -56,7 +56,7 @@
   // - maxSizeMB: Maximum file sizes in MB for different media types
   // - allowedTypes: Allowed file extensions for different media types
   "media": {
-    "cache_dir": "./media_cache",
+    "cache_dir": "./media-cache",
     "maxSizeMB": {
       "image": 5,
       "video": 100,

@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -98,6 +99,16 @@ func (m *MockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]Contact), args.Error(1)
+}
+
+func (m *MockWAClient) RestartSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *MockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
 }
 
 // MockSessionManager is a mock implementation of the SessionManager interface

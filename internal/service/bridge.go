@@ -206,22 +206,57 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	
 	whatsappChatID := mapping.WhatsAppChatID
 
+	b.logger.WithFields(logrus.Fields{
+		"messageID":       msg.MessageID,
+		"sender":          msg.Sender,
+		"attachmentCount": len(msg.Attachments),
+	}).Debug("Processing Signal message with attachments")
+
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
 		return fmt.Errorf("failed to process attachments: %w", err)
 	}
 
+	b.logger.WithFields(logrus.Fields{
+		"messageID":      msg.MessageID,
+		"processedCount": len(attachments),
+	}).Debug("Processed Signal attachments")
+
 	var resp *types.SendMessageResponse
 	var sendErr error
 
+
+
 	switch {
 	case len(attachments) > 0 && isImageAttachment(attachments[0]):
+		b.logger.WithFields(logrus.Fields{
+			"messageID": msg.MessageID,
+			"method":    "SendImage",
+		}).Debug("Sending image to WhatsApp")
 		resp, sendErr = b.waClient.SendImage(ctx, whatsappChatID, attachments[0], msg.Message)
 	case len(attachments) > 0 && isVideoAttachment(attachments[0]):
+		b.logger.WithFields(logrus.Fields{
+			"messageID": msg.MessageID,
+			"method":    "SendVideo",
+		}).Debug("Sending video to WhatsApp")
 		resp, sendErr = b.waClient.SendVideo(ctx, whatsappChatID, attachments[0], msg.Message)
+	case len(attachments) > 0 && isVoiceAttachment(attachments[0]):
+		b.logger.WithFields(logrus.Fields{
+			"messageID": msg.MessageID,
+			"method":    "SendVoice",
+		}).Debug("Sending voice to WhatsApp")
+		resp, sendErr = b.waClient.SendVoice(ctx, whatsappChatID, attachments[0])
 	case len(attachments) > 0 && isDocumentAttachment(attachments[0]):
+		b.logger.WithFields(logrus.Fields{
+			"messageID": msg.MessageID,
+			"method":    "SendDocument",
+		}).Debug("Sending document to WhatsApp")
 		resp, sendErr = b.waClient.SendDocument(ctx, whatsappChatID, attachments[0], msg.Message)
 	default:
+		b.logger.WithFields(logrus.Fields{
+			"messageID": msg.MessageID,
+			"method":    "SendText",
+		}).Debug("Sending text to WhatsApp")
 		resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
 	}
 
@@ -255,14 +290,44 @@ func (b *bridge) processSignalAttachments(attachments []string) ([]string, error
 		return nil, nil
 	}
 
+	b.logger.WithField("attachments", attachments).Debug("Processing Signal attachments")
+
 	var processed []string
-	for _, attachment := range attachments {
+	for i, attachment := range attachments {
+		b.logger.WithFields(logrus.Fields{
+			"attachment": attachment,
+			"index":      i + 1,
+			"total":      len(attachments),
+		}).Debug("Processing individual attachment")
+
 		processedPath, err := b.media.ProcessMedia(attachment)
 		if err != nil {
-			return nil, fmt.Errorf("failed to process media %s: %w", attachment, err)
+			b.logger.WithFields(logrus.Fields{
+				"attachment": attachment,
+				"error":      err.Error(),
+			}).Error("Failed to process attachment, skipping")
+			// Continue processing other attachments instead of failing completely
+			continue
 		}
+
+		b.logger.WithFields(logrus.Fields{
+			"original":  attachment,
+			"processed": processedPath,
+		}).Debug("Successfully processed attachment")
+
 		processed = append(processed, processedPath)
 	}
+
+	// If no attachments were successfully processed, log a warning but don't fail
+	if len(processed) == 0 && len(attachments) > 0 {
+		b.logger.WithField("originalCount", len(attachments)).Error("No attachments could be processed successfully")
+	} else if len(attachments) > 0 {
+		b.logger.WithFields(logrus.Fields{
+			"originalCount":  len(attachments),
+			"processedCount": len(processed),
+		}).Debug("Attachment processing completed successfully")
+	}
+
 	return processed, nil
 }
 
@@ -281,12 +346,19 @@ func isDocumentAttachment(path string) bool {
 	return ext == ".pdf" || ext == ".doc" || ext == ".docx"
 }
 
+func isVoiceAttachment(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".ogg" || ext == ".aac" || ext == ".m4a"
+}
+
 func getMediaType(path string) string {
 	switch {
 	case isImageAttachment(path):
 		return "image"
 	case isVideoAttachment(path):
 		return "video"
+	case isVoiceAttachment(path):
+		return "voice"
 	case isDocumentAttachment(path):
 		return "document"
 	default:

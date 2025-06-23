@@ -3,13 +3,13 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"whatsignal/internal/constants"
@@ -266,39 +266,59 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 		return nil, fmt.Errorf("invalid media path: %w", err)
 	}
 
-	file, err := os.Open(mediaPath)
+	// Read and encode file as base64
+	fileData, err := os.ReadFile(mediaPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open media file: %w", err)
-	}
-	defer file.Close()
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	part, err := writer.CreateFormFile("file", filepath.Base(mediaPath))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
+		return nil, fmt.Errorf("failed to read media file: %w", err)
 	}
 
-	if _, err := io.Copy(part, file); err != nil {
-		return nil, fmt.Errorf("failed to copy file content: %w", err)
+	// Encode file data as base64
+	base64Data := base64.StdEncoding.EncodeToString(fileData)
+
+	// Determine MIME type from file extension
+	ext := strings.ToLower(filepath.Ext(mediaPath))
+	var mimeType string
+	switch ext {
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpeg"
+	case ".png":
+		mimeType = "image/png"
+	case ".gif":
+		mimeType = "image/gif"
+	case ".webp":
+		mimeType = "image/webp"
+	case ".mp4":
+		mimeType = "video/mp4"
+	case ".mov":
+		mimeType = "video/quicktime"
+	case ".pdf":
+		mimeType = "application/pdf"
+	case ".ogg":
+		mimeType = "audio/ogg"
+	case ".mp3":
+		mimeType = "audio/mpeg"
+	case ".wav":
+		mimeType = "audio/wav"
+	default:
+		mimeType = "application/octet-stream"
 	}
 
-	if err := writer.WriteField("chatId", chatID); err != nil {
-		return nil, fmt.Errorf("failed to write chatId field: %w", err)
+	// Create JSON payload according to WAHA API documentation
+	payload := map[string]interface{}{
+		"session": c.sessionName,
+		"chatId":  chatID,
+		"file": map[string]interface{}{
+			"mimetype": mimeType,
+			"data":     base64Data,
+			"filename": filepath.Base(mediaPath),
+		},
 	}
-	if err := writer.WriteField("session", c.sessionName); err != nil {
-		return nil, fmt.Errorf("failed to write session field: %w", err)
-	}
+
 	if caption != "" {
-		if err := writer.WriteField("caption", caption); err != nil {
-			return nil, fmt.Errorf("failed to write caption field: %w", err)
-		}
+		payload["caption"] = caption
 	}
 
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
+
 
 	var apiActionPath string
 	switch mediaType {
@@ -315,32 +335,7 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 	}
 
 	endpoint := types.APIBase + apiActionPath
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if c.apiKey != "" {
-		req.Header.Set("X-Api-Key", c.apiKey)
-	}
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result types.SendMessageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return &result, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, result.Error)
-	}
-
-	return &result, nil
+	return c.sendRequest(ctx, endpoint, payload)
 }
 
 func (c *WhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {

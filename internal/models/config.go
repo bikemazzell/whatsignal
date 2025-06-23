@@ -39,6 +39,7 @@ type SignalConfig struct {
 	PollIntervalSec          int    `json:"pollIntervalSec" mapstructure:"pollIntervalSec"`
 	PollTimeoutSec           int    `json:"pollTimeoutSec" mapstructure:"pollTimeoutSec"`
 	PollingEnabled           bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`
+	AttachmentsDir           string `json:"attachmentsDir" mapstructure:"attachmentsDir"`
 }
 
 // DatabaseConfig holds database related configurations

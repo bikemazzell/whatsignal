@@ -129,7 +129,7 @@ Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber
 ## Media Configuration
 
 - `media.cache_dir`: Directory to store cached media files
-  - Default: `./media_cache`
+  - Default: `./media-cache`
   - Directory will be created automatically if it doesn't exist
 
 - `media.maxSizeMB`: Maximum file sizes in MB for different media types
@@ -185,7 +185,7 @@ Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber
     "path": "./whatsignal.db"
   },
   "media": {
-    "cache_dir": "./media_cache",
+    "cache_dir": "./media-cache",
     "maxSizeMB": {
       "image": 5,
       "video": 100,

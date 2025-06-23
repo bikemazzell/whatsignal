@@ -17,7 +17,8 @@ whatsignal
 # Data and cache
 whatsignal.db
 whatsignal.db-*
-media_cache/
+media-cache/
+signal-attachements/
 cache/
 data/
 

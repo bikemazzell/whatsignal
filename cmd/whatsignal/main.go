@@ -103,14 +103,14 @@ func run(ctx context.Context) error {
 	}
 	defer db.Close()
 
-	mediaHandler, err := media.NewHandler(cfg.Media.CacheDir, cfg.Media)
-	if err != nil {
-		return fmt.Errorf("failed to initialize media handler: %w", err)
-	}
-
 	apiKey := os.Getenv("WHATSAPP_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
+	}
+
+	mediaHandler, err := media.NewHandlerWithWAHA(cfg.Media.CacheDir, cfg.Media, cfg.WhatsApp.APIBaseURL, apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}
 
 	waClient := whatsapp.NewClient(types.ClientConfig{
@@ -121,12 +121,14 @@ func run(ctx context.Context) error {
 		RetryCount:  cfg.WhatsApp.RetryCount,
 	})
 
-	sigClient := signalapi.NewClient(
+	sigClient := signalapi.NewClientWithLogger(
 		cfg.Signal.RPCURL,
 		cfg.Signal.AuthToken,
 		cfg.Signal.IntermediaryPhoneNumber,
 		cfg.Signal.DeviceName,
+		cfg.Signal.AttachmentsDir,
 		nil,
+		logger,
 	)
 
 	if err := sigClient.InitializeDevice(ctx); err != nil {

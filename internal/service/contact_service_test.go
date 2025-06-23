@@ -111,6 +111,16 @@ func (m *mockWAClient) GetSessionStatus(ctx context.Context) (*types.Session, er
 	return args.Get(0).(*types.Session), args.Error(1)
 }
 
+func (m *mockWAClient) RestartSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
+}
+
 func TestNewContactService(t *testing.T) {
 	mockDB := &mockContactDatabaseService{}
 	mockWA := &mockWAClient{}

@@ -5,6 +5,10 @@
 *.dll
 *.so
 *.dylib
+bin/**
+build/***
+whatsignal.db
+whatsignal.test
 
 # Test binary, built with 'go test -c'
 *.test
@@ -41,7 +45,8 @@ Thumbs.db
 *.log
 config.json
 !config.json.example
-/media-cache/
+media-cache/
+signal-attachments/
 
 # Environment variables
 .env
@@ -52,8 +57,3 @@ __debug_bin
 debug.test 
 
 #Binaries
-bin/**
-build/***
-#whatsignal
-whatsignal.db
-whatsignal.test

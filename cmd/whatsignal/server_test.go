@@ -48,6 +48,108 @@ func (m *mockMessageService) GetMessageByID(ctx context.Context, id string) (*mo
 	return args.Get(0).(*models.Message), args.Error(1)
 }
 
+// mockWAClient implements WAClient interface for testing
+type mockWAClient struct {
+	mock.Mock
+}
+
+func (m *mockWAClient) SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, message)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, imagePath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, videoPath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, docPath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, filePath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, voicePath)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) CreateSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) StartSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) StopSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Session), args.Error(1)
+}
+
+func (m *mockWAClient) RestartSession(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) GetContact(ctx context.Context, contactID string) (*types.Contact, error) {
+	args := m.Called(ctx, contactID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Contact), args.Error(1)
+}
+
+func (m *mockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([]types.Contact, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]types.Contact), args.Error(1)
+}
+
 func (m *mockMessageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	args := m.Called(ctx, threadID)
 	if args.Get(0) == nil {
@@ -181,7 +283,8 @@ func TestSetupWebhookHandlers(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
 	cfg := &models.Config{}
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	// Test that webhook handlers are properly set up
 	assert.NotNil(t, server.waWebhook)
@@ -225,7 +328,8 @@ func TestServer_Health(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
 	cfg := &models.Config{}
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -244,7 +348,8 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			WebhookSecret: "test-secret",
 		},
 	}
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	tests := []struct {
 		name         string
@@ -436,7 +541,8 @@ func TestServer_SignalWebhook(t *testing.T) {
 			WebhookSecret: "test-secret",
 		},
 	}
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	tests := []struct {
 		name         string
@@ -696,7 +802,8 @@ func TestServer_StartAndShutdown(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
 	cfg := &models.Config{}
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	// Find an available port
 	listener, err := net.Listen("tcp", ":0")
@@ -744,7 +851,8 @@ func TestServer_ShutdownNilServer(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
 	cfg := &models.Config{}
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	// Test shutdown without starting server
 	ctx := context.Background()
@@ -774,7 +882,8 @@ func TestNewServer(t *testing.T) {
 	logger := logrus.New()
 	cfg := &models.Config{}
 
-	server := NewServer(cfg, msgService, logger)
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
 
 	assert.NotNil(t, server)
 	assert.NotNil(t, server.router)

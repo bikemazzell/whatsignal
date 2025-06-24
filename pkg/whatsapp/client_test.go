@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -630,6 +631,95 @@ func TestSendReaction(t *testing.T) {
 	assert.Equal(t, "reaction124", resp.MessageID)
 }
 
+func TestDeleteMessage(t *testing.T) {
+	tests := []struct {
+		name           string
+		chatID         string
+		messageID      string
+		responseStatus int
+		responseBody   string
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name:           "successful deletion",
+			chatID:         "1234567890@c.us",
+			messageID:      "msg123",
+			responseStatus: http.StatusOK,
+			responseBody:   "",
+			expectError:    false,
+		},
+		{
+			name:           "successful deletion with 204",
+			chatID:         "1234567890@c.us",
+			messageID:      "msg456",
+			responseStatus: http.StatusNoContent,
+			responseBody:   "",
+			expectError:    false,
+		},
+		{
+			name:           "deletion failed - not found",
+			chatID:         "1234567890@c.us",
+			messageID:      "nonexistent",
+			responseStatus: http.StatusNotFound,
+			responseBody:   `{"error": "Message not found"}`,
+			expectError:    true,
+			errorContains:  "delete failed with status 404",
+		},
+		{
+			name:           "deletion failed - unauthorized",
+			chatID:         "1234567890@c.us",
+			messageID:      "msg789",
+			responseStatus: http.StatusUnauthorized,
+			responseBody:   `{"error": "Unauthorized"}`,
+			expectError:    true,
+			errorContains:  "delete failed with status 401",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Verify the request method and path
+				assert.Equal(t, "DELETE", r.Method)
+				expectedPath := fmt.Sprintf("/api/default/chats/%s/messages/%s", tt.chatID, tt.messageID)
+				assert.Equal(t, expectedPath, r.URL.Path)
+				
+				// Verify API key header
+				assert.Equal(t, "test-api-key", r.Header.Get("X-Api-Key"))
+
+				w.WriteHeader(tt.responseStatus)
+				if tt.responseBody != "" {
+					w.Header().Set("Content-Type", "application/json")
+					w.Write([]byte(tt.responseBody))
+				}
+			}))
+			defer server.Close()
+
+			config := types.ClientConfig{
+				BaseURL:     server.URL,
+				APIKey:      "test-api-key",
+				SessionName: "default",
+				Timeout:     30 * time.Second,
+			}
+
+			client := NewClient(config)
+			ctx := context.Background()
+
+			err := client.DeleteMessage(ctx, tt.chatID, tt.messageID)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestClient_RestartSession(t *testing.T) {
 	client, server := setupTestClient(t)
 	defer server.Close()
@@ -729,4 +819,175 @@ func TestClient_GetAllContacts(t *testing.T) {
 	assert.Equal(t, "Contact 1", contacts[0].Name)
 	assert.Equal(t, "contact2", contacts[1].ID)
 	assert.Equal(t, "Contact 2", contacts[1].Name)
+}
+
+func TestClient_DeleteMessage(t *testing.T) {
+	tests := []struct {
+		name           string
+		chatID         string
+		messageID      string
+		expectedStatus int
+		expectedError  string
+	}{
+		{
+			name:           "successful deletion",
+			chatID:         "123456789@c.us",
+			messageID:      "true_123456789@c.us_ABCD1234",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "deletion with 204 status",
+			chatID:         "123456789@c.us", 
+			messageID:      "true_123456789@c.us_EFGH5678",
+			expectedStatus: http.StatusNoContent,
+		},
+		{
+			name:          "empty chatID",
+			chatID:        "",
+			messageID:     "true_123456789@c.us_ABCD1234",
+			expectedError: "chatID cannot be empty",
+		},
+		{
+			name:          "empty messageID",
+			chatID:        "123456789@c.us",
+			messageID:     "",
+			expectedError: "messageID cannot be empty",
+		},
+		{
+			name:           "server error",
+			chatID:         "123456789@c.us",
+			messageID:      "true_123456789@c.us_ERROR",
+			expectedStatus: http.StatusInternalServerError,
+			expectedError:  "delete failed with status 500",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodDelete, r.Method)
+				
+				if tt.expectedStatus != 0 {
+					expectedURL := fmt.Sprintf("/api/test-session/chats/%s/messages/%s", tt.chatID, tt.messageID)
+					assert.Equal(t, expectedURL, r.URL.Path)
+					
+					if tt.messageID == "true_123456789@c.us_ERROR" {
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					
+					w.WriteHeader(tt.expectedStatus)
+				}
+			}))
+			defer server.Close()
+
+			client := NewClient(types.ClientConfig{
+				BaseURL:     server.URL,
+				SessionName: "test-session",
+				APIKey:      "test-key",
+			})
+
+			ctx := context.Background()
+			err := client.DeleteMessage(ctx, tt.chatID, tt.messageID)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestWAHAResponseParsing(t *testing.T) {
+	tests := []struct {
+		name                string
+		responseBody        string
+		expectedMessageID   string
+		expectedParseError  bool
+	}{
+		{
+			name: "valid WAHA response with ID field",
+			responseBody: `{
+				"id": {
+					"fromMe": true,
+					"remote": "1234567890123@c.us",
+					"id": "3EB054C52D883CF0E06FCF",
+					"_serialized": "true_1234567890123@c.us_3EB054C52D883CF0E06FCF"
+				}
+			}`,
+			expectedMessageID: "true_1234567890123@c.us_3EB054C52D883CF0E06FCF",
+		},
+		{
+			name: "valid WAHA response with _data field",
+			responseBody: `{
+				"_data": {
+					"id": {
+						"fromMe": true,
+						"remote": "1234567890123@c.us",
+						"id": "3EB054C52D883CF0E06FCF",
+						"_serialized": "true_1234567890123@c.us_3EB054C52D883CF0E06FCF"
+					}
+				}
+			}`,
+			expectedMessageID: "true_1234567890123@c.us_3EB054C52D883CF0E06FCF",
+		},
+		{
+			name: "WAHA response with both fields (ID field takes precedence)",
+			responseBody: `{
+				"id": {
+					"_serialized": "true_1234567890123@c.us_PRIMARY"
+				},
+				"_data": {
+					"id": {
+						"_serialized": "true_1234567890123@c.us_SECONDARY"
+					}
+				}
+			}`,
+			expectedMessageID: "true_1234567890123@c.us_PRIMARY",
+		},
+		{
+			name: "WAHA response with no message ID",
+			responseBody: `{
+				"result": true
+			}`,
+			expectedMessageID: "",
+		},
+		{
+			name: "invalid JSON",
+			responseBody: `{
+				"invalid": json
+			}`,
+			expectedParseError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			client := NewClient(types.ClientConfig{
+				BaseURL:     server.URL,
+				SessionName: "test-session",
+				APIKey:      "test-key",
+			})
+
+			ctx := context.Background()
+			resp, err := client.SendText(ctx, "test@c.us", "test message")
+
+			if tt.expectedParseError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "failed to decode WAHA response")
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedMessageID, resp.MessageID)
+				assert.Equal(t, "sent", resp.Status)
+			}
+		})
+	}
 }

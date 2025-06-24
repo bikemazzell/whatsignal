@@ -56,6 +56,24 @@ type SendMessageResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// WAHAMessageResponse represents the actual WAHA API response format
+type WAHAMessageResponse struct {
+	Data *struct {
+		ID *struct {
+			FromMe     bool   `json:"fromMe"`
+			Remote     string `json:"remote"`
+			ID         string `json:"id"`
+			Serialized string `json:"_serialized"`
+		} `json:"id"`
+	} `json:"_data"`
+	ID *struct {
+		FromMe     bool   `json:"fromMe"`
+		Remote     string `json:"remote"`
+		ID         string `json:"id"`
+		Serialized string `json:"_serialized"`
+	} `json:"id"`
+}
+
 // Contact represents a WhatsApp contact from WAHA API
 type Contact struct {
 	ID          string `json:"id"`

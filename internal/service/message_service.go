@@ -260,6 +260,21 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error {
 	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
+	// Enhanced debugging for potential deletion events
+	s.logger.WithFields(logrus.Fields{
+		"messageID":       rawSignalMsg.MessageID,
+		"sender":          rawSignalMsg.Sender,
+		"timestamp":       rawSignalMsg.Timestamp,
+		"message":         rawSignalMsg.Message,
+		"messageLength":   len(rawSignalMsg.Message),
+		"attachments":     rawSignalMsg.Attachments,
+		"attachmentCount": len(rawSignalMsg.Attachments),
+		"quotedMessage":   rawSignalMsg.QuotedMessage,
+		"reaction":        rawSignalMsg.Reaction,
+		"deletion":        rawSignalMsg.Deletion,
+		"isEmpty":         rawSignalMsg.Message == "" && len(rawSignalMsg.Attachments) == 0,
+	}).Debug("Raw Signal message received - detailed analysis")
+
 	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
 }
 

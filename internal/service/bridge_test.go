@@ -1078,3 +1078,126 @@ func TestHandleSignalMessageAutoReplyNoHistory(t *testing.T) {
 	// Verify that the auto-reply logic was attempted but found no history
 	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMapping", ctx)
 }
+
+func TestHandleSignalMessageDeletion(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test: Signal message deletion should delete corresponding WhatsApp message
+	targetMessageID := "target_msg_123"
+	sender := "+1234567890"
+
+	// Mock database to return message mapping for target message
+	mapping := &models.MessageMapping{
+		WhatsAppChatID: "+1234567890@c.us",
+		WhatsAppMsgID:  "wa_msg_123",
+		SignalMsgID:    targetMessageID,
+		ForwardedAt:    time.Now().Add(-5 * time.Minute),
+	}
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetMessageID).Return(mapping, nil)
+
+	// Mock WhatsApp client to handle deletion
+	bridge.waClient.(*mockWhatsAppClient).On("DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_123").Return(nil)
+
+	// Process the deletion
+	err := bridge.HandleSignalMessageDeletion(ctx, targetMessageID, sender)
+	assert.NoError(t, err)
+
+	// Verify that the correct methods were called
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, targetMessageID)
+	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_123")
+}
+
+func TestHandleSignalMessageDeletionNoMapping(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test: Signal message deletion with no mapping should return error
+	targetMessageID := "nonexistent_msg_123"
+	sender := "+1234567890"
+
+	// Mock database to return no mapping
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetMessageID).Return(nil, nil)
+
+	// Process the deletion
+	err := bridge.HandleSignalMessageDeletion(ctx, targetMessageID, sender)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no mapping found for deletion target message")
+
+	// Verify database was queried but WhatsApp delete was not called
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, targetMessageID)
+	bridge.waClient.(*mockWhatsAppClient).AssertNotCalled(t, "DeleteMessage")
+}
+
+func TestHandleSignalMessageDeletionWhatsAppError(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test: WhatsApp deletion error should be propagated
+	targetMessageID := "target_msg_456"
+	sender := "+1234567890"
+
+	// Mock database to return message mapping
+	mapping := &models.MessageMapping{
+		WhatsAppChatID: "+1234567890@c.us",
+		WhatsAppMsgID:  "wa_msg_456",
+		SignalMsgID:    targetMessageID,
+		ForwardedAt:    time.Now().Add(-5 * time.Minute),
+	}
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetMessageID).Return(mapping, nil)
+
+	// Mock WhatsApp client to return error
+	bridge.waClient.(*mockWhatsAppClient).On("DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_456").Return(assert.AnError)
+
+	// Process the deletion
+	err := bridge.HandleSignalMessageDeletion(ctx, targetMessageID, sender)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to delete message in WhatsApp")
+
+	// Verify both methods were called
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, targetMessageID)
+	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_456")
+}
+
+func TestHandleSignalDeletion(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test: Signal deletion message should trigger deletion handling
+	msg := &signaltypes.SignalMessage{
+		MessageID: "deletion_msg_123",
+		Sender:    "+1234567890",
+		Deletion: &signaltypes.SignalDeletion{
+			TargetMessageID: "target_msg_789",
+			TargetTimestamp: 1234567890000,
+		},
+	}
+
+	// Mock database to return message mapping
+	mapping := &models.MessageMapping{
+		WhatsAppChatID: "+1234567890@c.us",
+		WhatsAppMsgID:  "wa_msg_789",
+		SignalMsgID:    "target_msg_789",
+		ForwardedAt:    time.Now().Add(-10 * time.Minute),
+	}
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "target_msg_789").Return(mapping, nil)
+
+	// Mock WhatsApp client to handle deletion
+	bridge.waClient.(*mockWhatsAppClient).On("DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_789").Return(nil)
+
+	// Process the Signal message with deletion
+	err := bridge.HandleSignalMessage(ctx, msg)
+	assert.NoError(t, err)
+
+	// Verify that deletion was processed
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, "target_msg_789")
+	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_789")
+}

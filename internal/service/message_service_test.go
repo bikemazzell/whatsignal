@@ -32,6 +32,11 @@ func (m *mockBridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.S
 	return args.Error(0)
 }
 
+func (m *mockBridge) HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error {
+	args := m.Called(ctx, targetMessageID, sender)
+	return args.Error(0)
+}
+
 func (m *mockBridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error {
 	args := m.Called(ctx, msgID, status)
 	return args.Error(0)

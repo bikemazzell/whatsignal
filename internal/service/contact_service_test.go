@@ -129,6 +129,11 @@ func (m *mockWAClient) SendReaction(ctx context.Context, chatID, messageID, reac
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) DeleteMessage(ctx context.Context, chatID, messageID string) error {
+	args := m.Called(ctx, chatID, messageID)
+	return args.Error(0)
+}
+
 func TestNewContactService(t *testing.T) {
 	mockDB := &mockContactDatabaseService{}
 	mockWA := &mockWAClient{}

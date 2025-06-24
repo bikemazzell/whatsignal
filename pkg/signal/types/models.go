@@ -78,7 +78,14 @@ type SignalMessage struct {
 		Text      string `json:"text"`
 		Timestamp int64  `json:"timestamp"`
 	} `json:"quotedMessage,omitempty"`
-	Reaction *SignalReaction `json:"reaction,omitempty"`
+	Reaction     *SignalReaction     `json:"reaction,omitempty"`
+	Deletion     *SignalDeletion     `json:"deletion,omitempty"`
+}
+
+// SignalDeletion represents a message deletion event
+type SignalDeletion struct {
+	TargetMessageID string `json:"targetMessageId"`
+	TargetTimestamp int64  `json:"targetTimestamp"`
 }
 
 // SignalReaction represents a reaction to a message
@@ -99,11 +106,14 @@ type RestMessage struct {
 		SourceName   string `json:"sourceName"`
 		Timestamp    int64  `json:"timestamp"`
 		DataMessage  *struct {
-			Timestamp   int64                   `json:"timestamp"`
-			Message     string                  `json:"message"`
-			Attachments []RestMessageAttachment `json:"attachments"`
-			Quote       *RestMessageQuote       `json:"quote,omitempty"`
-			Reaction    *RestMessageReaction    `json:"reaction,omitempty"`
+			Timestamp    int64                   `json:"timestamp"`
+			Message      string                  `json:"message"`
+			Attachments  []RestMessageAttachment `json:"attachments"`
+			Quote        *RestMessageQuote       `json:"quote,omitempty"`
+			Reaction     *RestMessageReaction    `json:"reaction,omitempty"`
+			RemoteDelete *struct {
+				Timestamp int64 `json:"timestamp"`
+			} `json:"remoteDelete,omitempty"`
 		} `json:"dataMessage,omitempty"`
 		SyncMessage    interface{} `json:"syncMessage,omitempty"`
 		ReceiptMessage interface{} `json:"receiptMessage,omitempty"`

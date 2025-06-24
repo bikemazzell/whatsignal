@@ -20,6 +20,7 @@ type MessageBridge interface {
 	SendMessage(ctx context.Context, msg *models.Message) error
 	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error
+	HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
 }
@@ -142,6 +143,23 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 }
 
 func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	// Enhanced debugging: Log the complete message structure for analysis
+	b.logger.WithFields(logrus.Fields{
+		"messageID":     msg.MessageID,
+		"sender":        msg.Sender,
+		"timestamp":     msg.Timestamp,
+		"message":       msg.Message,
+		"attachments":   msg.Attachments,
+		"quotedMessage": msg.QuotedMessage,
+		"reaction":      msg.Reaction,
+		"deletion":      msg.Deletion,
+		"messageLength": len(msg.Message),
+		"hasReaction":   msg.Reaction != nil,
+		"hasDeletion":   msg.Deletion != nil,
+		"hasQuoted":     msg.QuotedMessage != nil,
+		"hasAttachments": len(msg.Attachments) > 0,
+	}).Debug("Received Signal message - full structure analysis")
+
 	if strings.HasPrefix(msg.Sender, "group.") {
 		return b.handleSignalGroupMessage(ctx, msg)
 	}
@@ -149,6 +167,11 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	// Handle reactions
 	if msg.Reaction != nil {
 		return b.handleSignalReaction(ctx, msg)
+	}
+
+	// Handle message deletions
+	if msg.Deletion != nil {
+		return b.handleSignalDeletion(ctx, msg)
 	}
 
 	var mapping *models.MessageMapping
@@ -308,6 +331,18 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 			}).Debug("Sending text to WhatsApp")
 			resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
 		} else {
+			// Log detailed information about empty messages for debugging potential deletion events
+			b.logger.WithFields(logrus.Fields{
+				"messageID":     msg.MessageID,
+				"sender":        msg.Sender,
+				"timestamp":     msg.Timestamp,
+				"message":       msg.Message,
+				"attachments":   msg.Attachments,
+				"quotedMessage": msg.QuotedMessage,
+				"reaction":      msg.Reaction,
+				"deletion":      msg.Deletion,
+			}).Debug("Detailed analysis of empty message - potential deletion event")
+			
 			b.logger.WithFields(logrus.Fields{
 				"messageID": msg.MessageID,
 			}).Warn("Skipping empty message with no attachments")
@@ -327,6 +362,11 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
 	}
+	
+	b.logger.WithFields(logrus.Fields{
+		"whatsappMsgID": resp.MessageID,
+		"signalMsgID": msg.MessageID,
+	}).Debug("Saving message mapping for Signal to WhatsApp")
 
 	if len(attachments) > 0 {
 		newMapping.MediaPath = &attachments[0]
@@ -336,6 +376,47 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	if err := b.db.SaveMessageMapping(ctx, newMapping); err != nil {
 		return fmt.Errorf("failed to save message mapping: %w", err)
 	}
+
+	return nil
+}
+
+func (b *bridge) HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error {
+	b.logger.WithFields(logrus.Fields{
+		"targetMessageID": targetMessageID,
+		"sender":          sender,
+	}).Debug("Processing Signal message deletion")
+
+	// Look up the message mapping for the target message by Signal ID
+	mapping, err := b.db.GetMessageMappingBySignalID(ctx, targetMessageID)
+	if err != nil {
+		b.logger.WithFields(logrus.Fields{
+			"targetMessageID": targetMessageID,
+			"error":           err,
+		}).Error("Failed to get message mapping for deletion")
+		return fmt.Errorf("failed to get message mapping for deletion: %w", err)
+	}
+
+	if mapping == nil {
+		b.logger.WithField("targetMessageID", targetMessageID).Warn("No mapping found for deletion target message")
+		return fmt.Errorf("no mapping found for deletion target message: %s", targetMessageID)
+	}
+
+	// Delete the message in WhatsApp
+	err = b.waClient.DeleteMessage(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID)
+	if err != nil {
+		b.logger.WithFields(logrus.Fields{
+			"whatsappChatID": mapping.WhatsAppChatID,
+			"whatsappMsgID":  mapping.WhatsAppMsgID,
+			"error":          err,
+		}).Error("Failed to delete message in WhatsApp")
+		return fmt.Errorf("failed to delete message in WhatsApp: %w", err)
+	}
+
+	b.logger.WithFields(logrus.Fields{
+		"whatsappChatID":  mapping.WhatsAppChatID,
+		"whatsappMsgID":   mapping.WhatsAppMsgID,
+		"targetMessageID": targetMessageID,
+	}).Info("Successfully deleted message in WhatsApp")
 
 	return nil
 }
@@ -516,4 +597,24 @@ func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.Sign
 	}).Info("Successfully forwarded reaction to WhatsApp")
 
 	return nil
+}
+
+func (b *bridge) handleSignalDeletion(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	b.logger.WithFields(logrus.Fields{
+		"messageID":        msg.MessageID,
+		"sender":           msg.Sender,
+		"targetMessageID":  msg.Deletion.TargetMessageID,
+		"targetTimestamp":  msg.Deletion.TargetTimestamp,
+	}).Debug("Processing Signal message deletion")
+
+	// Use the target message ID or timestamp to find the message to delete
+	var targetID string
+	if msg.Deletion.TargetMessageID != "" {
+		targetID = msg.Deletion.TargetMessageID
+	} else {
+		// Fallback to timestamp if message ID is not available
+		targetID = fmt.Sprintf("%d", msg.Deletion.TargetTimestamp)
+	}
+
+	return b.HandleSignalMessageDeletion(ctx, targetID, msg.Sender)
 }

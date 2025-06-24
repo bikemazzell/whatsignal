@@ -57,6 +57,11 @@ func (m *mockWhatsAppClient) SendReaction(ctx context.Context, chatID, messageID
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID string) error {
+	args := m.Called(ctx, chatID, messageID)
+	return args.Error(0)
+}
+
 func (m *mockWhatsAppClient) SendContact(ctx context.Context, chatID, contactID string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, contactID)
 	if args.Get(0) == nil {

@@ -384,6 +384,47 @@ func (c *WhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, re
 	return c.sendReactionRequest(ctx, endpoint, payload)
 }
 
+func (c *WhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID string) error {
+	// Validate parameters
+	if chatID == "" {
+		return fmt.Errorf("chatID cannot be empty")
+	}
+	if messageID == "" {
+		return fmt.Errorf("messageID cannot be empty")
+	}
+	
+	// Build the URL according to WAHA API: DELETE /api/{session}/chats/{chatId}/messages/{messageId}
+	url := fmt.Sprintf("%s/api/%s/chats/%s/messages/%s", c.baseURL, c.sessionName, chatID, messageID)
+	
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send delete request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		// Try to decode error response
+		var errorResp map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+			if errMsg, ok := errorResp["error"].(string); ok {
+				return fmt.Errorf("delete failed with status %d: %s", resp.StatusCode, errMsg)
+			}
+		}
+		return fmt.Errorf("delete failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (c *WhatsAppClient) sendReactionRequest(ctx context.Context, endpoint string, payload interface{}) (*types.SendMessageResponse, error) {
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
@@ -460,16 +501,38 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	}
 	defer resp.Body.Close()
 
-	var result types.SendMessageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	// Read response body for debugging
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	
+	// Parse the actual WAHA response format
+	var wahaResult types.WAHAMessageResponse
+	if err := json.Unmarshal(bodyBytes, &wahaResult); err != nil {
+		return nil, fmt.Errorf("failed to decode WAHA response: %w", err)
+	}
+	
+	// Extract message ID from the WAHA response
+	var messageID string
+	if wahaResult.ID != nil && wahaResult.ID.Serialized != "" {
+		messageID = wahaResult.ID.Serialized
+	} else if wahaResult.Data != nil && wahaResult.Data.ID != nil && wahaResult.Data.ID.Serialized != "" {
+		messageID = wahaResult.Data.ID.Serialized
+	}
+	
+	// Convert to our standard response format
+	result := &types.SendMessageResponse{
+		MessageID: messageID,
+		Status:    "sent", // Assume sent if we got a valid response
+		Error:     "",
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return &result, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, result.Error)
+		return result, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, result.Error)
 	}
 
-	return &result, nil
+	return result, nil
 }
 
 // GetContact retrieves a specific contact by ID (phone number or chat ID)

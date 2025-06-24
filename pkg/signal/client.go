@@ -186,6 +186,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	if err := json.Unmarshal(bodyBytes, &messages); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
+	
 
 	result := make([]types.SignalMessage, 0, len(messages))
 	for _, msg := range messages {
@@ -199,6 +200,14 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			MessageID:   fmt.Sprintf("%d", msg.Envelope.Timestamp),
 			Message:     msg.Envelope.DataMessage.Message,
 			Attachments: c.extractAttachmentPaths(msg.Envelope.DataMessage.Attachments),
+		}
+		
+		// Handle remote deletion
+		if msg.Envelope.DataMessage.RemoteDelete != nil {
+			sigMsg.Deletion = &types.SignalDeletion{
+				TargetMessageID: fmt.Sprintf("%d", msg.Envelope.DataMessage.RemoteDelete.Timestamp),
+				TargetTimestamp: msg.Envelope.DataMessage.RemoteDelete.Timestamp,
+			}
 		}
 
 		if msg.Envelope.DataMessage.Quote != nil {

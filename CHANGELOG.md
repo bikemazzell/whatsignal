@@ -5,6 +5,32 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0] - 24-06-2025
+
+### Added
+- **Message deletion forwarding**: When a message is deleted in Signal, it is now automatically deleted in WhatsApp
+  - Real-time deletion event detection from Signal CLI REST API
+  - Proper handling of Signal `remoteDelete` events in message processing
+  - Database lookup by Signal message ID for accurate message mapping
+  - WAHA API integration for WhatsApp message deletion using correct message ID format
+  - Comprehensive error handling and validation for deletion operations
+
+### Fixed
+- **WAHA API response parsing**: Fixed critical issue where WhatsApp message IDs were not being extracted properly
+  - Updated response parsing to handle actual WAHA API format with nested `_serialized` field
+  - Added support for both `id._serialized` and `_data.id._serialized` response structures
+  - Proper extraction of WhatsApp message IDs in format `true_chatId@c.us_messageId`
+  - Fixed empty message ID issue that prevented message deletion from working
+- **Signal deletion event detection**: Enhanced Signal CLI message processing to detect `remoteDelete` events
+  - Added `RemoteDelete` field to Signal REST message structure
+  - Proper parsing of deletion timestamps and target message identification
+  - Improved message filtering to process deletion events correctly
+
+### Changed
+- **Database queries**: Updated message deletion lookup to use `GetMessageMappingBySignalID` instead of generic mapping lookup
+- **Response structures**: Added `WAHAMessageResponse` type to properly handle complex WAHA API responses
+- **Error messages**: Improved validation and error reporting for message deletion operations
+
 ## [0.53.0] - 24-06-2025
 
 ### Added
@@ -107,6 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[0.54.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.54.0
 [0.53.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.53.0
 [0.51.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.51.0
 [0.50.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.50.0

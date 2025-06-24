@@ -1103,3 +1103,117 @@ func TestDetectContentTypeExtensive(t *testing.T) {
 		})
 	}
 }
+
+func TestReceiveMessages_RemoteDeleteHandling(t *testing.T) {
+	tests := []struct {
+		name                    string
+		responseBody            string
+		expectedDeletionCount   int
+		expectedTargetTimestamp int64
+	}{
+		{
+			name: "message with remote delete",
+			responseBody: `[{
+				"envelope": {
+					"source": "+0987654321",
+					"timestamp": 1750792100356,
+					"dataMessage": {
+						"timestamp": 1750792100356,
+						"message": null,
+						"remoteDelete": {
+							"timestamp": 1750792079512
+						}
+					}
+				},
+				"account": "+1234567890"
+			}]`,
+			expectedDeletionCount:   1,
+			expectedTargetTimestamp: 1750792079512,
+		},
+		{
+			name: "regular message without remote delete",
+			responseBody: `[{
+				"envelope": {
+					"source": "+0987654321",
+					"timestamp": 1750792100356,
+					"dataMessage": {
+						"timestamp": 1750792100356,
+						"message": "hello world"
+					}
+				},
+				"account": "+1234567890"
+			}]`,
+			expectedDeletionCount: 0,
+		},
+		{
+			name: "multiple messages with one deletion",
+			responseBody: `[{
+				"envelope": {
+					"source": "+0987654321",
+					"timestamp": 1750792100356,
+					"dataMessage": {
+						"timestamp": 1750792100356,
+						"message": "normal message"
+					}
+				},
+				"account": "+1234567890"
+			}, {
+				"envelope": {
+					"source": "+0987654321",
+					"timestamp": 1750792200000,
+					"dataMessage": {
+						"timestamp": 1750792200000,
+						"message": null,
+						"remoteDelete": {
+							"timestamp": 1750792100356
+						}
+					}
+				},
+				"account": "+1234567890"
+			}]`,
+			expectedDeletionCount:   1,
+			expectedTargetTimestamp: 1750792100356,
+		},
+		{
+			name:                  "empty response",
+			responseBody:          `[]`,
+			expectedDeletionCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			logger := logrus.New()
+			logger.SetLevel(logrus.ErrorLevel) // Suppress debug output during tests
+			
+			client := NewClientWithLogger(server.URL, "", "+1234567890", "test", "/tmp", &http.Client{}, logger)
+
+			ctx := context.Background()
+			messages, err := client.ReceiveMessages(ctx, 5)
+
+			require.NoError(t, err)
+
+			// Count messages with deletions
+			deletionCount := 0
+			var foundTargetTimestamp int64
+
+			for _, msg := range messages {
+				if msg.Deletion != nil {
+					deletionCount++
+					foundTargetTimestamp = msg.Deletion.TargetTimestamp
+				}
+			}
+
+			assert.Equal(t, tt.expectedDeletionCount, deletionCount)
+			if tt.expectedDeletionCount > 0 {
+				assert.Equal(t, tt.expectedTargetTimestamp, foundTargetTimestamp)
+			}
+		})
+	}
+}

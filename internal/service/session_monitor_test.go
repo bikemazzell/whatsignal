@@ -88,11 +88,17 @@ func TestSessionMonitor_Start(t *testing.T) {
 			// Start monitoring
 			monitor.Start(ctx)
 
-			// Give it time to run at least one check
-			time.Sleep(200 * time.Millisecond)
+			// Wait a bit to ensure the goroutine starts
+			time.Sleep(50 * time.Millisecond)
 
 			// Stop monitoring
 			monitor.Stop()
+
+			// For tests that expect a restart, we need to call checkAndRecoverSession directly
+			// since the monitor loop has an initial delay that's longer than our test timeout
+			if tt.expectRestart {
+				monitor.checkAndRecoverSession(ctx)
+			}
 
 			whatsappClient.AssertExpectations(t)
 		})

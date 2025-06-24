@@ -5,6 +5,37 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.0] - 24-06-2025
+
+### Added
+- **Signal voice recording detection**: Automatic detection of voice recordings without file extensions
+  - File signature detection using binary headers (OGG "OggS" signature detection)
+  - Content-based file type detection when file extensions are missing
+  - Proper routing of Signal voice recordings to WhatsApp `/api/sendVoice` endpoint
+- **Auto-reply to last sender**: When responding without quoting a message, automatically replies to the most recent WhatsApp contact
+  - Database query optimization for finding latest message mappings
+  - Eliminates "New thread creation is not yet supported" warnings for natural conversation flow
+  - Maintains conversation context across multiple WhatsApp contacts
+- **Message reactions forwarding**: Signal reactions (👍, ❤️, etc.) are now forwarded to WhatsApp
+  - React and remove reactions between platforms
+  - Proper message correlation for reaction targeting
+  - Full emoji support for reaction forwarding
+
+### Fixed
+- **Signal voice recordings without extensions**: Files like `signal-attachments/P59DFxKqtUuf3KdZB2cp` now properly detected as voice messages
+  - Fixed "file type . is not allowed" errors for extensionless voice recordings
+  - Enhanced media validation to default unknown files to documents instead of rejecting them
+  - Improved content detection algorithm with binary file signature recognition
+- **Auto-reply logic**: Eliminated incorrect message routing when replying without quotes
+  - Fixed database encryption issues in latest message mapping queries
+  - Improved message threading for seamless conversation continuation
+- **Test coverage**: Enhanced test suite for voice detection and auto-reply functionality
+
+### Changed
+- **Media handling**: Unknown file types now default to document processing instead of being rejected
+- **Database interface**: Added `GetLatestMessageMapping` method for improved message correlation
+- **Error handling**: More graceful fallback behavior for unsupported file types
+
 ## [0.51.0] - 23-06-2025
 
 ### Added
@@ -76,4 +107,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[0.53.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.53.0
+[0.51.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.51.0
 [0.50.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.50.0

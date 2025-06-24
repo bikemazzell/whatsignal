@@ -164,7 +164,7 @@ func run(ctx context.Context) error {
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:      cfg.Retry.MaxAttempts,
-	}, cfg.Signal.DestinationPhoneNumber, contactService)
+	}, cfg.Media, cfg.Signal.DestinationPhoneNumber, contactService)
 
 	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal)
 

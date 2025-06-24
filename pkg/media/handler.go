@@ -96,6 +96,14 @@ func (h *handler) processMediaFromFile(path string) (string, error) {
 
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 
+	// If no extension, try to detect from content
+	if ext == "" {
+		detectedExt, err := h.detectFileTypeFromContent(path)
+		if err == nil && detectedExt != "" {
+			ext = detectedExt
+		}
+	}
+
 	// Check if file type is allowed and validate size
 	if err := h.validateMedia(ext, info.Size()); err != nil {
 		return "", err
@@ -176,8 +184,10 @@ func (h *handler) validateMedia(ext string, size int64) error {
 		}
 	}
 
+	// If no extension or unknown extension, default to document (following bridge strategy)
 	if maxSizeMB == 0 {
-		return fmt.Errorf("file type .%s is not allowed", ext)
+		maxSizeMB = h.config.MaxSizeMB.Document
+		mediaType = "document"
 	}
 
 	maxSizeBytes := int64(maxSizeMB) * 1024 * 1024
@@ -336,6 +346,147 @@ func (h *handler) getFileExtensionFromResponse(resp *http.Response, mediaURL str
 
 	// Default extension for unknown types
 	return ".bin"
+}
+
+func (h *handler) detectFileTypeFromContent(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file for content detection: %w", err)
+	}
+	defer file.Close()
+
+	// Read first 512 bytes for content type detection
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	// Check for specific file signatures first (more reliable than http.DetectContentType for audio)
+	if ext := h.detectByFileSignature(buffer[:n]); ext != "" {
+		return ext, nil
+	}
+
+	// Detect MIME type from content
+	contentType := http.DetectContentType(buffer[:n])
+	
+	// Map MIME types to file extensions
+	switch {
+	case strings.HasPrefix(contentType, "audio/"):
+		// For audio files, try to detect specific formats
+		if strings.Contains(contentType, "ogg") {
+			return "ogg", nil
+		}
+		if strings.Contains(contentType, "mpeg") || strings.Contains(contentType, "mp3") {
+			return "mp3", nil
+		}
+		if strings.Contains(contentType, "aac") {
+			return "aac", nil
+		}
+		if strings.Contains(contentType, "m4a") {
+			return "m4a", nil
+		}
+		// Default to ogg for unrecognized audio (Signal's default)
+		return "ogg", nil
+	case strings.HasPrefix(contentType, "image/"):
+		if strings.Contains(contentType, "jpeg") {
+			return "jpg", nil
+		}
+		if strings.Contains(contentType, "png") {
+			return "png", nil
+		}
+		if strings.Contains(contentType, "gif") {
+			return "gif", nil
+		}
+		if strings.Contains(contentType, "webp") {
+			return "webp", nil
+		}
+		return "jpg", nil // Default for images
+	case strings.HasPrefix(contentType, "video/"):
+		if strings.Contains(contentType, "mp4") {
+			return "mp4", nil
+		}
+		if strings.Contains(contentType, "mov") {
+			return "mov", nil
+		}
+		if strings.Contains(contentType, "avi") {
+			return "avi", nil
+		}
+		return "mp4", nil // Default for videos
+	default:
+		// For other types, return empty string to use document default
+		return "", nil
+	}
+}
+
+func (h *handler) detectByFileSignature(data []byte) string {
+	if len(data) < 4 {
+		return ""
+	}
+
+	// Check for OGG file signature (OggS)
+	if len(data) >= 4 && string(data[0:4]) == "OggS" {
+		return "ogg"
+	}
+
+	// Check for MP3 file signatures
+	if len(data) >= 3 {
+		// ID3v2 tag
+		if string(data[0:3]) == "ID3" {
+			return "mp3"
+		}
+		// MP3 frame sync
+		if data[0] == 0xFF && (data[1]&0xE0) == 0xE0 {
+			return "mp3"
+		}
+	}
+
+	// Check for AAC file signature (ADTS header)
+	if len(data) >= 2 && data[0] == 0xFF && (data[1]&0xF0) == 0xF0 {
+		return "aac"
+	}
+
+	// Check for M4A/MP4 signature
+	if len(data) >= 8 {
+		// Check for ftyp box at offset 4
+		if string(data[4:8]) == "ftyp" {
+			// Check for M4A-specific brand codes
+			if len(data) >= 12 {
+				brand := string(data[8:12])
+				if brand == "M4A " || brand == "mp41" || brand == "mp42" {
+					return "m4a"
+				}
+			}
+			return "mp4" // Default to mp4 for other ftyp variants
+		}
+	}
+
+	// Check for JPEG signatures
+	if len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+		return "jpg"
+	}
+
+	// Check for PNG signature
+	if len(data) >= 8 && string(data[0:8]) == "\x89PNG\r\n\x1a\n" {
+		return "png"
+	}
+
+	// Check for GIF signatures
+	if len(data) >= 6 && (string(data[0:6]) == "GIF87a" || string(data[0:6]) == "GIF89a") {
+		return "gif"
+	}
+
+	// Check for WebP signature
+	if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
+		return "webp"
+	}
+
+	// Check for PDF signature
+	if len(data) >= 4 && string(data[0:4]) == "%PDF" {
+		return "pdf"
+	}
+
+	return ""
 }
 
 func copyFile(src, dst string) error {

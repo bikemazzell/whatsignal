@@ -1,10 +1,10 @@
 # WhatSignal
 
-[![Version](https://img.shields.io/badge/version-0.52.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.53.0-blue.svg)](CHANGELOG.md)
 [![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and Signal. It forwards messages (text, images, videos, audio) between the platforms while maintaining conversation context and supporting replies.
+WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and Signal. It forwards messages (text, images, videos, audio, reactions) between the platforms while maintaining conversation context, supporting replies, and providing intelligent auto-reply functionality.
 
 ## Features
 
@@ -27,11 +27,13 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Session management and recovery
   
 - **Comprehensive Media Support**:
-  - Images (JPEG, PNG) - up to 5MB
-  - Videos (MP4, MOV) - up to 100MB
-  - Documents (PDF, DOC, DOCX) - up to 100MB
-  - Voice messages (OGG) - up to 16MB
-  - GIFs - up to 25MB
+  - **Config-driven file types**: Add new file formats without rebuilding
+  - **Smart defaults**: Unknown file types automatically sent as documents
+  - **Binary file detection**: Automatic detection of file types using content signatures
+  - Images (JPEG, PNG, GIF, WebP) - up to 5MB
+  - Videos (MP4, MOV, AVI) - up to 100MB
+  - Documents (PDF, DOC, DOCX, TXT, SVG, ZIP, etc.) - up to 100MB
+  - Voice messages (OGG, AAC, M4A, MP3) - up to 16MB, including extensionless Signal recordings
   - Intelligent media caching and cleanup
 
 - **Message Features**:
@@ -39,6 +41,9 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - URL previews
   - Media attachments in replies
   - Message delivery status tracking
+  - **Auto-reply to last sender**: Replies without quotes automatically go to the most recent WhatsApp contact
+  - **Message reactions**: Full emoji reaction support between Signal and WhatsApp (👍, ❤️, etc.)
+  - **Smart voice detection**: Automatic detection of Signal voice recordings without file extensions
   
 - **Security & Privacy**:
   - Database encryption at rest

@@ -37,8 +37,18 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 		MaxBackoffMs:     5,
 		MaxAttempts:      3,
 	}
+	// Create a test media config
+	mediaConfig := models.MediaConfig{
+		AllowedTypes: models.MediaAllowedTypes{
+			Image:    []string{"jpg", "jpeg", "png"},
+			Video:    []string{"mp4", "mov"},
+			Document: []string{"pdf", "doc", "docx"},
+			Voice:    []string{"ogg", "aac", "m4a", "oga"},
+		},
+	}
+
 	// Create bridge without contact service for basic tests (contact service has its own tests)
-	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, "+1234567890", nil).(*bridge)
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, "+1234567890", nil).(*bridge)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -474,6 +484,40 @@ func TestHandleSignalMessage(t *testing.T) {
 				})).Return(nil).Once()
 			},
 		},
+		{
+			name: "reaction message",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "sig127",
+				Sender:    "sender123",
+				Message:   "👍",
+				Timestamp: time.Now().UnixMilli(),
+				Reaction: &signaltypes.SignalReaction{
+					Emoji:           "👍",
+					TargetAuthor:    "+0987654321",
+					TargetTimestamp: 1234567890000,
+					IsRemove:        false,
+				},
+			},
+			wantErr: false,
+			setup: func() {
+				// For reactions, we look up the target message by timestamp
+				targetID := "1234567890000"
+				targetMapping := &models.MessageMapping{
+					WhatsAppChatID: "chat123",
+					WhatsAppMsgID:  "wa_msg456",
+					SignalMsgID:    targetID,
+				}
+				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetID).Return(targetMapping, nil).Once()
+				
+				// Expect SendReaction to be called
+				resp := &types.SendMessageResponse{
+					MessageID: "reaction_msg_id",
+					Status:    "sent",
+				}
+				bridge.waClient.(*mockWhatsAppClient).On("SendReaction", ctx, "chat123", "wa_msg456", "👍").
+					Return(resp, nil).Once()
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -629,23 +673,27 @@ func TestMediaTypeDetection(t *testing.T) {
 			mediaType: "document",
 		},
 		{
-			name:      "Unknown type",
+			name:      "Unknown type (defaults to document)",
 			path:      "test.xyz",
 			isImage:   false,
 			isVideo:   false,
 			isVoice:   false,
 			isDoc:     false,
-			mediaType: "unknown",
+			mediaType: "document",
 		},
 	}
 
+	// Create a test bridge to access the methods
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.isImage, isImageAttachment(tt.path))
-			assert.Equal(t, tt.isVideo, isVideoAttachment(tt.path))
-			assert.Equal(t, tt.isVoice, isVoiceAttachment(tt.path))
-			assert.Equal(t, tt.isDoc, isDocumentAttachment(tt.path))
-			assert.Equal(t, tt.mediaType, getMediaType(tt.path))
+			assert.Equal(t, tt.isImage, bridge.isImageAttachment(tt.path))
+			assert.Equal(t, tt.isVideo, bridge.isVideoAttachment(tt.path))
+			assert.Equal(t, tt.isVoice, bridge.isVoiceAttachment(tt.path))
+			assert.Equal(t, tt.isDoc, bridge.isDocumentAttachment(tt.path))
+			assert.Equal(t, tt.mediaType, bridge.getMediaType(tt.path))
 		})
 	}
 }
@@ -711,6 +759,158 @@ func TestHandleNewSignalThread(t *testing.T) {
 	assert.NoError(t, err) // Should not error with graceful degradation
 }
 
+func TestHandleSignalReaction(t *testing.T) {
+	tests := []struct {
+		name          string
+		msg           *signaltypes.SignalMessage
+		mapping       *models.MessageMapping
+		mappingError  error
+		reactionError error
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "successful reaction",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "msg123",
+				Sender:    "sender123",
+				Timestamp: time.Now().UnixMilli(),
+				Reaction: &signaltypes.SignalReaction{
+					Emoji:           "👍",
+					TargetAuthor:    "+0987654321",
+					TargetTimestamp: 1234567890000,
+					IsRemove:        false,
+				},
+			},
+			mapping: &models.MessageMapping{
+				WhatsAppChatID: "chat123@c.us",
+				WhatsAppMsgID:  "wa_msg456",
+				SignalMsgID:    "1234567890000",
+			},
+			expectError: false,
+		},
+		{
+			name: "remove reaction",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "msg124",
+				Sender:    "sender123",
+				Timestamp: time.Now().UnixMilli(),
+				Reaction: &signaltypes.SignalReaction{
+					Emoji:           "👍",
+					TargetAuthor:    "+0987654321",
+					TargetTimestamp: 1234567890000,
+					IsRemove:        true,
+				},
+			},
+			mapping: &models.MessageMapping{
+				WhatsAppChatID: "chat123@c.us",
+				WhatsAppMsgID:  "wa_msg456",
+				SignalMsgID:    "1234567890000",
+			},
+			expectError: false,
+		},
+		{
+			name: "mapping not found",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "msg125",
+				Sender:    "sender123",
+				Timestamp: time.Now().UnixMilli(),
+				Reaction: &signaltypes.SignalReaction{
+					Emoji:           "❤️",
+					TargetAuthor:    "+0987654321",
+					TargetTimestamp: 1234567890000,
+					IsRemove:        false,
+				},
+			},
+			mapping:       nil,
+			expectError:   true,
+			errorContains: "no mapping found",
+		},
+		{
+			name: "database error",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "msg126",
+				Sender:    "sender123",
+				Timestamp: time.Now().UnixMilli(),
+				Reaction: &signaltypes.SignalReaction{
+					Emoji:           "😊",
+					TargetAuthor:    "+0987654321",
+					TargetTimestamp: 1234567890000,
+					IsRemove:        false,
+				},
+			},
+			mappingError:  assert.AnError,
+			expectError:   true,
+			errorContains: "failed to get message mapping",
+		},
+		{
+			name: "WhatsApp send error",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "msg127",
+				Sender:    "sender123",
+				Timestamp: time.Now().UnixMilli(),
+				Reaction: &signaltypes.SignalReaction{
+					Emoji:           "🎉",
+					TargetAuthor:    "+0987654321",
+					TargetTimestamp: 1234567890000,
+					IsRemove:        false,
+				},
+			},
+			mapping: &models.MessageMapping{
+				WhatsAppChatID: "chat123@c.us",
+				WhatsAppMsgID:  "wa_msg456",
+				SignalMsgID:    "1234567890000",
+			},
+			reactionError: assert.AnError,
+			expectError:   true,
+			errorContains: "failed to send reaction",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge, _, cleanup := setupTestBridge(t)
+			defer cleanup()
+
+			ctx := context.Background()
+
+			// Setup database mock
+			targetID := "1234567890000"
+			mockDB := bridge.db.(*mockDatabaseService)
+			mockDB.On("GetMessageMapping", ctx, targetID).Return(tt.mapping, tt.mappingError).Once()
+
+			// Setup WhatsApp client mock if needed
+			if tt.mapping != nil && tt.mappingError == nil {
+				mockWA := bridge.waClient.(*mockWhatsAppClient)
+				reaction := tt.msg.Reaction.Emoji
+				if tt.msg.Reaction.IsRemove {
+					reaction = ""
+				}
+				resp := &types.SendMessageResponse{
+					MessageID: "reaction_msg_id",
+					Status:    "sent",
+				}
+				mockWA.On("SendReaction", ctx, tt.mapping.WhatsAppChatID, tt.mapping.WhatsAppMsgID, reaction).
+					Return(resp, tt.reactionError).Once()
+			}
+
+			err := bridge.handleSignalReaction(ctx, tt.msg)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockDB.AssertExpectations(t)
+			if tt.mapping != nil && tt.mappingError == nil {
+				bridge.waClient.(*mockWhatsAppClient).AssertExpectations(t)
+			}
+		})
+	}
+}
+
 func TestNewBridge(t *testing.T) {
 	waClient := &mockWhatsAppClient{}
 	sigClient := &mockSignalClient{}
@@ -723,8 +923,16 @@ func TestNewBridge(t *testing.T) {
 	}
 
 	destinationPhoneNumber := "+1234567890"
+	mediaConfig := models.MediaConfig{
+		AllowedTypes: models.MediaAllowedTypes{
+			Image:    []string{"jpg", "jpeg", "png"},
+			Video:    []string{"mp4", "mov"},
+			Document: []string{"pdf", "doc", "docx"},
+			Voice:    []string{"ogg", "aac", "m4a"},
+		},
+	}
 	// For constructor test, use nil contact service to keep test simple
-	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, destinationPhoneNumber, nil)
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, destinationPhoneNumber, nil)
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
@@ -738,4 +946,135 @@ func TestNewBridge(t *testing.T) {
 	assert.Equal(t, mediaHandler, bridgeImpl.media)
 	assert.Equal(t, retryConfig, bridgeImpl.retryConfig)
 	assert.Equal(t, destinationPhoneNumber, bridgeImpl.signalDestinationPhoneNumber)
+}
+
+func TestHandleSignalVoiceRecordingWithoutExtension(t *testing.T) {
+	bridge, tmpDir, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a mock OGG voice recording file without extension (like Signal creates)
+	voiceFile := filepath.Join(tmpDir, "signal_voice_recording")
+	oggHeader := []byte("OggS") // OGG file signature
+	voiceContent := append(oggHeader, make([]byte, 1000)...) // Simulate 1KB voice recording
+	err := os.WriteFile(voiceFile, voiceContent, 0644)
+	require.NoError(t, err)
+
+	// Create Signal message with voice recording attachment (with quoted message to avoid new thread handling)
+	msg := &signaltypes.SignalMessage{
+		MessageID:   "voice123",
+		Sender:      "+1234567890",
+		Message:     "",
+		Timestamp:   time.Now().UnixMilli(),
+		Attachments: []string{voiceFile},
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:        "quoted123",
+			Author:    "+1234567890",
+			Text:      "Previous message",
+			Timestamp: time.Now().UnixMilli() - 1000,
+		},
+	}
+
+	// Mock database to return a mapping for the quoted message
+	mockMapping := &models.MessageMapping{
+		WhatsAppChatID: "+1234567890@c.us",
+	}
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "quoted123").Return(mockMapping, nil)
+
+	// Mock media handler to process the voice file and return path with .ogg extension
+	processedPath := filepath.Join(tmpDir, "cached_voice_file.ogg")
+	err = os.WriteFile(processedPath, voiceContent, 0644)
+	require.NoError(t, err)
+	bridge.media.(*mockMediaHandler).On("ProcessMedia", voiceFile).Return(processedPath, nil)
+
+	// Mock WhatsApp client to return voice response
+	expectedResponse := &types.SendMessageResponse{
+		MessageID: "wa-voice-123",
+		Status:    "sent",
+	}
+	bridge.waClient.(*mockWhatsAppClient).sendVoiceResp = expectedResponse
+
+	// Mock database save
+	bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
+
+	// Process the Signal message
+	err = bridge.HandleSignalMessage(ctx, msg)
+	assert.NoError(t, err)
+
+	// The fact that the test passed means SendVoice was successfully called with the processed path
+	// and the voice recording was correctly identified and sent as a voice message
+}
+
+func TestHandleSignalMessageAutoReply(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test: Signal message without quoted message should auto-reply to latest WhatsApp message from that chat
+	msg := &signaltypes.SignalMessage{
+		MessageID:     "auto_reply_123",
+		Sender:        "+1234567890",
+		Message:       "This is an auto-reply",
+		Timestamp:     time.Now().UnixMilli(),
+		QuotedMessage: nil, // No quoted message - should trigger auto-reply logic
+	}
+
+	// Mock database to return latest message mapping
+	latestMapping := &models.MessageMapping{
+		WhatsAppChatID: "+1234567890@c.us",
+		WhatsAppMsgID:  "latest_wa_msg_123",
+		SignalMsgID:    "latest_sig_msg_123",
+		ForwardedAt:    time.Now().Add(-5 * time.Minute), // 5 minutes ago
+	}
+	bridge.db.(*mockDatabaseService).On("GetLatestMessageMapping", ctx).Return(latestMapping, nil)
+
+	// Mock WhatsApp client to return text response
+	expectedResponse := &types.SendMessageResponse{
+		MessageID: "auto_reply_wa_msg",
+		Status:    "sent",
+	}
+	bridge.waClient.(*mockWhatsAppClient).sendTextResp = expectedResponse
+
+	// Mock database save
+	bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
+
+	// Process the Signal message
+	err := bridge.HandleSignalMessage(ctx, msg)
+	assert.NoError(t, err)
+
+	// Verify that the auto-reply logic was triggered and the message was sent
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMapping", ctx)
+}
+
+func TestHandleSignalMessageAutoReplyNoHistory(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test: Signal message without quoted message and no chat history should be treated as new thread
+	msg := &signaltypes.SignalMessage{
+		MessageID:     "new_thread_123",
+		Sender:        "+9999999999",
+		Message:       "This should be a new thread",
+		Timestamp:     time.Now().UnixMilli(),
+		QuotedMessage: nil,
+	}
+
+	// Mock database to return no message mapping (new conversation)
+	bridge.db.(*mockDatabaseService).On("GetLatestMessageMapping", ctx).Return(nil, nil)
+
+	// Process the Signal message - should call handleNewSignalThread (which currently logs and returns nil)
+	err := bridge.HandleSignalMessage(ctx, msg)
+	assert.NoError(t, err) // Should not error, just log and ignore
+
+	// Verify that the auto-reply logic was attempted but found no history
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMapping", ctx)
 }

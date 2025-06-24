@@ -67,6 +67,14 @@ func (m *MockWAClient) CreateSession(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *MockWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, messageID, reaction)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
 func (m *MockWAClient) StartSession(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)

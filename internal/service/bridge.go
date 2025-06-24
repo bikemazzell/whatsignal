@@ -29,6 +29,8 @@ type DatabaseService interface {
 	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
+	GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error)
+	GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(retentionDays int) error
 }
@@ -39,18 +41,20 @@ type bridge struct {
 	db                         DatabaseService
 	media                      media.Handler
 	retryConfig                models.RetryConfig
+	mediaConfig                models.MediaConfig
 	logger                     *logrus.Logger
 	signalDestinationPhoneNumber string
 	contactService             ContactServiceInterface
 }
 
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, signalDestinationPhoneNumber string, contactService ContactServiceInterface) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, signalDestinationPhoneNumber string, contactService ContactServiceInterface) MessageBridge {
 	return &bridge{
 		waClient:                     waClient,
 		sigClient:                    sigClient,
 		db:                           db,
 		media:                        mh,
 		retryConfig:                  rc,
+		mediaConfig:                  mc,
 		logger:                       logrus.New(),
 		signalDestinationPhoneNumber: signalDestinationPhoneNumber,
 		contactService:               contactService,
@@ -142,34 +146,76 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 		return b.handleSignalGroupMessage(ctx, msg)
 	}
 
-	if msg.QuotedMessage == nil {
-		return b.handleNewSignalThread(ctx, msg)
+	// Handle reactions
+	if msg.Reaction != nil {
+		return b.handleSignalReaction(ctx, msg)
 	}
 
-	b.logger.WithFields(logrus.Fields{
-		"quotedMessageID": msg.QuotedMessage.ID,
-	}).Debug("Looking up message mapping for quoted message")
+	var mapping *models.MessageMapping
+	var err error
 	
-	mapping, err := b.db.GetMessageMapping(ctx, msg.QuotedMessage.ID)
-	if err != nil {
+	if msg.QuotedMessage == nil {
+		// No quoted message - find the latest message that was sent to the Signal user (auto-reply to last sender)
+		b.logger.WithFields(logrus.Fields{
+			"signalSender": msg.Sender,
+		}).Debug("No quoted message, looking up latest message for auto-reply to last WhatsApp sender")
+		
+		mapping, err = b.db.GetLatestMessageMapping(ctx)
+		if err != nil {
+			b.logger.WithFields(logrus.Fields{
+				"signalSender": msg.Sender,
+				"error": err,
+			}).Error("Failed to get latest message mapping for auto-reply")
+			return fmt.Errorf("failed to get latest message mapping for auto-reply: %w", err)
+		}
+		
+		if mapping == nil {
+			// No previous messages found - this is a new conversation
+			return b.handleNewSignalThread(ctx, msg)
+		}
+		
+		b.logger.WithFields(logrus.Fields{
+			"signalSender": msg.Sender,
+			"replyToWhatsAppChat": mapping.WhatsAppChatID,
+			"latestMessageID": mapping.WhatsAppMsgID,
+			"latestMessageTime": mapping.ForwardedAt,
+		}).Debug("Found latest message for auto-reply - will reply to last WhatsApp sender")
+	} else {
+		// Has quoted message - use existing logic
 		b.logger.WithFields(logrus.Fields{
 			"quotedMessageID": msg.QuotedMessage.ID,
-			"error": err,
-		}).Error("Failed to get message mapping for quoted message")
-		return fmt.Errorf("failed to get message mapping for quoted message: %w", err)
+		}).Debug("Looking up message mapping for quoted message")
+		
+		mapping, err = b.db.GetMessageMapping(ctx, msg.QuotedMessage.ID)
+		if err != nil {
+			b.logger.WithFields(logrus.Fields{
+				"quotedMessageID": msg.QuotedMessage.ID,
+				"error": err,
+			}).Error("Failed to get message mapping for quoted message")
+			return fmt.Errorf("failed to get message mapping for quoted message: %w", err)
+		}
 	}
 	
 	if mapping != nil {
-		b.logger.WithFields(logrus.Fields{
-			"quotedMessageID": msg.QuotedMessage.ID,
-		}).Debug("Found message mapping in database")
+		if msg.QuotedMessage != nil {
+			b.logger.WithFields(logrus.Fields{
+				"quotedMessageID": msg.QuotedMessage.ID,
+			}).Debug("Found message mapping in database")
+		} else {
+			b.logger.WithFields(logrus.Fields{
+				"whatsappChatID": mapping.WhatsAppChatID,
+			}).Debug("Found latest message mapping for auto-reply")
+		}
 	} else {
-		b.logger.WithFields(logrus.Fields{
-			"quotedMessageID": msg.QuotedMessage.ID,
-		}).Debug("No message mapping found in database, trying fallback")
+		if msg.QuotedMessage != nil {
+			b.logger.WithFields(logrus.Fields{
+				"quotedMessageID": msg.QuotedMessage.ID,
+			}).Debug("No message mapping found in database, trying fallback")
+		}
 	}
 
-	if mapping == nil {
+	if mapping == nil && msg.QuotedMessage != nil {
+		// Try fallback extraction from quoted message text only if we have a quoted message
 		if strings.Contains(msg.QuotedMessage.Text, ": ") {
 			parts := strings.SplitN(msg.QuotedMessage.Text, ": ", 2)
 			if len(parts) == 2 {
@@ -194,7 +240,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 						}
 					}
 				}
-				
 			}
 		}
 		
@@ -228,36 +273,46 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 
 
 	switch {
-	case len(attachments) > 0 && isImageAttachment(attachments[0]):
+	case len(attachments) > 0 && b.isImageAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendImage",
 		}).Debug("Sending image to WhatsApp")
 		resp, sendErr = b.waClient.SendImage(ctx, whatsappChatID, attachments[0], msg.Message)
-	case len(attachments) > 0 && isVideoAttachment(attachments[0]):
+	case len(attachments) > 0 && b.isVideoAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendVideo",
 		}).Debug("Sending video to WhatsApp")
 		resp, sendErr = b.waClient.SendVideo(ctx, whatsappChatID, attachments[0], msg.Message)
-	case len(attachments) > 0 && isVoiceAttachment(attachments[0]):
+	case len(attachments) > 0 && b.isVoiceAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendVoice",
 		}).Debug("Sending voice to WhatsApp")
 		resp, sendErr = b.waClient.SendVoice(ctx, whatsappChatID, attachments[0])
-	case len(attachments) > 0 && isDocumentAttachment(attachments[0]):
+	case len(attachments) > 0:
+		// Default: treat all other attachments (including configured documents and unrecognized files) as documents
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendDocument",
-		}).Debug("Sending document to WhatsApp")
+			"filePath":  attachments[0],
+		}).Debug("Sending attachment as document to WhatsApp")
 		resp, sendErr = b.waClient.SendDocument(ctx, whatsappChatID, attachments[0], msg.Message)
 	default:
-		b.logger.WithFields(logrus.Fields{
-			"messageID": msg.MessageID,
-			"method":    "SendText",
-		}).Debug("Sending text to WhatsApp")
-		resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
+		// Only send text if there's actually text content
+		if msg.Message != "" {
+			b.logger.WithFields(logrus.Fields{
+				"messageID": msg.MessageID,
+				"method":    "SendText",
+			}).Debug("Sending text to WhatsApp")
+			resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
+		} else {
+			b.logger.WithFields(logrus.Fields{
+				"messageID": msg.MessageID,
+			}).Warn("Skipping empty message with no attachments")
+			return nil // Skip empty messages
+		}
 	}
 
 	if sendErr != nil {
@@ -275,7 +330,7 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 
 	if len(attachments) > 0 {
 		newMapping.MediaPath = &attachments[0]
-		newMapping.MediaType = getMediaType(attachments[0])
+		newMapping.MediaType = b.getMediaType(attachments[0])
 	}
 
 	if err := b.db.SaveMessageMapping(ctx, newMapping); err != nil {
@@ -331,38 +386,56 @@ func (b *bridge) processSignalAttachments(attachments []string) ([]string, error
 	return processed, nil
 }
 
-func isImageAttachment(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".jpg" || ext == ".jpeg" || ext == ".png"
+func (b *bridge) isImageAttachment(path string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	for _, allowedExt := range b.mediaConfig.AllowedTypes.Image {
+		if ext == strings.ToLower(allowedExt) {
+			return true
+		}
+	}
+	return false
 }
 
-func isVideoAttachment(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".mp4" || ext == ".mov"
+func (b *bridge) isVideoAttachment(path string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	for _, allowedExt := range b.mediaConfig.AllowedTypes.Video {
+		if ext == strings.ToLower(allowedExt) {
+			return true
+		}
+	}
+	return false
 }
 
-func isDocumentAttachment(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".pdf" || ext == ".doc" || ext == ".docx"
+func (b *bridge) isDocumentAttachment(path string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	for _, allowedExt := range b.mediaConfig.AllowedTypes.Document {
+		if ext == strings.ToLower(allowedExt) {
+			return true
+		}
+	}
+	return false
 }
 
-func isVoiceAttachment(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".ogg" || ext == ".aac" || ext == ".m4a"
+func (b *bridge) isVoiceAttachment(path string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	for _, allowedExt := range b.mediaConfig.AllowedTypes.Voice {
+		if ext == strings.ToLower(allowedExt) {
+			return true
+		}
+	}
+	return false
 }
 
-func getMediaType(path string) string {
+func (b *bridge) getMediaType(path string) string {
 	switch {
-	case isImageAttachment(path):
+	case b.isImageAttachment(path):
 		return "image"
-	case isVideoAttachment(path):
+	case b.isVideoAttachment(path):
 		return "video"
-	case isVoiceAttachment(path):
+	case b.isVoiceAttachment(path):
 		return "voice"
-	case isDocumentAttachment(path):
-		return "document"
 	default:
-		return "unknown"
+		return "document" // Default everything else to document
 	}
 }
 
@@ -396,6 +469,51 @@ func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.Sig
 		"messageID": msg.MessageID,
 		"sender":    msg.Sender,
 	}).Warn("New thread creation is not yet supported - message ignored")
+
+	return nil
+}
+
+func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	b.logger.WithFields(logrus.Fields{
+		"messageID": msg.MessageID,
+		"sender":    msg.Sender,
+		"reaction":  msg.Reaction.Emoji,
+		"targetTimestamp": msg.Reaction.TargetTimestamp,
+		"isRemove": msg.Reaction.IsRemove,
+	}).Debug("Processing Signal reaction")
+
+	// Find the original message mapping by Signal timestamp
+	targetID := fmt.Sprintf("%d", msg.Reaction.TargetTimestamp)
+	mapping, err := b.db.GetMessageMapping(ctx, targetID)
+	if err != nil {
+		b.logger.WithError(err).Error("Failed to get message mapping for reaction target")
+		return fmt.Errorf("failed to get message mapping for reaction target: %w", err)
+	}
+
+	if mapping == nil {
+		b.logger.WithField("targetID", targetID).Warn("No mapping found for reaction target message")
+		return fmt.Errorf("no mapping found for reaction target message: %s", targetID)
+	}
+
+	// Send reaction to WhatsApp
+	reaction := msg.Reaction.Emoji
+	if msg.Reaction.IsRemove {
+		// Empty string removes the reaction in WAHA
+		reaction = ""
+	}
+
+
+	resp, err := b.waClient.SendReaction(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID, reaction)
+	if err != nil {
+		b.logger.WithError(err).Error("Failed to send reaction to WhatsApp")
+		return fmt.Errorf("failed to send reaction to WhatsApp: %w", err)
+	}
+
+	b.logger.WithFields(logrus.Fields{
+		"whatsappMsgID": mapping.WhatsAppMsgID,
+		"reaction": reaction,
+		"response": resp,
+	}).Info("Successfully forwarded reaction to WhatsApp")
 
 	return nil
 }

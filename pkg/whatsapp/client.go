@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -287,18 +288,32 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 		mimeType = "image/gif"
 	case ".webp":
 		mimeType = "image/webp"
+	case ".svg":
+		mimeType = "image/svg+xml"
 	case ".mp4":
 		mimeType = "video/mp4"
 	case ".mov":
 		mimeType = "video/quicktime"
 	case ".pdf":
 		mimeType = "application/pdf"
+	case ".doc":
+		mimeType = "application/msword"
+	case ".docx":
+		mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".txt":
+		mimeType = "text/plain"
+	case ".rtf":
+		mimeType = "application/rtf"
 	case ".ogg":
 		mimeType = "audio/ogg"
 	case ".mp3":
 		mimeType = "audio/mpeg"
 	case ".wav":
 		mimeType = "audio/wav"
+	case ".aac":
+		mimeType = "audio/aac"
+	case ".m4a":
+		mimeType = "audio/mp4"
 	default:
 		mimeType = "application/octet-stream"
 	}
@@ -356,6 +371,71 @@ func (c *WhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, capti
 
 func (c *WhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
 	return c.SendMedia(ctx, chatID, docPath, caption, types.MediaTypeFile)
+}
+
+func (c *WhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
+	payload := types.ReactionRequest{
+		Session:   c.sessionName,
+		MessageID: messageID,
+		Reaction:  reaction,
+	}
+
+	endpoint := types.APIBase + types.EndpointReaction
+	return c.sendReactionRequest(ctx, endpoint, payload)
+}
+
+func (c *WhatsAppClient) sendReactionRequest(ctx context.Context, endpoint string, payload interface{}) (*types.SendMessageResponse, error) {
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	fullURL := c.baseURL + endpoint
+	req, err := http.NewRequestWithContext(ctx, "PUT", fullURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		// Try to decode error response
+		var result types.SendMessageResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+			return &result, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, result.Error)
+		}
+		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
+	}
+
+	// Read response body
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Handle empty response (which is valid for reactions)
+	if len(responseBody) == 0 {
+		return &types.SendMessageResponse{
+			Status: "sent",
+		}, nil
+	}
+
+	// Try to decode JSON response
+	var result types.SendMessageResponse
+	if err := json.Unmarshal(responseBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
 }
 
 func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, payload interface{}) (*types.SendMessageResponse, error) {

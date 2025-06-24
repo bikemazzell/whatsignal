@@ -496,6 +496,36 @@ func TestReceiveMessages(t *testing.T) {
 			serverStatus:   http.StatusOK,
 			expectedCount:  0,
 		},
+		{
+			name:           "successful receive with reaction",
+			timeoutSeconds: 5,
+			serverResponse: `[
+				{
+					"envelope": {
+						"source": "+1234567890",
+						"sourceNumber": "+1234567890",
+						"sourceUuid": "uuid-123",
+						"sourceName": "Test User",
+						"sourceDevice": 1,
+						"timestamp": 1234567890000,
+						"dataMessage": {
+							"timestamp": 1234567890000,
+							"message": "",
+							"reaction": {
+								"emoji": "👍",
+								"targetAuthor": "+0987654321",
+								"targetSentTimestamp": 1234567880000,
+								"isRemove": false
+							}
+						}
+					},
+					"account": "+0987654321",
+					"subscription": 0
+				}
+			]`,
+			serverStatus:  http.StatusOK,
+			expectedCount: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -537,8 +567,19 @@ func TestReceiveMessages(t *testing.T) {
 				if tt.expectedCount > 0 {
 					msg := messages[0]
 					assert.Equal(t, "+1234567890", msg.Sender)
-					assert.Equal(t, "Hello from Signal!", msg.Message)
 					assert.NotZero(t, msg.Timestamp)
+					
+					// Check for reaction-specific assertions
+					if tt.name == "successful receive with reaction" {
+						assert.NotNil(t, msg.Reaction)
+						assert.Equal(t, "👍", msg.Reaction.Emoji)
+						assert.Equal(t, "+0987654321", msg.Reaction.TargetAuthor)
+						assert.Equal(t, int64(1234567880000), msg.Reaction.TargetTimestamp)
+						assert.False(t, msg.Reaction.IsRemove)
+						assert.Equal(t, "👍", msg.Message) // Message should contain emoji
+					} else {
+						assert.Equal(t, "Hello from Signal!", msg.Message)
+					}
 				}
 			}
 		})

@@ -563,6 +563,73 @@ func TestSendDocument(t *testing.T) {
 	assert.Nil(t, resp)
 }
 
+func TestSendReaction(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Equal(t, "/api/reaction", r.URL.Path)
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		// Parse JSON body
+		var payload types.ReactionRequest
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		require.NoError(t, err)
+
+		// Verify JSON fields
+		assert.Equal(t, "test-session", payload.Session)
+		assert.Equal(t, "msg456", payload.MessageID)
+		assert.Equal(t, "👍", payload.Reaction)
+
+		// Send response
+		resp := types.SendMessageResponse{
+			MessageID: "reaction123",
+			Status:    "sent",
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-token",
+		SessionName: "test-session",
+		Timeout:     10 * time.Second,
+	})
+
+	// Test successful reaction
+	resp, err := client.SendReaction(context.Background(), "chat123@c.us", "msg456", "👍")
+	require.NoError(t, err)
+	assert.Equal(t, "reaction123", resp.MessageID)
+	assert.Equal(t, "sent", resp.Status)
+
+	// Test remove reaction (empty string)
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		var payload types.ReactionRequest
+		json.NewDecoder(r.Body).Decode(&payload)
+		assert.Equal(t, "", payload.Reaction) // Empty string removes reaction
+
+		resp := types.SendMessageResponse{
+			MessageID: "reaction124",
+			Status:    "sent",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server2.Close()
+
+	client2 := NewClient(types.ClientConfig{
+		BaseURL:     server2.URL,
+		APIKey:      "test-token",
+		SessionName: "test-session",
+		Timeout:     10 * time.Second,
+	})
+
+	resp, err = client2.SendReaction(context.Background(), "chat123@c.us", "msg456", "")
+	require.NoError(t, err)
+	assert.Equal(t, "reaction124", resp.MessageID)
+}
+
 func TestClient_RestartSession(t *testing.T) {
 	client, server := setupTestClient(t)
 	defer server.Close()

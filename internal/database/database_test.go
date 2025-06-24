@@ -852,3 +852,127 @@ func TestDatabase_GetMessageMappingBySignalID(t *testing.T) {
 	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
 	assert.Equal(t, mapping.SignalMsgID, retrieved.SignalMsgID)
 }
+
+func TestDatabase_GetLatestMessageMappingByWhatsAppChatID(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	chatID := "+1234567890@c.us"
+
+	// Test when no messages exist
+	mapping, err := db.GetLatestMessageMappingByWhatsAppChatID(ctx, chatID)
+	assert.NoError(t, err)
+	assert.Nil(t, mapping)
+
+	// Create test mappings with different timestamps
+	mapping1 := &models.MessageMapping{
+		WhatsAppChatID:  chatID,
+		WhatsAppMsgID:   "wa_msg_1",
+		SignalMsgID:     "sig_msg_1",
+		SignalTimestamp: time.Now().Add(-2 * time.Hour),
+		ForwardedAt:     time.Now().Add(-2 * time.Hour),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	mapping2 := &models.MessageMapping{
+		WhatsAppChatID:  chatID,
+		WhatsAppMsgID:   "wa_msg_2",
+		SignalMsgID:     "sig_msg_2",
+		SignalTimestamp: time.Now().Add(-1 * time.Hour),
+		ForwardedAt:     time.Now().Add(-1 * time.Hour), // More recent
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	mapping3 := &models.MessageMapping{
+		WhatsAppChatID:  "+9876543210@c.us", // Different chat
+		WhatsAppMsgID:   "wa_msg_3",
+		SignalMsgID:     "sig_msg_3",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	// Save mappings
+	err = db.SaveMessageMapping(ctx, mapping1)
+	require.NoError(t, err)
+	err = db.SaveMessageMapping(ctx, mapping2)
+	require.NoError(t, err)
+	err = db.SaveMessageMapping(ctx, mapping3)
+	require.NoError(t, err)
+
+	// Get latest for the test chat ID - should return mapping2 (most recent)
+	latest, err := db.GetLatestMessageMappingByWhatsAppChatID(ctx, chatID)
+	assert.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "wa_msg_2", latest.WhatsAppMsgID)
+	assert.Equal(t, "sig_msg_2", latest.SignalMsgID)
+	assert.Equal(t, chatID, latest.WhatsAppChatID)
+
+	// Test with different chat ID
+	latest, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, "+9876543210@c.us")
+	assert.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "wa_msg_3", latest.WhatsAppMsgID)
+
+	// Test with non-existent chat ID
+	latest, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, "+0000000000@c.us")
+	assert.NoError(t, err)
+	assert.Nil(t, latest)
+}
+
+func TestDatabase_GetLatestMessageMapping(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test when no messages exist
+	mapping, err := db.GetLatestMessageMapping(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, mapping)
+
+	// Create test mappings with different timestamps
+	mapping1 := &models.MessageMapping{
+		WhatsAppChatID:  "+1111111111@c.us",
+		WhatsAppMsgID:   "wa_msg_1",
+		SignalMsgID:     "sig_msg_1",
+		SignalTimestamp: time.Now().Add(-3 * time.Hour),
+		ForwardedAt:     time.Now().Add(-3 * time.Hour),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	mapping2 := &models.MessageMapping{
+		WhatsAppChatID:  "+2222222222@c.us",
+		WhatsAppMsgID:   "wa_msg_2",
+		SignalMsgID:     "sig_msg_2",
+		SignalTimestamp: time.Now().Add(-1 * time.Hour),
+		ForwardedAt:     time.Now().Add(-1 * time.Hour), // Most recent overall
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	mapping3 := &models.MessageMapping{
+		WhatsAppChatID:  "+3333333333@c.us",
+		WhatsAppMsgID:   "wa_msg_3",
+		SignalMsgID:     "sig_msg_3",
+		SignalTimestamp: time.Now().Add(-2 * time.Hour),
+		ForwardedAt:     time.Now().Add(-2 * time.Hour),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	// Save mappings
+	err = db.SaveMessageMapping(ctx, mapping1)
+	require.NoError(t, err)
+	err = db.SaveMessageMapping(ctx, mapping2)
+	require.NoError(t, err)
+	err = db.SaveMessageMapping(ctx, mapping3)
+	require.NoError(t, err)
+
+	// Get latest overall - should return mapping2 (most recent across all chats)
+	latest, err := db.GetLatestMessageMapping(ctx)
+	assert.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "wa_msg_2", latest.WhatsAppMsgID)
+	assert.Equal(t, "sig_msg_2", latest.SignalMsgID)
+	assert.Equal(t, "+2222222222@c.us", latest.WhatsAppChatID)
+}

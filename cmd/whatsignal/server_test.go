@@ -150,6 +150,14 @@ func (m *mockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([
 	return args.Get(0).([]types.Contact), args.Error(1)
 }
 
+func (m *mockWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, messageID, reaction)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockMessageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	args := m.Called(ctx, threadID)
 	if args.Get(0) == nil {
@@ -886,6 +894,162 @@ func TestConvertWebhookPayloadToSignalMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertWebhookPayloadToSignalMessage(tt.payload)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestServer_WhatsAppEventHandlers(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel) // Reduce noise in tests
+	cfg := &models.Config{
+		Signal: models.SignalConfig{
+			DestinationPhoneNumber: "+1234567890",
+		},
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+	}
+	mockWAClient := &mockWAClient{}
+	server := NewServer(cfg, msgService, logger, mockWAClient)
+
+	tests := []struct {
+		name    string
+		event   string
+		payload map[string]interface{}
+		setup   func()
+	}{
+		{
+			name:  "message.reaction event",
+			event: models.EventMessageReaction,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageReaction,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "reaction123",
+					"from":   "+0987654321",
+					"fromMe": false,
+					"reaction": map[string]interface{}{
+						"text":      "👍",
+						"messageId": "original_msg_123",
+					},
+				},
+			},
+			setup: func() {
+				// Mock finding the original message
+				msgService.On("GetMessageByID", mock.Anything, "original_msg_123").
+					Return(&models.Message{ID: "original_msg_123"}, nil).Once()
+				
+				// Mock sending reaction notification to Signal
+				msgService.On("SendMessage", mock.Anything, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.Platform == "signal" && 
+						   msg.ThreadID == "+1234567890" &&
+						   msg.Content == "👍 Reacted with 👍"
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name:  "message.edited event",
+			event: models.EventMessageEdited,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageEdited,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":               "edit123",
+					"from":             "+0987654321",
+					"fromMe":           false,
+					"body":             "This is the edited message",
+					"editedMessageId":  "original_msg_124",
+				},
+			},
+			setup: func() {
+				// Mock finding the original message
+				msgService.On("GetMessageByID", mock.Anything, "original_msg_124").
+					Return(&models.Message{ID: "original_msg_124"}, nil).Once()
+				
+				// Mock sending edit notification to Signal
+				msgService.On("SendMessage", mock.Anything, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.Platform == "signal" && 
+						   msg.ThreadID == "+1234567890" &&
+						   msg.Content == "✏️ Message edited: This is the edited message"
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name:  "message.ack event",
+			event: models.EventMessageACK,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageACK,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":   "msg_ack_123",
+					"from": "+0987654321",
+					"to":   "+1234567890",
+					"ack":  3, // ACKRead - this is now a simple integer
+				},
+			},
+			setup: func() {
+				// Mock finding the message for ACK
+				msgService.On("GetMessageByID", mock.Anything, "msg_ack_123").
+					Return(&models.Message{ID: "msg_ack_123"}, nil).Once()
+				
+				// Mock updating delivery status
+				msgService.On("UpdateDeliveryStatus", mock.Anything, "msg_ack_123", "read").
+					Return(nil).Once()
+			},
+		},
+		{
+			name:  "message.waiting event",
+			event: models.EventMessageWaiting,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageWaiting,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "waiting123",
+					"from":   "+0987654321",
+					"fromMe": false,
+				},
+			},
+			setup: func() {
+				// Mock sending waiting notification to Signal
+				msgService.On("SendMessage", mock.Anything, mock.MatchedBy(func(msg *models.Message) bool {
+					return msg.Platform == "signal" && 
+						   msg.ThreadID == "+1234567890" &&
+						   msg.Content == "⏳ WhatsApp is waiting for a message"
+				})).Return(nil).Once()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			payload, err := json.Marshal(tt.payload)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+			
+			// Create valid signature
+			mac := hmac.New(sha512.New, []byte("test-secret"))
+			mac.Write(payload)
+			signature := hex.EncodeToString(mac.Sum(nil))
+			req.Header.Set(XWahaSignatureHeader, signature)
+			req.Header.Set("X-Webhook-Timestamp", "1234567890")
+
+			w := httptest.NewRecorder()
+
+			server.handleWhatsAppWebhook()(w, req)
+
+			resp := w.Result()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			msgService.AssertExpectations(t)
 		})
 	}
 }

@@ -54,7 +54,13 @@
   // Media configuration
   // - cache_dir: Directory to store cached media files
   // - maxSizeMB: Maximum file sizes in MB for different media types
-  // - allowedTypes: Allowed file extensions for different media types
+  // - allowedTypes: File extensions for each media type (case-insensitive, no dots)
+  //   * image: Files sent as images (displays in chat)
+  //   * video: Files sent as videos (displays in chat)
+  //   * voice: Files sent as voice messages (audio player)
+  //   * document: Files explicitly configured as documents
+  //   * NOTE: Any file type NOT listed above defaults to document attachment
+  //   * Examples: SVG, ZIP, TXT, etc. will be sent as documents even if not listed
   "media": {
     "cache_dir": "./media-cache",
     "maxSizeMB": {
@@ -65,10 +71,10 @@
       "voice": 16
     },
     "allowedTypes": {
-      "image": ["jpg", "jpeg", "png"],
-      "video": ["mp4", "mov"],
-      "document": ["pdf", "doc", "docx"],
-      "voice": ["ogg"]
+      "image": ["jpg", "jpeg", "png", "gif", "webp"],
+      "video": ["mp4", "mov", "avi"],
+      "document": ["pdf", "doc", "docx", "txt", "rtf"],
+      "voice": ["ogg", "aac", "m4a", "mp3", "oga"]
     }
   }
 } 

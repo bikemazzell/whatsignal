@@ -39,23 +39,7 @@ This document describes all configuration options available in `config.json`.
   - Default: `24` hours
   - Adjust based on how frequently contact names change
 
-- `whatsapp.media`: Media handling configuration (moved from nested mediaConfig)
-  ```json
-  {
-    "maxSizeMB": {
-      "image": 5,
-      "video": 100,
-      "document": 100,
-      "voice": 16
-    },
-    "allowedTypes": {
-      "image": ["jpg", "jpeg", "png"],
-      "video": ["mp4"],
-      "document": ["pdf", "doc", "docx"],
-      "voice": ["ogg"]
-    }
-  }
-  ```
+**Note**: Media configuration has been moved to a separate `media` section in the root of config.json for better organization. See the Media Configuration section below for details.
 
 ## Signal Configuration
 
@@ -128,9 +112,13 @@ Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber
 
 ## Media Configuration
 
+### File Storage
+
 - `media.cache_dir`: Directory to store cached media files
   - Default: `./media-cache`
   - Directory will be created automatically if it doesn't exist
+
+### File Size Limits
 
 - `media.maxSizeMB`: Maximum file sizes in MB for different media types
   - `image`: Maximum size for images (default: 5 MB)
@@ -139,11 +127,44 @@ Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber
   - `document`: Maximum size for documents (default: 100 MB)
   - `voice`: Maximum size for voice messages (default: 16 MB)
 
-- `media.allowedTypes`: Allowed file extensions for different media types
-  - `image`: Allowed image formats (default: ["jpg", "jpeg", "png"])
-  - `video`: Allowed video formats (default: ["mp4", "mov"])
-  - `document`: Allowed document formats (default: ["pdf", "doc", "docx"])
-  - `voice`: Allowed voice formats (default: ["ogg"])
+### File Type Handling
+
+**Important**: WhatSignal uses a config-driven approach for file type detection. You can add new file formats without rebuilding the application.
+
+- `media.allowedTypes`: File extensions for each media type (case-insensitive, no dots required)
+  - `image`: Files sent as images that display in chat (default: ["jpg", "jpeg", "png"])
+  - `video`: Files sent as videos that display in chat (default: ["mp4", "mov"])
+  - `voice`: Files sent as voice messages with audio player (default: ["ogg"])
+  - `document`: Files explicitly configured as documents (default: ["pdf", "doc", "docx"])
+
+#### Smart Default Behavior
+
+**Any file type NOT listed in the above categories will automatically be sent as a document attachment.**
+
+This means you can send files like:
+- **SVG files** → sent as documents (better than images since SVG doesn't display in chat)
+- **ZIP files** → sent as documents
+- **Text files** → sent as documents  
+- **Any other format** → sent as documents
+
+#### Adding New File Types
+
+To add support for new file types, simply update your `config.json`:
+
+```json
+{
+  "media": {
+    "allowedTypes": {
+      "image": ["jpg", "jpeg", "png", "gif", "webp", "bmp"],
+      "video": ["mp4", "mov", "avi", "mkv", "webm"],
+      "voice": ["ogg", "aac", "m4a", "mp3", "wav"],
+      "document": ["pdf", "doc", "docx", "txt", "rtf", "csv"]
+    }
+  }
+}
+```
+
+**Application restart required** - configuration is loaded at startup, so restart WhatSignal after making changes.
 
 ## Logging
 
@@ -194,10 +215,10 @@ Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber
       "voice": 16
     },
     "allowedTypes": {
-      "image": ["jpg", "jpeg", "png"],
-      "video": ["mp4", "mov"],
-      "document": ["pdf", "doc", "docx"],
-      "voice": ["ogg"]
+      "image": ["jpg", "jpeg", "png", "gif", "webp"],
+      "video": ["mp4", "mov", "avi"],
+      "document": ["pdf", "doc", "docx", "txt", "rtf"],
+      "voice": ["ogg", "aac", "m4a", "mp3"]
     }
   }
 }

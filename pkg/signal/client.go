@@ -214,6 +214,19 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 				Timestamp: msg.Envelope.DataMessage.Quote.ID,
 			}
 		}
+
+		if msg.Envelope.DataMessage.Reaction != nil {
+			sigMsg.Reaction = &types.SignalReaction{
+				Emoji:           msg.Envelope.DataMessage.Reaction.Emoji,
+				TargetAuthor:    msg.Envelope.DataMessage.Reaction.TargetAuthor,
+				TargetTimestamp: msg.Envelope.DataMessage.Reaction.TargetTimestamp,
+				IsRemove:        msg.Envelope.DataMessage.Reaction.IsRemove,
+			}
+			// For reactions, we might not have a regular message text
+			if sigMsg.Message == "" && sigMsg.Reaction != nil {
+				sigMsg.Message = sigMsg.Reaction.Emoji // Store emoji as message for easy access
+			}
+		}
 		
 		result = append(result, sigMsg)
 	}

@@ -49,6 +49,14 @@ func (m *mockWhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath st
 	return m.sendVoiceResp, m.sendVoiceErr
 }
 
+func (m *mockWhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, messageID, reaction)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockWhatsAppClient) SendContact(ctx context.Context, chatID, contactID string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, contactID)
 	if args.Get(0) == nil {
@@ -226,6 +234,22 @@ func (m *mockDatabaseService) GetMessageMapping(ctx context.Context, id string) 
 
 func (m *mockDatabaseService) GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, signalID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
+}
+
+func (m *mockDatabaseService) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error) {
+	args := m.Called(ctx, whatsappChatID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
+}
+
+func (m *mockDatabaseService) GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error) {
+	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

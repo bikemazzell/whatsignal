@@ -1,5 +1,24 @@
 package models
 
+// WhatsApp webhook event types
+const (
+	EventMessage         = "message"
+	EventMessageReaction = "message.reaction"
+	EventMessageEdited   = "message.edited"
+	EventMessageACK      = "message.ack"
+	EventMessageWaiting  = "message.waiting"
+)
+
+// WhatsApp message ACK statuses
+const (
+	ACKError   = -1
+	ACKPending = 0
+	ACKServer  = 1
+	ACKDevice  = 2
+	ACKRead    = 3
+	ACKPlayed  = 4
+)
+
 type WhatsAppWebhookPayload struct {
 	ID        string `json:"id"`
 	Timestamp int64  `json:"timestamp"`
@@ -22,6 +41,14 @@ type WhatsAppWebhookPayload struct {
 			MimeType string `json:"mimetype"`
 			Filename string `json:"filename"`
 		} `json:"media"`
+		Reaction *struct {
+			Text      string `json:"text"`
+			MessageID string `json:"messageId"`
+		} `json:"reaction"`
+		// Fields for message.edited event
+		EditedMessageID *string `json:"editedMessageId,omitempty"`
+		// Fields for message.ack event (ACK status is sent directly as a number)
+		ACK *int `json:"ack,omitempty"` // -1=ERROR, 0=PENDING, 1=SERVER, 2=DEVICE, 3=READ, 4=PLAYED
 	} `json:"payload"`
 	Engine      string `json:"engine"`
 	Environment struct {

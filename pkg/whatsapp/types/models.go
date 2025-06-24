@@ -31,6 +31,13 @@ type WebhookEvent struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// ReactionRequest represents the request to send a reaction
+type ReactionRequest struct {
+	Session   string `json:"session"`
+	MessageID string `json:"messageId"`
+	Reaction  string `json:"reaction"`
+}
+
 // MessagePayload represents a message payload in a webhook
 type MessagePayload struct {
 	ID        string    `json:"id"`

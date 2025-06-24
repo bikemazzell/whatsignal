@@ -12,6 +12,7 @@ type WAClient interface {
 	SendDocument(ctx context.Context, chatID, docPath, caption string) (*SendMessageResponse, error)
 	SendFile(ctx context.Context, chatID, filePath, caption string) (*SendMessageResponse, error)
 	SendVoice(ctx context.Context, chatID, voicePath string) (*SendMessageResponse, error)
+	SendReaction(ctx context.Context, chatID, messageID, reaction string) (*SendMessageResponse, error)
 	CreateSession(ctx context.Context) error
 	StartSession(ctx context.Context) error
 	StopSession(ctx context.Context) error

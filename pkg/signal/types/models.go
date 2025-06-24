@@ -78,6 +78,16 @@ type SignalMessage struct {
 		Text      string `json:"text"`
 		Timestamp int64  `json:"timestamp"`
 	} `json:"quotedMessage,omitempty"`
+	Reaction *SignalReaction `json:"reaction,omitempty"`
+}
+
+// SignalReaction represents a reaction to a message
+type SignalReaction struct {
+	Emoji            string `json:"emoji"`
+	TargetAuthor     string `json:"targetAuthor"`
+	TargetTimestamp  int64  `json:"targetSentTimestamp"`
+	TargetMessageID  string `json:"targetMessageId,omitempty"`
+	IsRemove         bool   `json:"isRemove"`
 }
 
 // REST API message types for receiving messages
@@ -93,6 +103,7 @@ type RestMessage struct {
 			Message     string                  `json:"message"`
 			Attachments []RestMessageAttachment `json:"attachments"`
 			Quote       *RestMessageQuote       `json:"quote,omitempty"`
+			Reaction    *RestMessageReaction    `json:"reaction,omitempty"`
 		} `json:"dataMessage,omitempty"`
 		SyncMessage    interface{} `json:"syncMessage,omitempty"`
 		ReceiptMessage interface{} `json:"receiptMessage,omitempty"`
@@ -112,4 +123,11 @@ type RestMessageQuote struct {
 	ID     int64  `json:"id"`
 	Author string `json:"author"`
 	Text   string `json:"text"`
+}
+
+type RestMessageReaction struct {
+	Emoji           string `json:"emoji"`
+	TargetAuthor    string `json:"targetAuthor"`
+	TargetTimestamp int64  `json:"targetSentTimestamp"`
+	IsRemove        bool   `json:"isRemove"`
 }

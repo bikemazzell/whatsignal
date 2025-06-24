@@ -204,10 +204,10 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
         "voice": 16
       },
       "allowedTypes": {
-        "image": ["jpg", "jpeg", "png"],
-        "video": ["mp4", "mov"],
-        "document": ["pdf", "doc", "docx"],
-        "voice": ["ogg"]
+        "image": ["jpg", "jpeg", "png", "gif", "webp"],
+        "video": ["mp4", "mov", "avi"],
+        "document": ["pdf", "doc", "docx", "txt", "rtf"],
+        "voice": ["ogg", "aac", "m4a", "mp3"]
       }
     }
   }

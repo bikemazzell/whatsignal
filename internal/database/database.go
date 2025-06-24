@@ -347,6 +347,137 @@ func (d *Database) UpdateDeliveryStatus(ctx context.Context, id string, status s
 	return fmt.Errorf("no message found with ID: %s", id)
 }
 
+func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error) {
+	// Encrypt the chat ID for database query
+	encryptedChatID, err := d.encryptor.EncryptIfEnabled(whatsappChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt WhatsApp chat ID: %w", err)
+	}
+
+	query := `
+		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+		       forwarded_at, delivery_status, media_path,
+		       created_at, updated_at
+		FROM message_mappings 
+		WHERE whatsapp_chat_id = ? 
+		ORDER BY forwarded_at DESC 
+		LIMIT 1`
+
+	row := d.db.QueryRowContext(ctx, query, encryptedChatID)
+
+	var encryptedWAChatID, encryptedWAMsgID, encryptedSignalMsgID string
+	var encryptedMediaPath *string
+	mapping := &models.MessageMapping{}
+
+	err = row.Scan(
+		&mapping.ID,
+		&encryptedWAChatID,
+		&encryptedWAMsgID,
+		&encryptedSignalMsgID,
+		&mapping.SignalTimestamp,
+		&mapping.ForwardedAt,
+		&mapping.DeliveryStatus,
+		&encryptedMediaPath,
+		&mapping.CreatedAt,
+		&mapping.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No mapping found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest message mapping by WhatsApp chat ID: %w", err)
+	}
+
+	// Decrypt fields
+	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedWAChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp chat ID: %w", err)
+	}
+
+	mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWAMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
+	}
+
+	mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
+	}
+
+	if encryptedMediaPath != nil {
+		decryptedPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt media path: %w", err)
+		}
+		mapping.MediaPath = &decryptedPath
+	}
+
+	return mapping, nil
+}
+
+func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error) {
+	query := `
+		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+		       forwarded_at, delivery_status, media_path,
+		       created_at, updated_at
+		FROM message_mappings 
+		ORDER BY forwarded_at DESC 
+		LIMIT 1`
+
+	row := d.db.QueryRowContext(ctx, query)
+
+	var encryptedWAChatID, encryptedWAMsgID, encryptedSignalMsgID string
+	var encryptedMediaPath *string
+	mapping := &models.MessageMapping{}
+
+	err := row.Scan(
+		&mapping.ID,
+		&encryptedWAChatID,
+		&encryptedWAMsgID,
+		&encryptedSignalMsgID,
+		&mapping.SignalTimestamp,
+		&mapping.ForwardedAt,
+		&mapping.DeliveryStatus,
+		&encryptedMediaPath,
+		&mapping.CreatedAt,
+		&mapping.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No mapping found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest message mapping: %w", err)
+	}
+
+	// Decrypt fields
+	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedWAChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp chat ID: %w", err)
+	}
+
+	mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWAMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
+	}
+
+	mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
+	}
+
+	if encryptedMediaPath != nil {
+		decryptedPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt media path: %w", err)
+		}
+		mapping.MediaPath = &decryptedPath
+	}
+
+	return mapping, nil
+}
+
 func (d *Database) CleanupOldRecords(retentionDays int) error {
 	query := `
 		DELETE FROM message_mappings

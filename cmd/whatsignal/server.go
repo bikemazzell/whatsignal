@@ -25,6 +25,15 @@ const (
 	XSignalSignatureHeader = "X-Signal-Signature-256"
 )
 
+// ValidationError represents a validation error that should return HTTP 400
+type ValidationError struct {
+	Message string
+}
+
+func (e ValidationError) Error() string {
+	return e.Message
+}
+
 
 type Server struct {
 	router     *mux.Router
@@ -218,13 +227,7 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 			return
 		}
 
-		s.logger.Debug("Received WhatsApp webhook payload")
-
-		if payload.Event != "message" {
-			s.logger.Debug("Skipping non-message WhatsApp event")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+		s.logger.WithField("event", payload.Event).Debug("Received WhatsApp webhook payload")
 
 		if payload.Payload.FromMe {
 			s.logger.Debug("Skipping message from ourselves")
@@ -232,45 +235,254 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 			return
 		}
 
-		if payload.Payload.ID == "" {
-			s.logger.Error("Missing required field: Payload.ID")
-			http.Error(w, "Missing required field: Payload.ID", http.StatusBadRequest)
-			return
-		}
-		if payload.Payload.From == "" {
-			s.logger.Error("Missing required field: Payload.From")
-			http.Error(w, "Missing required field: Payload.From", http.StatusBadRequest)
-			return
-		}
-		if payload.Payload.Body == "" && !payload.Payload.HasMedia {
-			s.logger.Error("Message must have either body or media")
-			http.Error(w, "Message must have either body or media", http.StatusBadRequest)
+		// Handle different event types
+		switch payload.Event {
+		case models.EventMessage:
+			err = s.handleWhatsAppMessage(r.Context(), &payload)
+		case models.EventMessageReaction:
+			err = s.handleWhatsAppReaction(r.Context(), &payload)
+		case models.EventMessageEdited:
+			err = s.handleWhatsAppEditedMessage(r.Context(), &payload)
+		case models.EventMessageACK:
+			err = s.handleWhatsAppACK(r.Context(), &payload)
+		case models.EventMessageWaiting:
+			err = s.handleWhatsAppWaitingMessage(r.Context(), &payload)
+		default:
+			s.logger.WithField("event", payload.Event).Debug("Skipping unsupported WhatsApp event")
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		var mediaURL string
-		if payload.Payload.HasMedia && payload.Payload.Media != nil {
-			mediaURL = payload.Payload.Media.URL
-		}
-
-		chatID := payload.Payload.From
-		
-		err = s.msgService.HandleWhatsAppMessage(
-			r.Context(),
-			chatID,
-			payload.Payload.ID,
-			payload.Payload.From,
-			payload.Payload.Body,
-			mediaURL,
-		)
 		if err != nil {
-			s.logger.WithError(err).Error("Failed to handle WhatsApp message")
-			http.Error(w, "Failed to process message", http.StatusInternalServerError)
+			s.logger.WithError(err).WithField("event", payload.Event).Error("Failed to handle WhatsApp event")
+			if _, isValidationError := err.(ValidationError); isValidationError {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			} else {
+				http.Error(w, "Failed to process event", http.StatusInternalServerError)
+			}
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
+	if payload.Payload.ID == "" {
+		return ValidationError{Message: "missing required field: Payload.ID"}
+	}
+	if payload.Payload.From == "" {
+		return ValidationError{Message: "missing required field: Payload.From"}
+	}
+	if payload.Payload.Body == "" && !payload.Payload.HasMedia {
+		return ValidationError{Message: "message must have either body or media"}
+	}
+
+	var mediaURL string
+	if payload.Payload.HasMedia && payload.Payload.Media != nil {
+		mediaURL = payload.Payload.Media.URL
+	}
+
+	chatID := payload.Payload.From
+	
+	return s.msgService.HandleWhatsAppMessage(
+		ctx,
+		chatID,
+		payload.Payload.ID,
+		payload.Payload.From,
+		payload.Payload.Body,
+		mediaURL,
+	)
+}
+
+func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
+	if payload.Payload.Reaction == nil {
+		return ValidationError{Message: "missing reaction data"}
+	}
+	if payload.Payload.From == "" {
+		return ValidationError{Message: "missing required field: Payload.From"}
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"from":      payload.Payload.From,
+		"messageId": payload.Payload.Reaction.MessageID,
+		"emoji":     payload.Payload.Reaction.Text,
+	}).Info("Processing WhatsApp reaction for forwarding to Signal")
+
+	// Find the original message mapping to get the Signal message ID
+	mapping, err := s.msgService.GetMessageByID(ctx, payload.Payload.Reaction.MessageID)
+	if err != nil {
+		s.logger.WithError(err).Warn("Could not find original message for reaction")
+		return nil // Don't error out, just log and continue
+	}
+
+	if mapping == nil {
+		s.logger.WithField("messageId", payload.Payload.Reaction.MessageID).Warn("No mapping found for reacted message")
+		return nil // Don't error out, just log and continue
+	}
+
+	// Forward reaction to Signal as a text message (since Signal CLI doesn't support reactions yet)
+	var reactionText string
+	if payload.Payload.Reaction.Text == "" {
+		reactionText = "❌ Removed reaction from message"
+	} else {
+		reactionText = fmt.Sprintf("%s Reacted with %s", payload.Payload.Reaction.Text, payload.Payload.Reaction.Text)
+	}
+
+	signalMsg := &models.Message{
+		ID:       payload.Payload.ID + "_reaction",
+		Platform: "signal",
+		ThreadID: s.cfg.Signal.DestinationPhoneNumber,
+		Content:  reactionText,
+	}
+
+	err = s.msgService.SendMessage(ctx, signalMsg)
+	if err != nil {
+		s.logger.WithError(err).Error("Failed to forward reaction to Signal")
+		return err
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"whatsappMessageId": payload.Payload.Reaction.MessageID,
+		"signalMessageId":   mapping.ID,
+		"emoji":             payload.Payload.Reaction.Text,
+	}).Info("Successfully forwarded WhatsApp reaction to Signal")
+	
+	return nil
+}
+
+func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
+	if payload.Payload.EditedMessageID == nil {
+		return ValidationError{Message: "missing editedMessageId for edited message event"}
+	}
+	if payload.Payload.From == "" {
+		return ValidationError{Message: "missing required field: Payload.From"}
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"from":             payload.Payload.From,
+		"editedMessageId":  *payload.Payload.EditedMessageID,
+		"newBody":          payload.Payload.Body,
+	}).Info("Processing WhatsApp message edit")
+
+	// Find the original message mapping
+	mapping, err := s.msgService.GetMessageByID(ctx, *payload.Payload.EditedMessageID)
+	if err != nil {
+		s.logger.WithError(err).Warn("Could not find original message for edit")
+		return nil
+	}
+
+	if mapping == nil {
+		s.logger.WithField("messageId", *payload.Payload.EditedMessageID).Warn("No mapping found for edited message")
+		return nil
+	}
+
+	// For now, send an edit notification to Signal as a new message
+	editNotification := fmt.Sprintf("✏️ Message edited: %s", payload.Payload.Body)
+	
+	// Send to Signal using message service
+	signalMsg := &models.Message{
+		ID:       payload.Payload.ID + "_edit",
+		Platform: "signal",
+		ThreadID: s.cfg.Signal.DestinationPhoneNumber,
+		Content:  editNotification,
+	}
+	
+	err = s.msgService.SendMessage(ctx, signalMsg)
+	if err != nil {
+		s.logger.WithError(err).Error("Failed to send edit notification to Signal")
+		return err
+	}
+
+	s.logger.Info("Successfully forwarded message edit notification to Signal")
+	return nil
+}
+
+func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
+	if payload.Payload.ACK == nil {
+		return ValidationError{Message: "missing ACK data"}
+	}
+
+	ackStatus := *payload.Payload.ACK
+	var statusText string
+	switch ackStatus {
+	case models.ACKError:
+		statusText = "Error"
+	case models.ACKPending:
+		statusText = "Pending"
+	case models.ACKServer:
+		statusText = "Sent"
+	case models.ACKDevice:
+		statusText = "Delivered"
+	case models.ACKRead:
+		statusText = "Read"
+	case models.ACKPlayed:
+		statusText = "Played"
+	default:
+		statusText = "Unknown"
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"messageId": payload.Payload.ID,
+		"from":      payload.Payload.From,
+		"to":        payload.Payload.To,
+		"ack":       ackStatus,
+		"status":    statusText,
+	}).Debug("Processing WhatsApp ACK status")
+
+	// Update delivery status in database if we have a mapping
+	mapping, err := s.msgService.GetMessageByID(ctx, payload.Payload.ID)
+	if err != nil || mapping == nil {
+		// No mapping found, might be a message we don't track
+		return nil
+	}
+
+	// Map WhatsApp ACK to our delivery status
+	var deliveryStatus string
+	switch ackStatus {
+	case models.ACKError:
+		deliveryStatus = "failed"
+	case models.ACKPending, models.ACKServer:
+		deliveryStatus = "sent"
+	case models.ACKDevice:
+		deliveryStatus = "delivered"
+	case models.ACKRead, models.ACKPlayed:
+		deliveryStatus = "read"
+	}
+
+	if deliveryStatus != "" {
+		err = s.msgService.UpdateDeliveryStatus(ctx, payload.Payload.ID, deliveryStatus)
+		if err != nil {
+			s.logger.WithError(err).Warn("Failed to update delivery status")
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
+	s.logger.WithFields(logrus.Fields{
+		"from":      payload.Payload.From,
+		"messageId": payload.Payload.ID,
+	}).Info("Processing WhatsApp waiting message event")
+
+	// For waiting messages, we might want to send a notification to Signal
+	waitingNotification := "⏳ WhatsApp is waiting for a message"
+	
+	signalMsg := &models.Message{
+		ID:       payload.Payload.ID + "_waiting",
+		Platform: "signal",
+		ThreadID: s.cfg.Signal.DestinationPhoneNumber,
+		Content:  waitingNotification,
+	}
+	
+	err := s.msgService.SendMessage(ctx, signalMsg)
+	if err != nil {
+		s.logger.WithError(err).Warn("Failed to send waiting notification to Signal")
+		return err
+	}
+
+	return nil
 }
 
 func (s *Server) handleSignalWebhook() http.HandlerFunc {

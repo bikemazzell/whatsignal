@@ -625,3 +625,162 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessIncomingSignalMessage(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	signalClient := &mockSignalClient{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollTimeoutSec: 10,
+	}
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		msg       *signaltypes.SignalMessage
+		wantError bool
+		setup     func()
+	}{
+		{
+			name: "successful processing",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "sig123",
+				Sender:    "+1234567890",
+				Message:   "Hello from Signal!",
+				Timestamp: time.Now().UnixMilli(),
+			},
+			setup: func() {
+				bridge.On("HandleSignalMessage", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+					return msg.MessageID == "sig123" && msg.Sender == "+1234567890"
+				})).Return(nil).Once()
+			},
+		},
+		{
+			name: "bridge error",
+			msg: &signaltypes.SignalMessage{
+				MessageID: "sig124",
+				Sender:    "+1234567890",
+				Message:   "Error message",
+				Timestamp: time.Now().UnixMilli(),
+			},
+			wantError: true,
+			setup: func() {
+				bridge.On("HandleSignalMessage", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+					return msg.MessageID == "sig124" && msg.Sender == "+1234567890"
+				})).Return(assert.AnError).Once()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup()
+			}
+			err := service.ProcessIncomingSignalMessage(ctx, tt.msg)
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			bridge.AssertExpectations(t)
+		})
+	}
+}
+
+func TestPollSignalMessages(t *testing.T) {
+	tests := []struct {
+		name      string
+		messages  []signaltypes.SignalMessage
+		pollError error
+		wantError bool
+		setup     func(*mockBridge, *mockSignalClient)
+	}{
+		{
+			name: "successful polling with messages",
+			messages: []signaltypes.SignalMessage{
+				{
+					MessageID: "sig123",
+					Sender:    "+1234567890",
+					Message:   "Hello from Signal!",
+					Timestamp: time.Now().UnixMilli(),
+				},
+				{
+					MessageID: "sig124",
+					Sender:    "+0987654321",
+					Message:   "Another message",
+					Timestamp: time.Now().UnixMilli(),
+				},
+			},
+			setup: func(bridge *mockBridge, signalClient *mockSignalClient) {
+				signalClient.On("ReceiveMessages", mock.AnythingOfType("context.backgroundCtx"), 10).Return([]signaltypes.SignalMessage{
+					{
+						MessageID: "sig123",
+						Sender:    "+1234567890",
+						Message:   "Hello from Signal!",
+						Timestamp: time.Now().UnixMilli(),
+					},
+					{
+						MessageID: "sig124",
+						Sender:    "+0987654321",
+						Message:   "Another message",
+						Timestamp: time.Now().UnixMilli(),
+					},
+				}, nil).Once()
+				bridge.On("HandleSignalMessage", mock.AnythingOfType("context.backgroundCtx"), mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+					return msg.Sender == "+1234567890" || msg.Sender == "+0987654321"
+				})).Return(nil).Twice()
+			},
+		},
+		{
+			name:      "polling error",
+			pollError: assert.AnError,
+			wantError: true,
+			setup: func(bridge *mockBridge, signalClient *mockSignalClient) {
+				signalClient.On("ReceiveMessages", mock.AnythingOfType("context.backgroundCtx"), 10).Return(nil, assert.AnError).Once()
+			},
+		},
+		{
+			name: "no messages",
+			messages: []signaltypes.SignalMessage{},
+			setup: func(bridge *mockBridge, signalClient *mockSignalClient) {
+				signalClient.On("ReceiveMessages", mock.AnythingOfType("context.backgroundCtx"), 10).Return([]signaltypes.SignalMessage{}, nil).Once()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge := new(mockBridge)
+			db := new(mockDB)
+			mediaCache := new(mockMediaCache)
+			signalClient := &mockSignalClient{}
+			signalConfig := models.SignalConfig{
+				PollIntervalSec: 5,
+				PollTimeoutSec: 10,
+			}
+			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
+
+			if tt.setup != nil {
+				tt.setup(bridge, signalClient)
+			}
+
+			ctx := context.Background()
+			err := service.PollSignalMessages(ctx)
+
+			if tt.wantError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "failed to poll Signal messages")
+			} else {
+				assert.NoError(t, err)
+			}
+
+			bridge.AssertExpectations(t)
+			signalClient.AssertExpectations(t)
+		})
+	}
+}

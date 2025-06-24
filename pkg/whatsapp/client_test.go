@@ -136,6 +136,30 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
+		case "/api/sessions/test-session/restart":
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
+		case "/api/contacts":
+			if contactID := r.URL.Query().Get("contactId"); contactID != "" {
+				// Single contact
+				contact := types.Contact{
+					ID:   contactID,
+					Name: "Test Contact",
+				}
+				if err := json.NewEncoder(w).Encode(contact); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
+			}
+		case "/api/contacts/all":
+			// All contacts
+			contacts := []types.Contact{
+				{ID: "contact1", Name: "Contact 1"},
+				{ID: "contact2", Name: "Contact 2"},
+			}
+			if err := json.NewEncoder(w).Encode(contacts); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -537,4 +561,105 @@ func TestSendDocument(t *testing.T) {
 	resp, err = client.SendDocument(context.Background(), "chat123", "", "Check this document")
 	assert.Error(t, err)
 	assert.Nil(t, resp)
+}
+
+func TestClient_RestartSession(t *testing.T) {
+	client, server := setupTestClient(t)
+	defer server.Close()
+
+	ctx := context.Background()
+
+	// Test successful restart
+	err := client.RestartSession(ctx)
+	require.NoError(t, err)
+}
+
+func TestClient_WaitForSessionReady(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxWaitTime time.Duration
+		sessionStatus string
+		expectError bool
+	}{
+		{
+			name:        "session ready quickly",
+			maxWaitTime: 5 * time.Second,
+			sessionStatus: "WORKING",
+			expectError: false,
+		},
+		{
+			name:        "timeout waiting for session",
+			maxWaitTime: 100 * time.Millisecond,
+			sessionStatus: "starting",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create custom server for this test
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/sessions" && r.Method == "GET" {
+					sessions := []map[string]interface{}{
+						{
+							"name":   "test-session",
+							"status": tt.sessionStatus,
+						},
+					}
+					if err := json.NewEncoder(w).Encode(sessions); err != nil {
+						http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+					}
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			config := types.ClientConfig{
+				BaseURL:     server.URL,
+				APIKey:      "test-api-key",
+				SessionName: "test-session",
+				Timeout:     5 * time.Second,
+			}
+
+			client := NewClient(config).(*WhatsAppClient)
+			ctx := context.Background()
+			err := client.WaitForSessionReady(ctx, tt.maxWaitTime)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestClient_GetContact(t *testing.T) {
+	client, server := setupTestClient(t)
+	defer server.Close()
+
+	ctx := context.Background()
+
+	// Test successful contact retrieval
+	contact, err := client.GetContact(ctx, "contact123")
+	require.NoError(t, err)
+	assert.Equal(t, "contact123", contact.ID)
+	assert.Equal(t, "Test Contact", contact.Name)
+}
+
+func TestClient_GetAllContacts(t *testing.T) {
+	client, server := setupTestClient(t)
+	defer server.Close()
+
+	ctx := context.Background()
+
+	// Test successful contacts retrieval
+	contacts, err := client.GetAllContacts(ctx, 10, 0)
+	require.NoError(t, err)
+	assert.Len(t, contacts, 2)
+	assert.Equal(t, "contact1", contacts[0].ID)
+	assert.Equal(t, "Contact 1", contacts[0].Name)
+	assert.Equal(t, "contact2", contacts[1].ID)
+	assert.Equal(t, "Contact 2", contacts[1].Name)
 }

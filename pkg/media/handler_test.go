@@ -904,3 +904,398 @@ func TestProcessMediaFromURLWithoutAPIKey(t *testing.T) {
 	// Verify no API key header was sent
 	assert.Empty(t, receivedHeaders.Get("X-Api-Key"))
 }
+
+func TestProcessMediaFromFileEdgeCases(t *testing.T) {
+	handlerInterface, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Cast to concrete type to access private methods
+	h := handlerInterface.(*handler)
+
+	tests := []struct {
+		name        string
+		setupFile   func() string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "directory traversal attempt",
+			setupFile: func() string {
+				return "../../../etc/passwd"
+			},
+			expectError: true,
+			errorMsg:    "invalid media path",
+		},
+		{
+			name: "non-existent file",
+			setupFile: func() string {
+				return filepath.Join(tmpDir, "nonexistent.jpg")
+			},
+			expectError: true,
+			errorMsg:    "failed to get file info",
+		},
+		{
+			name: "file with no extension",
+			setupFile: func() string {
+				path := filepath.Join(tmpDir, "noext")
+				err := os.WriteFile(path, []byte("test content"), 0644)
+				require.NoError(t, err)
+				return path
+			},
+			expectError: true,
+			errorMsg:    "file type . is not allowed",
+		},
+		{
+			name: "oversized image file",
+			setupFile: func() string {
+				path := filepath.Join(tmpDir, "huge.jpg")
+				// Create a file larger than the max image size (5MB in test config)
+				largeContent := make([]byte, 6*1024*1024) // 6MB
+				err := os.WriteFile(path, largeContent, 0644)
+				require.NoError(t, err)
+				return path
+			},
+			expectError: true,
+			errorMsg:    "image too large",
+		},
+		{
+			name: "valid small image file",
+			setupFile: func() string {
+				path := filepath.Join(tmpDir, "small.jpg")
+				err := os.WriteFile(path, []byte("fake image content"), 0644)
+				require.NoError(t, err)
+				return path
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := tt.setupFile()
+
+			result, err := h.processMediaFromFile(filePath)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+				assert.Empty(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, result)
+				assert.FileExists(t, result)
+			}
+		})
+	}
+}
+
+func TestProcessDownloadedFileEdgeCases(t *testing.T) {
+	handlerInterface, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Cast to concrete type to access private methods
+	h := handlerInterface.(*handler)
+
+	tests := []struct {
+		name        string
+		setupFile   func() string
+		ext         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "non-existent temp file",
+			setupFile: func() string {
+				return filepath.Join(tmpDir, "nonexistent.tmp")
+			},
+			ext:         "jpg",
+			expectError: true,
+			errorMsg:    "failed to open downloaded file",
+		},
+		{
+			name: "valid temp file",
+			setupFile: func() string {
+				path := filepath.Join(tmpDir, "temp.tmp")
+				err := os.WriteFile(path, []byte("downloaded content"), 0644)
+				require.NoError(t, err)
+				return path
+			},
+			ext:         "jpg",
+			expectError: false,
+		},
+		{
+			name: "file already in cache",
+			setupFile: func() string {
+				// Create temp file
+				tempPath := filepath.Join(tmpDir, "temp2.tmp")
+				content := []byte("cached content")
+				err := os.WriteFile(tempPath, content, 0644)
+				require.NoError(t, err)
+
+				// Pre-create the cached file with same hash
+				hash := sha256.Sum256(content)
+				hashStr := fmt.Sprintf("%x", hash)
+				cachedPath := filepath.Join(h.cacheDir, hashStr+".png")
+				err = os.WriteFile(cachedPath, content, 0644)
+				require.NoError(t, err)
+
+				return tempPath
+			},
+			ext:         "png",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempPath := tt.setupFile()
+
+			result, err := h.processDownloadedFile(tempPath, tt.ext)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+				assert.Empty(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, result)
+				assert.FileExists(t, result)
+			}
+		})
+	}
+}
+
+func TestDownloadFromURLEdgeCases(t *testing.T) {
+	handlerInterface, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Cast to concrete type to access private methods
+	h := handlerInterface.(*handler)
+
+	tests := []struct {
+		name        string
+		setupServer func() *httptest.Server
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "invalid URL",
+			setupServer: func() *httptest.Server {
+				return nil // No server needed for invalid URL test
+			},
+			expectError: true,
+			errorMsg:    "failed to create request",
+		},
+		{
+			name: "server returns 404",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusNotFound)
+				}))
+			},
+			expectError: true,
+			errorMsg:    "download failed with status: 404",
+		},
+		{
+			name: "server returns 500",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+			},
+			expectError: true,
+			errorMsg:    "download failed with status: 500",
+		},
+		{
+			name: "successful download with content-type",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "image/jpeg")
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte("fake jpeg content"))
+				}))
+			},
+			expectError: false,
+		},
+		{
+			name: "successful download without content-type",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte("fake content"))
+				}))
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var testURL string
+			var server *httptest.Server
+
+			if tt.name == "invalid URL" {
+				testURL = "://invalid-url"
+			} else {
+				server = tt.setupServer()
+				defer server.Close()
+				testURL = server.URL + "/test.jpg"
+			}
+
+			tempPath, ext, err := h.downloadFromURL(testURL)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+				assert.Empty(t, tempPath)
+				assert.Empty(t, ext)
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, tempPath)
+				assert.NotEmpty(t, ext)
+				assert.FileExists(t, tempPath)
+
+				// Cleanup temp file
+				os.Remove(tempPath)
+			}
+		})
+	}
+}
+
+func TestRewriteMediaURLEdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		wahaBaseURL string
+		inputURL    string
+		expectedURL string
+	}{
+		{
+			name:        "no WAHA base URL configured",
+			wahaBaseURL: "",
+			inputURL:    "http://localhost:3000/api/files/test.jpg",
+			expectedURL: "http://localhost:3000/api/files/test.jpg",
+		},
+		{
+			name:        "invalid input URL",
+			wahaBaseURL: "http://waha.example.com",
+			inputURL:    "://invalid-url",
+			expectedURL: "://invalid-url",
+		},
+		{
+			name:        "invalid WAHA base URL",
+			wahaBaseURL: "://invalid-waha-url",
+			inputURL:    "http://localhost:3000/api/files/test.jpg",
+			expectedURL: "http://localhost:3000/api/files/test.jpg",
+		},
+		{
+			name:        "non-localhost URL (no rewrite needed)",
+			wahaBaseURL: "http://waha.example.com",
+			inputURL:    "http://external.com/api/files/test.jpg",
+			expectedURL: "http://external.com/api/files/test.jpg",
+		},
+		{
+			name:        "localhost:3000 URL rewrite",
+			wahaBaseURL: "http://waha.example.com",
+			inputURL:    "http://localhost:3000/api/files/test.jpg",
+			expectedURL: "http://waha.example.com/api/files/test.jpg",
+		},
+		{
+			name:        "127.0.0.1:3000 URL rewrite",
+			wahaBaseURL: "https://waha.example.com:8080",
+			inputURL:    "http://127.0.0.1:3000/api/files/test.jpg",
+			expectedURL: "https://waha.example.com:8080/api/files/test.jpg",
+		},
+		{
+			name:        "IPv6 localhost URL rewrite",
+			wahaBaseURL: "http://waha.example.com",
+			inputURL:    "http://[::1]:3000/api/files/test.jpg",
+			expectedURL: "http://waha.example.com/api/files/test.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &handler{
+				wahaBaseURL: tt.wahaBaseURL,
+			}
+
+			result := h.rewriteMediaURL(tt.inputURL)
+			assert.Equal(t, tt.expectedURL, result)
+		})
+	}
+}
+
+func TestCopyFileEdgeCases(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	tests := []struct {
+		name        string
+		setupSrc    func() string
+		setupDst    func() string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "directory traversal in source",
+			setupSrc: func() string {
+				return "../../../etc/passwd"
+			},
+			setupDst: func() string {
+				return filepath.Join(tmpDir, "dst.txt")
+			},
+			expectError: true,
+			errorMsg:    "invalid source path",
+		},
+		{
+			name: "non-existent source file",
+			setupSrc: func() string {
+				return filepath.Join(tmpDir, "nonexistent.txt")
+			},
+			setupDst: func() string {
+				return filepath.Join(tmpDir, "dst.txt")
+			},
+			expectError: true,
+		},
+		{
+			name: "successful copy",
+			setupSrc: func() string {
+				srcPath := filepath.Join(tmpDir, "src.txt")
+				err := os.WriteFile(srcPath, []byte("test content"), 0644)
+				require.NoError(t, err)
+				return srcPath
+			},
+			setupDst: func() string {
+				return filepath.Join(tmpDir, "dst.txt")
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srcPath := tt.setupSrc()
+			dstPath := tt.setupDst()
+
+			err := copyFile(srcPath, dstPath)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.FileExists(t, dstPath)
+
+				// Verify content was copied correctly
+				srcContent, err := os.ReadFile(srcPath)
+				require.NoError(t, err)
+				dstContent, err := os.ReadFile(dstPath)
+				require.NoError(t, err)
+				assert.Equal(t, srcContent, dstContent)
+			}
+		})
+	}
+}

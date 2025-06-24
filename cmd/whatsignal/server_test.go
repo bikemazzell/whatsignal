@@ -340,6 +340,98 @@ func TestServer_Health(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestServer_SessionStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		sessionStatus  *types.Session
+		sessionError   error
+		expectedStatus int
+		expectedFields []string
+	}{
+		{
+			name: "healthy session",
+			sessionStatus: &types.Session{
+				Name:      "test-session",
+				Status:    "WORKING",
+				UpdatedAt: time.Now(),
+			},
+			expectedStatus: http.StatusOK,
+			expectedFields: []string{"name", "status", "healthy", "updated_at", "config"},
+		},
+		{
+			name: "unhealthy session",
+			sessionStatus: &types.Session{
+				Name:      "test-session",
+				Status:    "STOPPED",
+				UpdatedAt: time.Now(),
+			},
+			expectedStatus: http.StatusOK,
+			expectedFields: []string{"name", "status", "healthy", "updated_at", "config"},
+		},
+		{
+			name:           "session error",
+			sessionError:   assert.AnError,
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedFields: []string{"error", "details"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgService := &mockMessageService{}
+			logger := logrus.New()
+			cfg := &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					SessionAutoRestart:     true,
+					SessionHealthCheckSec: 30,
+				},
+			}
+			mockWAClient := &mockWAClient{}
+
+			// Setup mock expectations
+			mockWAClient.On("GetSessionStatus", mock.Anything).Return(tt.sessionStatus, tt.sessionError).Once()
+
+			server := NewServer(cfg, msgService, logger, mockWAClient)
+
+			req := httptest.NewRequest(http.MethodGet, "/session/status", nil)
+			w := httptest.NewRecorder()
+
+			server.handleSessionStatus()(w, req)
+
+			resp := w.Result()
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+			assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+			// Parse response body
+			var responseBody map[string]interface{}
+			err := json.NewDecoder(resp.Body).Decode(&responseBody)
+			assert.NoError(t, err)
+
+			// Check expected fields are present
+			for _, field := range tt.expectedFields {
+				assert.Contains(t, responseBody, field, "Response should contain field: %s", field)
+			}
+
+			// Additional checks for successful responses
+			if tt.expectedStatus == http.StatusOK {
+				assert.Equal(t, tt.sessionStatus.Name, responseBody["name"])
+				assert.Equal(t, string(tt.sessionStatus.Status), responseBody["status"])
+
+				expectedHealthy := string(tt.sessionStatus.Status) == "WORKING"
+				assert.Equal(t, expectedHealthy, responseBody["healthy"])
+
+				// Check config section
+				config, ok := responseBody["config"].(map[string]interface{})
+				assert.True(t, ok, "Config should be a map")
+				assert.Equal(t, true, config["auto_restart_enabled"])
+				assert.Equal(t, float64(30), config["health_check_interval_sec"])
+			}
+
+			mockWAClient.AssertExpectations(t)
+		})
+	}
+}
+
 func TestServer_WhatsAppWebhook(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()

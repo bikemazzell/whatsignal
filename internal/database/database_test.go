@@ -819,3 +819,36 @@ func TestDatabase_CleanupOldContacts(t *testing.T) {
 	require.NotNil(t, contact)
 	assert.Equal(t, "recent@c.us", contact.ContactID)
 }
+
+func TestDatabase_GetMessageMappingBySignalID(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test getting non-existent mapping
+	result, err := db.GetMessageMappingBySignalID(ctx, "nonexistent-signal-id")
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+
+	// Save a mapping first
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "wa123",
+		SignalMsgID:     "sig123",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	err = db.SaveMessageMapping(ctx, mapping)
+	require.NoError(t, err)
+
+	// Test getting existing mapping by Signal ID
+	retrieved, err := db.GetMessageMappingBySignalID(ctx, "sig123")
+	assert.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, mapping.WhatsAppChatID, retrieved.WhatsAppChatID)
+	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
+	assert.Equal(t, mapping.SignalMsgID, retrieved.SignalMsgID)
+}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
@@ -18,11 +19,13 @@ import (
 
 type MessageBridge interface {
 	SendMessage(ctx context.Context, msg *models.Message) error
-	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
+	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error
+	HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error
 	HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
+	SendSignalNotificationForSession(ctx context.Context, sessionName, message string) error
 }
 
 type DatabaseService interface {
@@ -32,33 +35,35 @@ type DatabaseService interface {
 	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
 	GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error)
 	GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error)
+	GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(retentionDays int) error
 }
 
 type bridge struct {
-	waClient                   types.WAClient
-	sigClient                  signal.Client
-	db                         DatabaseService
-	media                      media.Handler
-	retryConfig                models.RetryConfig
-	mediaConfig                models.MediaConfig
-	logger                     *logrus.Logger
-	signalDestinationPhoneNumber string
-	contactService             ContactServiceInterface
+	waClient       types.WAClient
+	sigClient      signal.Client
+	db             DatabaseService
+	media          media.Handler
+	retryConfig    models.RetryConfig
+	mediaConfig    models.MediaConfig
+	logger         *logrus.Logger
+	contactService ContactServiceInterface
+	channelManager *ChannelManager
 }
 
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, signalDestinationPhoneNumber string, contactService ContactServiceInterface) MessageBridge {
+// NewBridge creates a new bridge with channel manager (channels are required)
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface) MessageBridge {
 	return &bridge{
-		waClient:                     waClient,
-		sigClient:                    sigClient,
-		db:                           db,
-		media:                        mh,
-		retryConfig:                  rc,
-		mediaConfig:                  mc,
-		logger:                       logrus.New(),
-		signalDestinationPhoneNumber: signalDestinationPhoneNumber,
-		contactService:               contactService,
+		waClient:       waClient,
+		sigClient:      sigClient,
+		db:             db,
+		media:          mh,
+		retryConfig:    rc,
+		mediaConfig:    mc,
+		logger:         logrus.New(),
+		contactService: contactService,
+		channelManager: channelManager,
 	}
 }
 
@@ -90,7 +95,7 @@ func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 	}
 }
 
-func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
+func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
 	senderPhone := sender
 	if strings.HasSuffix(sender, "@c.us") {
 		senderPhone = strings.TrimSuffix(sender, "@c.us")
@@ -112,23 +117,27 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 		attachments = append(attachments, processedPath)
 	}
 
-	resp, err := b.sigClient.SendMessage(ctx, b.signalDestinationPhoneNumber, message, attachments)
+	// Get the Signal destination based on session
+	dest, err := b.channelManager.GetSignalDestination(sessionName)
+	if err != nil {
+		return fmt.Errorf("failed to get Signal destination for session %s: %w", sessionName, err)
+	}
+	destinationNumber := dest
+
+	resp, err := b.sigClient.SendMessage(ctx, destinationNumber, message, attachments)
 	if err != nil {
 		return fmt.Errorf("failed to send signal message: %w", err)
 	}
 	
-	b.logger.WithFields(logrus.Fields{
-		"whatsappMsgID": msgID,
-		"signalMsgID": resp.MessageID,
-	}).Debug("Saving message mapping - WhatsApp to Signal")
 
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  chatID,
 		WhatsAppMsgID:   msgID,
 		SignalMsgID:     resp.MessageID,
-		SignalTimestamp: time.Unix(resp.Timestamp/1000, 0),
+		SignalTimestamp: time.Unix(resp.Timestamp/constants.MillisecondsPerSecond, 0),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     sessionName,
 	}
 
 	if len(attachments) > 0 {
@@ -143,22 +152,19 @@ func (b *bridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sende
 }
 
 func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	// Enhanced debugging: Log the complete message structure for analysis
-	b.logger.WithFields(logrus.Fields{
-		"messageID":     msg.MessageID,
-		"sender":        msg.Sender,
-		"timestamp":     msg.Timestamp,
-		"message":       msg.Message,
-		"attachments":   msg.Attachments,
-		"quotedMessage": msg.QuotedMessage,
-		"reaction":      msg.Reaction,
-		"deletion":      msg.Deletion,
-		"messageLength": len(msg.Message),
-		"hasReaction":   msg.Reaction != nil,
-		"hasDeletion":   msg.Deletion != nil,
-		"hasQuoted":     msg.QuotedMessage != nil,
-		"hasAttachments": len(msg.Attachments) > 0,
-	}).Debug("Received Signal message - full structure analysis")
+	// Try to infer destination from the message context
+	// If there's only one channel configured, use it
+	if b.channelManager.GetChannelCount() == 1 {
+		destinations := b.channelManager.GetAllSignalDestinations()
+		if len(destinations) > 0 {
+			return b.HandleSignalMessageWithDestination(ctx, msg, destinations[0])
+		}
+	}
+	// For multiple channels, this method should not be used - use HandleSignalMessageWithDestination instead
+	return fmt.Errorf("cannot handle Signal message without destination context when multiple channels are configured")
+}
+
+func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error {
 
 	if strings.HasPrefix(msg.Sender, "group.") {
 		return b.handleSignalGroupMessage(ctx, msg)
@@ -177,16 +183,22 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	var mapping *models.MessageMapping
 	var err error
 	
+	// Determine the WhatsApp session based on the Signal destination
+	session, err := b.channelManager.GetWhatsAppSession(destination)
+	if err != nil {
+		return fmt.Errorf("failed to determine WhatsApp session for Signal destination %s: %w", destination, err)
+	}
+	sessionName := session
+
 	if msg.QuotedMessage == nil {
 		// No quoted message - find the latest message that was sent to the Signal user (auto-reply to last sender)
-		b.logger.WithFields(logrus.Fields{
-			"signalSender": msg.Sender,
-		}).Debug("No quoted message, looking up latest message for auto-reply to last WhatsApp sender")
 		
-		mapping, err = b.db.GetLatestMessageMapping(ctx)
+		// Use session-aware lookup
+		mapping, err = b.db.GetLatestMessageMappingBySession(ctx, sessionName)
 		if err != nil {
 			b.logger.WithFields(logrus.Fields{
 				"signalSender": msg.Sender,
+				"sessionName": sessionName,
 				"error": err,
 			}).Error("Failed to get latest message mapping for auto-reply")
 			return fmt.Errorf("failed to get latest message mapping for auto-reply: %w", err)
@@ -197,12 +209,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 			return b.handleNewSignalThread(ctx, msg)
 		}
 		
-		b.logger.WithFields(logrus.Fields{
-			"signalSender": msg.Sender,
-			"replyToWhatsAppChat": mapping.WhatsAppChatID,
-			"latestMessageID": mapping.WhatsAppMsgID,
-			"latestMessageTime": mapping.ForwardedAt,
-		}).Debug("Found latest message for auto-reply - will reply to last WhatsApp sender")
 	} else {
 		// Has quoted message - use existing logic
 		b.logger.WithFields(logrus.Fields{
@@ -249,13 +255,13 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 				senderInfo = strings.TrimPrefix(senderInfo, "📱 ")
 				
 				var phoneNumber string
-				if len(senderInfo) >= 10 && strings.ContainsAny(senderInfo, "0123456789") {
+				if len(senderInfo) >= constants.MinPhoneNumberLength && strings.ContainsAny(senderInfo, "0123456789") {
 					for _, char := range senderInfo {
 						if char >= '0' && char <= '9' {
 							phoneNumber += string(char)
 						}
 					}
-					if len(phoneNumber) >= 10 {
+					if len(phoneNumber) >= constants.MinPhoneNumberLength {
 						whatsappChatID := phoneNumber + "@c.us"
 						b.logger.Debug("Extracted phone number from quoted text for fallback")
 						mapping = &models.MessageMapping{
@@ -274,21 +280,12 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 	
 	whatsappChatID := mapping.WhatsAppChatID
 
-	b.logger.WithFields(logrus.Fields{
-		"messageID":       msg.MessageID,
-		"sender":          msg.Sender,
-		"attachmentCount": len(msg.Attachments),
-	}).Debug("Processing Signal message with attachments")
 
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
 		return fmt.Errorf("failed to process attachments: %w", err)
 	}
 
-	b.logger.WithFields(logrus.Fields{
-		"messageID":      msg.MessageID,
-		"processedCount": len(attachments),
-	}).Debug("Processed Signal attachments")
 
 	var resp *types.SendMessageResponse
 	var sendErr error
@@ -331,17 +328,6 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 			}).Debug("Sending text to WhatsApp")
 			resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
 		} else {
-			// Log detailed information about empty messages for debugging potential deletion events
-			b.logger.WithFields(logrus.Fields{
-				"messageID":     msg.MessageID,
-				"sender":        msg.Sender,
-				"timestamp":     msg.Timestamp,
-				"message":       msg.Message,
-				"attachments":   msg.Attachments,
-				"quotedMessage": msg.QuotedMessage,
-				"reaction":      msg.Reaction,
-				"deletion":      msg.Deletion,
-			}).Debug("Detailed analysis of empty message - potential deletion event")
 			
 			b.logger.WithFields(logrus.Fields{
 				"messageID": msg.MessageID,
@@ -354,19 +340,20 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 		return fmt.Errorf("failed to send whatsapp message: %w", sendErr)
 	}
 
+	if resp == nil {
+		return fmt.Errorf("received nil response from WhatsApp client")
+	}
+
 	newMapping := &models.MessageMapping{
 		WhatsAppChatID:  whatsappChatID,
 		WhatsAppMsgID:   resp.MessageID,
 		SignalMsgID:     msg.MessageID,
-		SignalTimestamp: time.Unix(msg.Timestamp/1000, 0),
+		SignalTimestamp: time.Unix(msg.Timestamp/constants.MillisecondsPerSecond, 0),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     sessionName,
 	}
 	
-	b.logger.WithFields(logrus.Fields{
-		"whatsappMsgID": resp.MessageID,
-		"signalMsgID": msg.MessageID,
-	}).Debug("Saving message mapping for Signal to WhatsApp")
 
 	if len(attachments) > 0 {
 		newMapping.MediaPath = &attachments[0]
@@ -529,7 +516,7 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 		return fmt.Errorf("failed to cleanup old records: %w", err)
 	}
 
-	if err := b.media.CleanupOldFiles(int64(retentionDays * 24 * 60 * 60)); err != nil {
+	if err := b.media.CleanupOldFiles(int64(retentionDays * constants.SecondsPerDay)); err != nil {
 		return fmt.Errorf("failed to cleanup old media files: %w", err)
 	}
 
@@ -617,4 +604,26 @@ func (b *bridge) handleSignalDeletion(ctx context.Context, msg *signaltypes.Sign
 	}
 
 	return b.HandleSignalMessageDeletion(ctx, targetID, msg.Sender)
+}
+
+func (b *bridge) SendSignalNotificationForSession(ctx context.Context, sessionName, message string) error {
+	// Get the Signal destination based on session
+	dest, err := b.channelManager.GetSignalDestination(sessionName)
+	if err != nil {
+		return fmt.Errorf("failed to get Signal destination for session %s: %w", sessionName, err)
+	}
+
+	// Send the notification message to Signal
+	_, err = b.sigClient.SendMessage(ctx, dest, message, []string{})
+	if err != nil {
+		return fmt.Errorf("failed to send Signal notification: %w", err)
+	}
+
+	b.logger.WithFields(logrus.Fields{
+		"sessionName": sessionName,
+		"destination": dest,
+		"message": message,
+	}).Debug("Sent Signal notification for session")
+
+	return nil
 }

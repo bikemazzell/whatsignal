@@ -50,41 +50,86 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				http.Error(w, "Failed to decode request body", http.StatusBadRequest)
 				return
 			}
-			resp := types.SendMessageResponse{
-				MessageID: "msg123",
-				Status:    "sent",
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "msg123",
+					Serialized: "msg123",
+				},
 			}
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
 		case testAPIBase + testEndpointSendImage:
-			resp := types.SendMessageResponse{
-				MessageID: "media123",
-				Status:    "sent",
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "test-msg-id",
+					Serialized: "test-msg-id",
+				},
 			}
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
 		case testAPIBase + testEndpointSendFile:
-			resp := types.SendMessageResponse{
-				MessageID: "file123",
-				Status:    "sent",
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "test-msg-id",
+					Serialized: "test-msg-id",
+				},
 			}
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
 		case testAPIBase + testEndpointSendVoice:
-			resp := types.SendMessageResponse{
-				MessageID: "voice123",
-				Status:    "sent",
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "test-msg-id",
+					Serialized: "test-msg-id",
+				},
 			}
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
 		case testAPIBase + testEndpointSendVideo:
-			resp := types.SendMessageResponse{
-				MessageID: "video123",
-				Status:    "sent",
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "test-msg-id",
+					Serialized: "test-msg-id",
+				},
 			}
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
@@ -245,12 +290,22 @@ func TestClient_SendImage(t *testing.T) {
 		assert.NotEmpty(t, file["data"], "file data should not be empty")
 		assert.Contains(t, file["filename"], ".jpg")
 
-		// Send response
+		// Send response in WAHA format
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
-			MessageID: "test-msg-id",
-			Status:    "sent",
-		}); err != nil {
+		resp := types.WAHAMessageResponse{
+			ID: &struct {
+				FromMe     bool   `json:"fromMe"`
+				Remote     string `json:"remote"`
+				ID         string `json:"id"`
+				Serialized string `json:"_serialized"`
+			}{
+				FromMe:     true,
+				Remote:     "123456@c.us",
+				ID:         "test-msg-id",
+				Serialized: "test-msg-id",
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}))
@@ -311,12 +366,22 @@ func TestClient_SendFile(t *testing.T) {
 		assert.NotEmpty(t, file["data"], "file data should not be empty")
 		assert.Contains(t, file["filename"], ".pdf")
 
-		// Send response
+		// Send response in WAHA format
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
-			MessageID: "test-msg-id",
-			Status:    "sent",
-		}); err != nil {
+		resp := types.WAHAMessageResponse{
+			ID: &struct {
+				FromMe     bool   `json:"fromMe"`
+				Remote     string `json:"remote"`
+				ID         string `json:"id"`
+				Serialized string `json:"_serialized"`
+			}{
+				FromMe:     true,
+				Remote:     "123456@c.us",
+				ID:         "test-msg-id",
+				Serialized: "test-msg-id",
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}))
@@ -371,12 +436,22 @@ func TestClient_SendVoice(t *testing.T) {
 		assert.NotEmpty(t, file["data"], "file data should not be empty")
 		assert.Contains(t, file["filename"], ".ogg")
 
-		// Send response
+		// Send response in WAHA format
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
-			MessageID: "test-msg-id",
-			Status:    "sent",
-		}); err != nil {
+		resp := types.WAHAMessageResponse{
+			ID: &struct {
+				FromMe     bool   `json:"fromMe"`
+				Remote     string `json:"remote"`
+				ID         string `json:"id"`
+				Serialized string `json:"_serialized"`
+			}{
+				FromMe:     true,
+				Remote:     "123456@c.us",
+				ID:         "test-msg-id",
+				Serialized: "test-msg-id",
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}))
@@ -432,12 +507,22 @@ func TestClient_SendVideo(t *testing.T) {
 		assert.NotEmpty(t, file["data"], "file data should not be empty")
 		assert.Contains(t, file["filename"], ".mp4")
 
-		// Send response
+		// Send response in WAHA format
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
-			MessageID: "test-msg-id",
-			Status:    "sent",
-		}); err != nil {
+		resp := types.WAHAMessageResponse{
+			ID: &struct {
+				FromMe     bool   `json:"fromMe"`
+				Remote     string `json:"remote"`
+				ID         string `json:"id"`
+				Serialized string `json:"_serialized"`
+			}{
+				FromMe:     true,
+				Remote:     "123456@c.us",
+				ID:         "test-msg-id",
+				Serialized: "test-msg-id",
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}))
@@ -467,10 +552,20 @@ func TestClient_Authentication(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(types.SendMessageResponse{
-			MessageID: "msg123",
-			Status:    "sent",
-		}); err != nil {
+		resp := types.WAHAMessageResponse{
+			ID: &struct {
+				FromMe     bool   `json:"fromMe"`
+				Remote     string `json:"remote"`
+				ID         string `json:"id"`
+				Serialized string `json:"_serialized"`
+			}{
+				FromMe:     true,
+				Remote:     "123456@c.us",
+				ID:         "msg123",
+				Serialized: "msg123",
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}))
@@ -534,10 +629,19 @@ func TestSendDocument(t *testing.T) {
 		assert.NotEmpty(t, file["data"], "file data should not be empty")
 		assert.Contains(t, file["filename"], ".pdf")
 
-		// Send response
-		resp := types.SendMessageResponse{
-			MessageID: "msg123",
-			Status:    "sent",
+		// Send response in WAHA format
+		resp := types.WAHAMessageResponse{
+			ID: &struct {
+				FromMe     bool   `json:"fromMe"`
+				Remote     string `json:"remote"`
+				ID         string `json:"id"`
+				Serialized string `json:"_serialized"`
+			}{
+				FromMe:     true,
+				Remote:     "chat123@c.us",
+				ID:         "msg123",
+				Serialized: "msg123",
+			},
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)

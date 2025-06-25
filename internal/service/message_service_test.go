@@ -22,13 +22,23 @@ func (m *mockBridge) SendMessage(ctx context.Context, msg *models.Message) error
 	return args.Error(0)
 }
 
-func (m *mockBridge) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
-	args := m.Called(ctx, chatID, msgID, sender, content, mediaPath)
+func (m *mockBridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
+	args := m.Called(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
 	return args.Error(0)
 }
 
 func (m *mockBridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
 	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
+func (m *mockBridge) HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error {
+	args := m.Called(ctx, msg, destination)
+	return args.Error(0)
+}
+
+func (m *mockBridge) SendSignalNotificationForSession(ctx context.Context, sessionName, message string) error {
+	args := m.Called(ctx, sessionName, message)
 	return args.Error(0)
 }
 
@@ -410,7 +420,7 @@ func TestDeleteMessage(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
+func TestMessageService_HandleWhatsAppMessageWithSession(t *testing.T) {
 	bridge := new(mockBridge)
 	db := new(mockDB)
 	mediaCache := new(mockMediaCache)
@@ -437,7 +447,7 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 			setup: func() {
 				// Check if message exists
 				db.On("GetMessageMapping", ctx, "msg123").Return(nil, nil).Once()
-				bridge.On("HandleWhatsAppMessage", ctx, "chat123", "msg123", "sender123", "Hello, World!", "").Return(nil).Once()
+				bridge.On("HandleWhatsAppMessageWithSession", ctx, "default", "chat123", "msg123", "sender123", "Hello, World!", "").Return(nil).Once()
 			},
 		},
 		{
@@ -450,7 +460,7 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 			setup: func() {
 				// Check if message exists
 				db.On("GetMessageMapping", ctx, "msg124").Return(nil, nil).Once()
-				bridge.On("HandleWhatsAppMessage", ctx, "chat124", "msg124", "sender123", "Check this out!", "http://example.com/image.jpg").Return(nil).Once()
+				bridge.On("HandleWhatsAppMessageWithSession", ctx, "default", "chat124", "msg124", "sender123", "Check this out!", "http://example.com/image.jpg").Return(nil).Once()
 			},
 		},
 		{
@@ -471,7 +481,7 @@ func TestMessageService_HandleWhatsAppMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
-			err := service.HandleWhatsAppMessage(ctx, tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
+			err := service.HandleWhatsAppMessageWithSession(ctx, "default", tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
 			if tt.wantError {
 				assert.Error(t, err)
 			} else {

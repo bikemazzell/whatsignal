@@ -75,8 +75,8 @@ The GitHub Actions workflow will automatically:
 
 Each release creates multiple Docker image tags:
 - `ghcr.io/bikemazzell/whatsignal:latest` - Latest stable release
-- `ghcr.io/bikemazzell/whatsignal:0.50.0` - Specific version
-- `ghcr.io/bikemazzell/whatsignal:0.50` - Minor version (latest patch)
+- `ghcr.io/bikemazzell/whatsignal:1.0.0` - Specific version
+- `ghcr.io/bikemazzell/whatsignal:1.0` - Minor version (latest patch)
 - `ghcr.io/bikemazzell/whatsignal:main` - Latest main branch build
 
 ## Version Information
@@ -93,7 +93,7 @@ To rollback to a previous version:
 
 ```bash
 # Update docker-compose.yml to specific version
-sed -i 's/whatsignal:latest/whatsignal:0.49.0/g' docker-compose.yml
+sed -i 's/whatsignal:latest/whatsignal:0.54.0/g' docker-compose.yml
 
 # Restart services
 docker compose down

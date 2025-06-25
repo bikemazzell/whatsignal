@@ -38,6 +38,12 @@ func TestLoadConfig(t *testing.T) {
 		"media": {
 			"cache_dir": "/path/to/cache"
 		},
+		"channels": [
+			{
+				"whatsappSessionName": "default",
+				"signalDestinationPhoneNumber": "+1234567890"
+			}
+		],
 		"retentionDays": 30
 	}`
 
@@ -168,6 +174,17 @@ func TestValidateDefaults(t *testing.T) {
 	assert.Equal(t, ErrMissingMediaDir, err)
 
 	config.Media.CacheDir = "/path/to/cache"
+	err = validate(config)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "channels array is required")
+
+	// Add required channels
+	config.Channels = []models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
 	err = validate(config)
 	assert.NoError(t, err)
 	assert.Equal(t, 30, config.RetentionDays)            // Default value

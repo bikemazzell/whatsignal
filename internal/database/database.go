@@ -104,12 +104,13 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 		encryptedMediaPath = &encrypted
 	}
 
-	query := `
-		INSERT INTO message_mappings (
-			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
-			signal_timestamp, forwarded_at, delivery_status, media_path
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
-	`
+	// Use 'default' session if not specified for backward compatibility
+	sessionName := mapping.SessionName
+	if sessionName == "" {
+		sessionName = "default"
+	}
+
+	query := InsertMessageMappingQuery
 
 	_, err = d.db.ExecContext(ctx, query,
 		encryptedChatID,
@@ -119,6 +120,8 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 		mapping.ForwardedAt,
 		mapping.DeliveryStatus,
 		encryptedMediaPath,
+		sessionName,
+		mapping.MediaType,
 	)
 
 	if err != nil {
@@ -135,13 +138,7 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 		return nil, fmt.Errorf("failed to encrypt WhatsApp ID: %w", err)
 	}
 
-	query := `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
-			   signal_timestamp, forwarded_at, delivery_status, media_path,
-			   created_at, updated_at
-		FROM message_mappings
-		WHERE whatsapp_msg_id = ?
-	`
+	query := SelectMessageMappingByWhatsAppIDQuery
 
 	var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
 	var encryptedMediaPath *string
@@ -215,13 +212,7 @@ func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID str
 		return nil, fmt.Errorf("failed to encrypt Signal ID: %w", err)
 	}
 
-	query := `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
-			   signal_timestamp, forwarded_at, delivery_status, media_path,
-			   created_at, updated_at
-		FROM message_mappings
-		WHERE signal_msg_id = ?
-	`
+	query := SelectMessageMappingBySignalIDQuery
 
 	var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
 	var encryptedMediaPath *string
@@ -279,11 +270,7 @@ func (d *Database) UpdateDeliveryStatusByWhatsAppID(ctx context.Context, whatsap
 		return fmt.Errorf("failed to encrypt WhatsApp ID: %w", err)
 	}
 
-	query := `
-		UPDATE message_mappings
-		SET delivery_status = ?
-		WHERE whatsapp_msg_id = ?
-	`
+	query := UpdateDeliveryStatusByWhatsAppIDQuery
 
 	result, err := d.db.ExecContext(ctx, query, status, encryptedID)
 	if err != nil {
@@ -308,11 +295,7 @@ func (d *Database) UpdateDeliveryStatusBySignalID(ctx context.Context, signalID 
 		return fmt.Errorf("failed to encrypt Signal ID: %w", err)
 	}
 
-	query := `
-		UPDATE message_mappings
-		SET delivery_status = ?
-		WHERE signal_msg_id = ?
-	`
+	query := UpdateDeliveryStatusBySignalIDQuery
 
 	result, err := d.db.ExecContext(ctx, query, status, encryptedID)
 	if err != nil {
@@ -354,14 +337,7 @@ func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, 
 		return nil, fmt.Errorf("failed to encrypt WhatsApp chat ID: %w", err)
 	}
 
-	query := `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
-		       forwarded_at, delivery_status, media_path,
-		       created_at, updated_at
-		FROM message_mappings 
-		WHERE whatsapp_chat_id = ? 
-		ORDER BY forwarded_at DESC 
-		LIMIT 1`
+	query := SelectLatestMessageMappingByWhatsAppChatIDQuery
 
 	row := d.db.QueryRowContext(ctx, query, encryptedChatID)
 
@@ -417,13 +393,7 @@ func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, 
 }
 
 func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error) {
-	query := `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
-		       forwarded_at, delivery_status, media_path,
-		       created_at, updated_at
-		FROM message_mappings 
-		ORDER BY forwarded_at DESC 
-		LIMIT 1`
+	query := SelectLatestMessageMappingQuery
 
 	row := d.db.QueryRowContext(ctx, query)
 
@@ -478,11 +448,71 @@ func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.Message
 	return mapping, nil
 }
 
+func (d *Database) GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error) {
+	// Use 'default' if sessionName is empty for backward compatibility
+	if sessionName == "" {
+		sessionName = "default"
+	}
+
+	query := SelectLatestMessageMappingBySessionQuery
+
+	row := d.db.QueryRowContext(ctx, query, sessionName)
+
+	var encryptedWAChatID, encryptedWAMsgID, encryptedSignalMsgID string
+	var encryptedMediaPath *string
+	mapping := &models.MessageMapping{}
+
+	err := row.Scan(
+		&mapping.ID,
+		&encryptedWAChatID,
+		&encryptedWAMsgID,
+		&encryptedSignalMsgID,
+		&mapping.SignalTimestamp,
+		&mapping.ForwardedAt,
+		&mapping.DeliveryStatus,
+		&encryptedMediaPath,
+		&mapping.SessionName,
+		&mapping.MediaType,
+		&mapping.CreatedAt,
+		&mapping.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No mapping found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest message mapping by session: %w", err)
+	}
+
+	// Decrypt fields
+	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedWAChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp chat ID: %w", err)
+	}
+
+	mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWAMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
+	}
+
+	mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
+	}
+
+	if encryptedMediaPath != nil {
+		decryptedPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt media path: %w", err)
+		}
+		mapping.MediaPath = &decryptedPath
+	}
+
+	return mapping, nil
+}
+
 func (d *Database) CleanupOldRecords(retentionDays int) error {
-	query := `
-		DELETE FROM message_mappings
-		WHERE created_at < datetime('now', '-' || ? || ' days')
-	`
+	query := DeleteOldMessageMappingsQuery
 
 	_, err := d.db.Exec(query, retentionDays)
 	if err != nil {
@@ -516,12 +546,7 @@ func (d *Database) SaveContact(ctx context.Context, contact *models.Contact) err
 		return fmt.Errorf("failed to encrypt push name: %w", err)
 	}
 
-	query := `
-		INSERT OR REPLACE INTO contacts (
-			contact_id, phone_number, name, push_name, short_name,
-			is_blocked, is_group, is_my_contact, cached_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-	`
+	query := InsertOrReplaceContactQuery
 
 	_, err = d.db.ExecContext(ctx, query,
 		encryptedContactID, encryptedPhone, encryptedName, encryptedPushName, contact.ShortName,
@@ -540,12 +565,7 @@ func (d *Database) GetContact(ctx context.Context, contactID string) (*models.Co
 		return nil, fmt.Errorf("failed to encrypt contact ID: %w", err)
 	}
 
-	query := `
-		SELECT contact_id, phone_number, name, push_name, short_name,
-			   is_blocked, is_group, is_my_contact, cached_at
-		FROM contacts
-		WHERE contact_id = ?
-	`
+	query := SelectContactByIDQuery
 
 	row := d.db.QueryRowContext(ctx, query, encryptedContactID)
 
@@ -598,10 +618,7 @@ func (d *Database) GetContactByPhone(ctx context.Context, phoneNumber string) (*
 
 // CleanupOldContacts removes contacts older than the specified days
 func (d *Database) CleanupOldContacts(retentionDays int) error {
-	query := `
-		DELETE FROM contacts
-		WHERE cached_at < datetime('now', '-' || ? || ' days')
-	`
+	query := DeleteOldContactsQuery
 
 	_, err := d.db.Exec(query, retentionDays)
 	if err != nil {

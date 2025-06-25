@@ -47,8 +47,18 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 		},
 	}
 
+	// Create a channel manager for the test
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
+	channelManager, err := NewChannelManager(channels)
+	require.NoError(t, err)
+
 	// Create bridge without contact service for basic tests (contact service has its own tests)
-	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, "+1234567890", nil).(*bridge)
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil).(*bridge)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -208,7 +218,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup()
 			}
-			err := bridge.HandleWhatsAppMessage(ctx, tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
+			err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -922,7 +932,6 @@ func TestNewBridge(t *testing.T) {
 		MaxAttempts:      3,
 	}
 
-	destinationPhoneNumber := "+1234567890"
 	mediaConfig := models.MediaConfig{
 		AllowedTypes: models.MediaAllowedTypes{
 			Image:    []string{"jpg", "jpeg", "png"},
@@ -931,8 +940,19 @@ func TestNewBridge(t *testing.T) {
 			Voice:    []string{"ogg", "aac", "m4a"},
 		},
 	}
+
+	// Create a channel manager for the test
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
+	channelManager, err := NewChannelManager(channels)
+	require.NoError(t, err)
+
 	// For constructor test, use nil contact service to keep test simple
-	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, destinationPhoneNumber, nil)
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil)
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
@@ -945,7 +965,7 @@ func TestNewBridge(t *testing.T) {
 	assert.Equal(t, db, bridgeImpl.db)
 	assert.Equal(t, mediaHandler, bridgeImpl.media)
 	assert.Equal(t, retryConfig, bridgeImpl.retryConfig)
-	assert.Equal(t, destinationPhoneNumber, bridgeImpl.signalDestinationPhoneNumber)
+	assert.Equal(t, channelManager, bridgeImpl.channelManager)
 }
 
 func TestHandleSignalVoiceRecordingWithoutExtension(t *testing.T) {
@@ -1033,6 +1053,7 @@ func TestHandleSignalMessageAutoReply(t *testing.T) {
 		SignalMsgID:    "latest_sig_msg_123",
 		ForwardedAt:    time.Now().Add(-5 * time.Minute), // 5 minutes ago
 	}
+	bridge.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(latestMapping, nil)
 	bridge.db.(*mockDatabaseService).On("GetLatestMessageMapping", ctx).Return(latestMapping, nil)
 
 	// Mock WhatsApp client to return text response
@@ -1050,7 +1071,7 @@ func TestHandleSignalMessageAutoReply(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify that the auto-reply logic was triggered and the message was sent
-	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMapping", ctx)
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMappingBySession", ctx, "default")
 }
 
 func TestHandleSignalMessageAutoReplyNoHistory(t *testing.T) {
@@ -1069,6 +1090,7 @@ func TestHandleSignalMessageAutoReplyNoHistory(t *testing.T) {
 	}
 
 	// Mock database to return no message mapping (new conversation)
+	bridge.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(nil, nil)
 	bridge.db.(*mockDatabaseService).On("GetLatestMessageMapping", ctx).Return(nil, nil)
 
 	// Process the Signal message - should call handleNewSignalThread (which currently logs and returns nil)
@@ -1076,7 +1098,7 @@ func TestHandleSignalMessageAutoReplyNoHistory(t *testing.T) {
 	assert.NoError(t, err) // Should not error, just log and ignore
 
 	// Verify that the auto-reply logic was attempted but found no history
-	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMapping", ctx)
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMappingBySession", ctx, "default")
 }
 
 func TestHandleSignalMessageDeletion(t *testing.T) {
@@ -1096,7 +1118,7 @@ func TestHandleSignalMessageDeletion(t *testing.T) {
 		SignalMsgID:    targetMessageID,
 		ForwardedAt:    time.Now().Add(-5 * time.Minute),
 	}
-	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetMessageID).Return(mapping, nil)
+	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, targetMessageID).Return(mapping, nil)
 
 	// Mock WhatsApp client to handle deletion
 	bridge.waClient.(*mockWhatsAppClient).On("DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_123").Return(nil)
@@ -1106,7 +1128,7 @@ func TestHandleSignalMessageDeletion(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify that the correct methods were called
-	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, targetMessageID)
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMappingBySignalID", ctx, targetMessageID)
 	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_123")
 }
 
@@ -1121,7 +1143,7 @@ func TestHandleSignalMessageDeletionNoMapping(t *testing.T) {
 	sender := "+1234567890"
 
 	// Mock database to return no mapping
-	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetMessageID).Return(nil, nil)
+	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, targetMessageID).Return(nil, nil)
 
 	// Process the deletion
 	err := bridge.HandleSignalMessageDeletion(ctx, targetMessageID, sender)
@@ -1129,7 +1151,7 @@ func TestHandleSignalMessageDeletionNoMapping(t *testing.T) {
 	assert.Contains(t, err.Error(), "no mapping found for deletion target message")
 
 	// Verify database was queried but WhatsApp delete was not called
-	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, targetMessageID)
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMappingBySignalID", ctx, targetMessageID)
 	bridge.waClient.(*mockWhatsAppClient).AssertNotCalled(t, "DeleteMessage")
 }
 
@@ -1150,7 +1172,7 @@ func TestHandleSignalMessageDeletionWhatsAppError(t *testing.T) {
 		SignalMsgID:    targetMessageID,
 		ForwardedAt:    time.Now().Add(-5 * time.Minute),
 	}
-	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetMessageID).Return(mapping, nil)
+	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, targetMessageID).Return(mapping, nil)
 
 	// Mock WhatsApp client to return error
 	bridge.waClient.(*mockWhatsAppClient).On("DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_456").Return(assert.AnError)
@@ -1161,7 +1183,7 @@ func TestHandleSignalMessageDeletionWhatsAppError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to delete message in WhatsApp")
 
 	// Verify both methods were called
-	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, targetMessageID)
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMappingBySignalID", ctx, targetMessageID)
 	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_456")
 }
 
@@ -1188,7 +1210,7 @@ func TestHandleSignalDeletion(t *testing.T) {
 		SignalMsgID:    "target_msg_789",
 		ForwardedAt:    time.Now().Add(-10 * time.Minute),
 	}
-	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "target_msg_789").Return(mapping, nil)
+	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, "target_msg_789").Return(mapping, nil)
 
 	// Mock WhatsApp client to handle deletion
 	bridge.waClient.(*mockWhatsAppClient).On("DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_789").Return(nil)
@@ -1198,6 +1220,6 @@ func TestHandleSignalDeletion(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify that deletion was processed
-	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMapping", ctx, "target_msg_789")
+	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMappingBySignalID", ctx, "target_msg_789")
 	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_789")
 }

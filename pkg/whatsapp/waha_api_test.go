@@ -198,9 +198,18 @@ func TestWhatsAppClient_OptionalEndpoints(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/api/sendText":
-			response := types.SendMessageResponse{
-				MessageID: "msg123",
-				Status:    "sent",
+			response := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456789@c.us",
+					ID:         "msg123",
+					Serialized: "msg123",
+				},
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)

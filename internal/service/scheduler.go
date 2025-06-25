@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"whatsignal/internal/constants"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,7 +26,7 @@ func NewScheduler(bridge MessageBridge, retentionDays int, logger *logrus.Logger
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
-	ticker := time.NewTicker(24 * time.Hour)
+	ticker := time.NewTicker(time.Duration(constants.CleanupSchedulerIntervalHours) * time.Hour)
 	defer ticker.Stop()
 
 	s.logger.Info("Starting cleanup scheduler")

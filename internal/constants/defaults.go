@@ -44,3 +44,43 @@ const (
 	DefaultPhoneMaskLength = 4
 	DefaultMessageIDLength = 8
 )
+
+// Time-related constants
+const (
+	DefaultSignalPollingTimeoutSec  = 30
+	DefaultWhatsAppPollIntervalSec  = 30
+	TypingDurationPerCharMs         = 50
+	MaxTypingDurationSec            = 3
+	CleanupSchedulerIntervalHours   = 24
+	DefaultContactCacheHours        = 24
+)
+
+// Numeric conversions
+const (
+	MillisecondsPerSecond = 1000
+	SecondsPerDay         = 86400
+)
+
+// Size and length constants
+const (
+	MinPhoneNumberLength       = 10
+	MimeDetectionBufferSize    = 512
+	MessageIDRandomBytesLength = 16
+)
+
+// Network and port constants
+const (
+	DefaultDevServerPort = 3000
+)
+
+// Channel and buffer sizes
+const (
+	ServerErrorChannelSize    = 1
+	SignalDownloadChannelSize = 1
+)
+
+// File size and conversion constants
+const (
+	BytesPerMegabyte        = 1024 * 1024
+	DefaultDownloadTimeoutSec = 30
+)

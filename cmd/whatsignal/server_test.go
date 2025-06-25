@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"whatsignal/internal/models"
+	"whatsignal/internal/service"
 	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp/types"
 
@@ -25,6 +26,18 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// Helper function to create a test channel manager
+func createTestChannelManager() *service.ChannelManager {
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
+	cm, _ := service.NewChannelManager(channels)
+	return cm
+}
 
 type mockMessageService struct {
 	mock.Mock
@@ -158,6 +171,11 @@ func (m *mockWAClient) SendReaction(ctx context.Context, chatID, messageID, reac
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) DeleteMessage(ctx context.Context, chatID, messageID string) error {
+	args := m.Called(ctx, chatID, messageID)
+	return args.Error(0)
+}
+
 func (m *mockMessageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	args := m.Called(ctx, threadID)
 	if args.Get(0) == nil {
@@ -176,8 +194,8 @@ func (m *mockMessageService) DeleteMessage(ctx context.Context, id string) error
 	return args.Error(0)
 }
 
-func (m *mockMessageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
-	args := m.Called(ctx, chatID, msgID, sender, content, mediaPath)
+func (m *mockMessageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
+	args := m.Called(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
 	return args.Error(0)
 }
 
@@ -199,6 +217,24 @@ func (m *mockMessageService) ProcessIncomingSignalMessage(ctx context.Context, r
 func (m *mockMessageService) PollSignalMessages(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
+}
+
+func (m *mockMessageService) ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error {
+	args := m.Called(ctx, rawSignalMsg, destination)
+	return args.Error(0)
+}
+
+func (m *mockMessageService) SendSignalNotification(ctx context.Context, sessionName, message string) error {
+	args := m.Called(ctx, sessionName, message)
+	return args.Error(0)
+}
+
+func (m *mockMessageService) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
+	args := m.Called(ctx, whatsappID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
 func TestVerifySignature(t *testing.T) {
@@ -292,14 +328,16 @@ func TestSetupWebhookHandlers(t *testing.T) {
 	logger := logrus.New()
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	// Test that webhook handlers are properly set up
 	assert.NotNil(t, server.waWebhook)
 
 	// Test webhook handler registration by triggering a message event
-	msgService.On("HandleWhatsAppMessage",
+	msgService.On("HandleWhatsAppMessageWithSession",
 		mock.Anything,
+		"default", // session name
 		"test-chat",
 		"test-msg",
 		"test-sender",
@@ -337,7 +375,8 @@ func TestServer_Health(t *testing.T) {
 	logger := logrus.New()
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -399,7 +438,8 @@ func TestServer_SessionStatus(t *testing.T) {
 			// Setup mock expectations
 			mockWAClient.On("GetSessionStatus", mock.Anything).Return(tt.sessionStatus, tt.sessionError).Once()
 
-			server := NewServer(cfg, msgService, logger, mockWAClient)
+			channelManager := createTestChannelManager()
+			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 			req := httptest.NewRequest(http.MethodGet, "/session/status", nil)
 			w := httptest.NewRecorder()
@@ -449,7 +489,8 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 		},
 	}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	tests := []struct {
 		name         string
@@ -471,8 +512,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				},
 			},
 			setup: func() {
-				msgService.On("HandleWhatsAppMessage",
+				msgService.On("HandleWhatsAppMessageWithSession",
 					mock.Anything,
+					"default", // session name
 					"sender123",
 					"msg123",
 					"sender123",
@@ -499,8 +541,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				},
 			},
 			setup: func() {
-				msgService.On("HandleWhatsAppMessage",
+				msgService.On("HandleWhatsAppMessageWithSession",
 					mock.Anything,
+					"default", // session name
 					"sender124",
 					"msg124",
 					"sender124",
@@ -569,8 +612,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				},
 			},
 			setup: func() {
-				msgService.On("HandleWhatsAppMessage",
+				msgService.On("HandleWhatsAppMessageWithSession",
 					mock.Anything,
+					"default", // session name
 					"sender125",
 					"msg125",
 					"sender125",
@@ -642,7 +686,8 @@ func TestServer_SignalWebhook(t *testing.T) {
 		},
 	}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	tests := []struct {
 		name         string
@@ -663,13 +708,14 @@ func TestServer_SignalWebhook(t *testing.T) {
 				"recipient": "+0987654321",
 			},
 			setup: func() {
-				msgService.On("ProcessIncomingSignalMessage",
+				msgService.On("ProcessIncomingSignalMessageWithDestination",
 					mock.Anything,
 					mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
 						return msg.MessageID == "sig123" &&
 							msg.Sender == "+1234567890" &&
 							msg.Message == "Hello, Signal!"
 					}),
+					"+0987654321", // destination
 				).Return(nil).Once()
 			},
 			wantStatus:   http.StatusOK,
@@ -688,7 +734,7 @@ func TestServer_SignalWebhook(t *testing.T) {
 				"attachments": []string{"http://example.com/image.jpg"},
 			},
 			setup: func() {
-				msgService.On("ProcessIncomingSignalMessage",
+				msgService.On("ProcessIncomingSignalMessageWithDestination",
 					mock.Anything,
 					mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
 						return msg.MessageID == "sig124" &&
@@ -697,6 +743,7 @@ func TestServer_SignalWebhook(t *testing.T) {
 							len(msg.Attachments) == 1 &&
 							msg.Attachments[0] == "http://example.com/image.jpg"
 					}),
+					"+0987654321", // destination
 				).Return(nil).Once()
 			},
 			wantStatus:   http.StatusOK,
@@ -730,11 +777,12 @@ func TestServer_SignalWebhook(t *testing.T) {
 				"recipient": "+0987654321",
 			},
 			setup: func() {
-				msgService.On("ProcessIncomingSignalMessage",
+				msgService.On("ProcessIncomingSignalMessageWithDestination",
 					mock.Anything,
 					mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
 						return msg.MessageID == "sig125"
 					}),
+					"+0987654321", // destination
 				).Return(assert.AnError).Once()
 			},
 			wantStatus:   http.StatusInternalServerError,
@@ -904,14 +952,21 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 	logger.SetLevel(logrus.ErrorLevel) // Reduce noise in tests
 	cfg := &models.Config{
 		Signal: models.SignalConfig{
-			DestinationPhoneNumber: "+1234567890",
+			IntermediaryPhoneNumber: "+1234567890",
 		},
 		WhatsApp: models.WhatsAppConfig{
 			WebhookSecret: "test-secret",
 		},
+		Channels: []models.Channel{
+			{
+				WhatsAppSessionName:          "default",
+				SignalDestinationPhoneNumber: "+1234567890",
+			},
+		},
 	}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	tests := []struct {
 		name    string
@@ -937,16 +992,18 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				},
 			},
 			setup: func() {
-				// Mock finding the original message
-				msgService.On("GetMessageByID", mock.Anything, "original_msg_123").
-					Return(&models.Message{ID: "original_msg_123"}, nil).Once()
+				// Mock finding the original message mapping
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_123").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:   "original_msg_123",
+						SignalMsgID:     "sig_123",
+						WhatsAppChatID:  "+0987654321@c.us",
+						SessionName:     "default",
+						DeliveryStatus:  models.DeliveryStatusSent,
+					}, nil).Once()
 				
 				// Mock sending reaction notification to Signal
-				msgService.On("SendMessage", mock.Anything, mock.MatchedBy(func(msg *models.Message) bool {
-					return msg.Platform == "signal" && 
-						   msg.ThreadID == "+1234567890" &&
-						   msg.Content == "👍 Reacted with 👍"
-				})).Return(nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "👍 Reacted with 👍").Return(nil).Once()
 			},
 		},
 		{
@@ -965,16 +1022,18 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				},
 			},
 			setup: func() {
-				// Mock finding the original message
-				msgService.On("GetMessageByID", mock.Anything, "original_msg_124").
-					Return(&models.Message{ID: "original_msg_124"}, nil).Once()
+				// Mock finding the original message mapping
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_124").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:   "original_msg_124",
+						SignalMsgID:     "sig_124",
+						WhatsAppChatID:  "+0987654321@c.us",
+						SessionName:     "default",
+						DeliveryStatus:  models.DeliveryStatusSent,
+					}, nil).Once()
 				
 				// Mock sending edit notification to Signal
-				msgService.On("SendMessage", mock.Anything, mock.MatchedBy(func(msg *models.Message) bool {
-					return msg.Platform == "signal" && 
-						   msg.ThreadID == "+1234567890" &&
-						   msg.Content == "✏️ Message edited: This is the edited message"
-				})).Return(nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "✏️ Message edited: This is the edited message").Return(nil).Once()
 			},
 		},
 		{
@@ -992,9 +1051,15 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				},
 			},
 			setup: func() {
-				// Mock finding the message for ACK
-				msgService.On("GetMessageByID", mock.Anything, "msg_ack_123").
-					Return(&models.Message{ID: "msg_ack_123"}, nil).Once()
+				// Mock finding the message mapping for ACK
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_ack_123").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:   "msg_ack_123",
+						SignalMsgID:     "sig_ack_123",
+						WhatsAppChatID:  "+0987654321@c.us",
+						SessionName:     "default",
+						DeliveryStatus:  models.DeliveryStatusSent,
+					}, nil).Once()
 				
 				// Mock updating delivery status
 				msgService.On("UpdateDeliveryStatus", mock.Anything, "msg_ack_123", "read").
@@ -1016,11 +1081,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			},
 			setup: func() {
 				// Mock sending waiting notification to Signal
-				msgService.On("SendMessage", mock.Anything, mock.MatchedBy(func(msg *models.Message) bool {
-					return msg.Platform == "signal" && 
-						   msg.ThreadID == "+1234567890" &&
-						   msg.Content == "⏳ WhatsApp is waiting for a message"
-				})).Return(nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "⏳ WhatsApp is waiting for a message").Return(nil).Once()
 			},
 		},
 	}
@@ -1059,7 +1120,8 @@ func TestServer_StartAndShutdown(t *testing.T) {
 	logger := logrus.New()
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	// Find an available port
 	listener, err := net.Listen("tcp", ":0")
@@ -1108,7 +1170,8 @@ func TestServer_ShutdownNilServer(t *testing.T) {
 	logger := logrus.New()
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	// Test shutdown without starting server
 	ctx := context.Background()
@@ -1139,7 +1202,8 @@ func TestNewServer(t *testing.T) {
 	cfg := &models.Config{}
 
 	mockWAClient := &mockWAClient{}
-	server := NewServer(cfg, msgService, logger, mockWAClient)
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	assert.NotNil(t, server)
 	assert.NotNil(t, server.router)

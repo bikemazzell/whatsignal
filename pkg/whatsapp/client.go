@@ -20,9 +20,9 @@ import (
 
 const (
 	// TypingDurationPerChar is the typing duration per character in milliseconds
-	TypingDurationPerChar = 50 * time.Millisecond
+	TypingDurationPerChar = time.Duration(constants.TypingDurationPerCharMs) * time.Millisecond
 	// MaxTypingDuration is the maximum typing duration
-	MaxTypingDuration = 3 * time.Second
+	MaxTypingDuration = time.Duration(constants.MaxTypingDurationSec) * time.Second
 )
 
 type WhatsAppClient struct {
@@ -278,44 +278,9 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 
 	// Determine MIME type from file extension
 	ext := strings.ToLower(filepath.Ext(mediaPath))
-	var mimeType string
-	switch ext {
-	case ".jpg", ".jpeg":
-		mimeType = "image/jpeg"
-	case ".png":
-		mimeType = "image/png"
-	case ".gif":
-		mimeType = "image/gif"
-	case ".webp":
-		mimeType = "image/webp"
-	case ".svg":
-		mimeType = "image/svg+xml"
-	case ".mp4":
-		mimeType = "video/mp4"
-	case ".mov":
-		mimeType = "video/quicktime"
-	case ".pdf":
-		mimeType = "application/pdf"
-	case ".doc":
-		mimeType = "application/msword"
-	case ".docx":
-		mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	case ".txt":
-		mimeType = "text/plain"
-	case ".rtf":
-		mimeType = "application/rtf"
-	case ".ogg":
-		mimeType = "audio/ogg"
-	case ".mp3":
-		mimeType = "audio/mpeg"
-	case ".wav":
-		mimeType = "audio/wav"
-	case ".aac":
-		mimeType = "audio/aac"
-	case ".m4a":
-		mimeType = "audio/mp4"
-	default:
-		mimeType = "application/octet-stream"
+	mimeType, ok := constants.MimeTypes[ext]
+	if !ok {
+		mimeType = constants.DefaultMimeType
 	}
 
 	// Create JSON payload according to WAHA API documentation
@@ -512,7 +477,7 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	if err := json.Unmarshal(bodyBytes, &wahaResult); err != nil {
 		return nil, fmt.Errorf("failed to decode WAHA response: %w", err)
 	}
-	
+
 	// Extract message ID from the WAHA response
 	var messageID string
 	if wahaResult.ID != nil && wahaResult.ID.Serialized != "" {

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"whatsignal/internal/constants"
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
@@ -94,12 +95,6 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Debug logging for troubleshooting
-	c.logger.WithFields(logrus.Fields{
-		"endpoint": fmt.Sprintf("%s/v2/send", c.baseURL),
-		"payload":  string(jsonData),
-	}).Debug("Sending Signal message request")
-
 	endpoint := fmt.Sprintf("%s/v2/send", c.baseURL)
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -145,11 +140,6 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	if timeoutSeconds > 0 {
 		endpoint += fmt.Sprintf("?timeout=%d", timeoutSeconds)
 	}
-
-	c.logger.WithFields(logrus.Fields{
-		"endpoint": endpoint,
-		"timeout":  timeoutSeconds,
-	}).Debug("Polling Signal messages")
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -254,10 +244,6 @@ func (c *SignalClient) extractAttachmentPaths(attachments []types.RestMessageAtt
 		directPath := c.getDirectAttachmentPath(att)
 		if _, err := os.Stat(directPath); err == nil {
 			// File exists, use direct path
-			c.logger.WithFields(logrus.Fields{
-				"attachmentID": att.ID,
-				"path":         directPath,
-			}).Debug("Found attachment file directly")
 			paths = append(paths, directPath)
 			continue
 		}
@@ -265,23 +251,16 @@ func (c *SignalClient) extractAttachmentPaths(attachments []types.RestMessageAtt
 		// Try fallback path without extension
 		fallbackPath := c.fallbackAttachmentPath(att)
 		if _, err := os.Stat(fallbackPath); err == nil {
-			c.logger.WithFields(logrus.Fields{
-				"attachmentID": att.ID,
-				"path":         fallbackPath,
-			}).Debug("Found attachment file at fallback path")
 			paths = append(paths, fallbackPath)
 			continue
 		}
 
 		// If files don't exist locally and we have an HTTP client, try downloading via API
 		if c.client != nil {
-			c.logger.WithFields(logrus.Fields{
-				"attachmentID": att.ID,
-			}).Debug("File not found locally, attempting download via API")
 
 			// Use a goroutine with timeout to prevent blocking the entire polling operation
-			downloadChan := make(chan string, 1)
-			errorChan := make(chan error, 1)
+			downloadChan := make(chan string, constants.SignalDownloadChannelSize)
+			errorChan := make(chan error, constants.SignalDownloadChannelSize)
 
 			go func() {
 				filePath, err := c.downloadAndSaveAttachment(att)
@@ -358,11 +337,6 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	c.logger.WithFields(logrus.Fields{
-		"attachmentID": att.ID,
-		"contentType":  att.ContentType,
-		"filename":     att.Filename,
-	}).Debug("Starting attachment download")
 
 	// Download attachment data
 	data, err := c.DownloadAttachment(ctx, att.ID)
@@ -394,11 +368,6 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 		return "", fmt.Errorf("failed to save attachment: %w", err)
 	}
 
-	c.logger.WithFields(logrus.Fields{
-		"attachmentID": att.ID,
-		"filePath":     filePath,
-		"size":         len(data),
-	}).Debug("Successfully downloaded and saved attachment")
 
 	return filePath, nil
 }
@@ -413,32 +382,10 @@ func (c *SignalClient) getFileExtension(contentType, filename string) string {
 	}
 
 	// Fallback to content type mapping
-	switch contentType {
-	case "image/jpeg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	case "image/gif":
-		return ".gif"
-	case "video/mp4":
-		return ".mp4"
-	case "video/mov":
-		return ".mov"
-	case "audio/ogg":
-		return ".ogg"
-	case "audio/aac":
-		return ".aac"
-	case "audio/mp4":
-		return ".m4a"
-	case "application/pdf":
-		return ".pdf"
-	case "application/msword":
-		return ".doc"
-	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-		return ".docx"
-	default:
-		return ""
+	if ext, ok := constants.MimeTypeToExtension[contentType]; ok {
+		return ext
 	}
+	return ""
 }
 
 func (c *SignalClient) InitializeDevice(ctx context.Context) error {
@@ -553,42 +500,10 @@ func (c *SignalClient) detectContentType(filePath string) string {
 	}
 
 	// Fallback to manual mapping for common types
-	switch ext {
-	case ".jpg", ".jpeg", ".jfif":
-		return "image/jpeg"
-	case ".png":
-		return "image/png"
-	case ".gif":
-		return "image/gif"
-	case ".webp":
-		return "image/webp"
-	case ".mp4":
-		return "video/mp4"
-	case ".mov":
-		return "video/quicktime"
-	case ".avi":
-		return "video/x-msvideo"
-	case ".ogg":
-		return "audio/ogg"
-	case ".aac":
-		return "audio/aac"
-	case ".m4a":
-		return "audio/mp4"
-	case ".mp3":
-		return "audio/mpeg"
-	case ".wav":
-		return "audio/wav"
-	case ".pdf":
-		return "application/pdf"
-	case ".doc":
-		return "application/msword"
-	case ".docx":
-		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	case ".txt":
-		return "text/plain"
-	default:
-		return "application/octet-stream"
+	if mimeType, ok := constants.MimeTypes[ext]; ok {
+		return mimeType
 	}
+	return constants.DefaultMimeType
 }
 
 func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {

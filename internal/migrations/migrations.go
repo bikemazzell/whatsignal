@@ -43,8 +43,9 @@ func GetInitialSchema() (string, error) {
 // getEmbeddedSchema returns the schema as a string for cases where the file cannot be found
 func getEmbeddedSchema() string {
 	return `-- Initial schema for WhatsSignal
--- Version: 1
+-- Version: 2
 -- Created: 2024-05-21
+-- Updated: 2025-06-25 (added session_name and media_type)
 
 CREATE TABLE IF NOT EXISTS message_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +56,8 @@ CREATE TABLE IF NOT EXISTS message_mappings (
     forwarded_at DATETIME NOT NULL,
     delivery_status TEXT NOT NULL,
     media_path TEXT,
+    session_name TEXT NOT NULL DEFAULT 'default',
+    media_type TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -62,6 +65,8 @@ CREATE TABLE IF NOT EXISTS message_mappings (
 CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id ON message_mappings(whatsapp_msg_id);
 CREATE INDEX IF NOT EXISTS idx_signal_msg_id ON message_mappings(signal_msg_id);
 CREATE INDEX IF NOT EXISTS idx_chat_time ON message_mappings(whatsapp_chat_id, forwarded_at);
+CREATE INDEX IF NOT EXISTS idx_session_name ON message_mappings(session_name);
+CREATE INDEX IF NOT EXISTS idx_session_chat ON message_mappings(session_name, whatsapp_chat_id);
 
 CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at
 AFTER UPDATE ON message_mappings

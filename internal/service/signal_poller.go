@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
 
@@ -116,7 +117,7 @@ func (sp *SignalPoller) pollLoop() {
 
 // pollWithRetry executes a single poll attempt with exponential backoff on failure
 func (sp *SignalPoller) pollWithRetry() {
-	ctx, cancel := context.WithTimeout(sp.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(sp.ctx, time.Duration(constants.DefaultSignalPollingTimeoutSec)*time.Second)
 	defer cancel()
 
 	backoff := time.Duration(sp.retryConfig.InitialBackoffMs) * time.Millisecond

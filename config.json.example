@@ -1,7 +1,6 @@
 {
   // WhatsApp configuration
   // - api_base_url: URL of your Waha instance (WhatsApp HTTP API)
-  // - session_name: Name of the WhatsApp session (used in API endpoints)
   // - timeout_ms: Timeout for API requests
   // - retry_count: Maximum number of retry attempts
   // - contactSyncOnStartup: Sync all contacts on startup for better performance (recommended: true)
@@ -9,7 +8,6 @@
   
   "whatsapp": {
     "api_base_url": "http://localhost:3000",
-    "session_name": "default",
     "timeout_ms": 10000,
     "retry_count": 3,
     "contactSyncOnStartup": true,
@@ -20,15 +18,28 @@
   // - rpc_url: URL of your signal-cli REST API daemon
   // - auth_token: Authentication token for Signal API access
   // - intermediaryPhoneNumber: Phone number that signal-cli service runs on (intermediate number)
-  // - destinationPhoneNumber: YOUR Signal phone number that receives the forwarded messages
   // - device_name: Device name for Signal API access
   "signal": {
     "rpc_url": "http://localhost:8080",
     "auth_token": "your-signal-auth-token",
     "intermediaryPhoneNumber": "+1234567890",
-    "destinationPhoneNumber": "+0987654321",
     "device_name": "whatsignal-device"
   },
+
+  // Channel configuration (REQUIRED)
+  // Each channel connects a WhatsApp session to a Signal destination number
+  // - whatsappSessionName: Name of the WhatsApp session in WAHA
+  // - signalDestinationPhoneNumber: YOUR Signal phone number that receives messages from this WhatsApp session
+  "channels": [
+    {
+      "whatsappSessionName": "default",
+      "signalDestinationPhoneNumber": "+0987654321"
+    },
+    {
+      "whatsappSessionName": "business", 
+      "signalDestinationPhoneNumber": "+1122334455"
+    }
+  ],
 
   // Message retry configuration
   // - initial_backoff_ms: Initial delay before first retry
@@ -55,7 +66,7 @@
   // - cache_dir: Directory to store cached media files
   // - maxSizeMB: Maximum file sizes in MB for different media types
   // - allowedTypes: File extensions for each media type (case-insensitive, no dots)
-  //   * image: Files sent as images (displays in chat)
+  //   * image: Files sent as images (displays in chat, includes GIF)
   //   * video: Files sent as videos (displays in chat)
   //   * voice: Files sent as voice messages (audio player)
   //   * document: Files explicitly configured as documents
@@ -66,7 +77,6 @@
     "maxSizeMB": {
       "image": 5,
       "video": 100,
-      "gif": 25,
       "document": 100,
       "voice": 16
     },

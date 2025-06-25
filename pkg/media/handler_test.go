@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 
 	"github.com/stretchr/testify/assert"
@@ -22,12 +23,11 @@ func getTestMediaConfig() models.MediaConfig {
 		MaxSizeMB: models.MediaSizeLimits{
 			Image:    5,
 			Video:    100,
-			Gif:      25,
 			Document: 100,
 			Voice:    16,
 		},
 		AllowedTypes: models.MediaAllowedTypes{
-			Image:    []string{"jpg", "jpeg", "png", "jfif"},
+			Image:    []string{"jpg", "jpeg", "png", "jfif", "gif"},
 			Video:    []string{"mp4", "mov"},
 			Document: []string{"pdf", "doc", "docx"},
 			Voice:    []string{"ogg"},
@@ -204,9 +204,9 @@ func TestProcessMediaSizeLimits(t *testing.T) {
 	defer cleanup()
 
 	config := getTestMediaConfig()
-	maxImageSize := int64(config.MaxSizeMB.Image) * 1024 * 1024
-	maxVideoSize := int64(config.MaxSizeMB.Video) * 1024 * 1024
-	maxGifSize := int64(config.MaxSizeMB.Gif) * 1024 * 1024
+	maxImageSize := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte
+	maxVideoSize := int64(config.MaxSizeMB.Video) * constants.BytesPerMegabyte
+	maxGifSize := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte  // GIF is treated as an image
 
 	tests := []struct {
 		name      string
@@ -525,7 +525,7 @@ func TestProcessMediaFromURLErrors(t *testing.T) {
 					w.Header().Set("Content-Type", "image/jpeg")
 					w.WriteHeader(http.StatusOK)
 					// Write more than 5MB to trigger size limit
-					data := make([]byte, 6*1024*1024)
+					data := make([]byte, 6*constants.BytesPerMegabyte)
 					w.Write(data)
 				}))
 			},
@@ -551,7 +551,7 @@ func TestProcessMediaFromURLWithLargeFile(t *testing.T) {
 
 	// Create server that returns a file larger than the limit
 	config := getTestMediaConfig()
-	maxImageSize := int64(config.MaxSizeMB.Image) * 1024 * 1024
+	maxImageSize := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte
 	largeContent := make([]byte, maxImageSize+1024) // Exceed limit
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -954,7 +954,7 @@ func TestProcessMediaFromFileEdgeCases(t *testing.T) {
 			setupFile: func() string {
 				path := filepath.Join(tmpDir, "huge.jpg")
 				// Create a file larger than the max image size (5MB in test config)
-				largeContent := make([]byte, 6*1024*1024) // 6MB
+				largeContent := make([]byte, 6*constants.BytesPerMegabyte) // 6MB
 				err := os.WriteFile(path, largeContent, 0644)
 				require.NoError(t, err)
 				return path

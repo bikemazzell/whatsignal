@@ -36,13 +36,14 @@ func (e ValidationError) Error() string {
 
 
 type Server struct {
-	router     *mux.Router
-	logger     *logrus.Logger
-	msgService service.MessageService
-	waWebhook  whatsapp.WebhookHandler
-	server     *http.Server
-	cfg        *models.Config
-	waClient   types.WAClient
+	router         *mux.Router
+	logger         *logrus.Logger
+	msgService     service.MessageService
+	waWebhook      whatsapp.WebhookHandler
+	server         *http.Server
+	cfg            *models.Config
+	waClient       types.WAClient
+	channelManager *service.ChannelManager
 }
 
 func convertWebhookPayloadToSignalMessage(payload *models.SignalWebhookPayload) *signaltypes.SignalMessage {
@@ -65,14 +66,15 @@ func convertWebhookPayloadToSignalMessage(payload *models.SignalWebhookPayload) 
 	}
 }
 
-func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient) *Server {
+func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient, channelManager *service.ChannelManager) *Server {
 	s := &Server{
-		router:     mux.NewRouter(),
-		logger:     logger,
-		msgService: msgService,
-		waWebhook:  whatsapp.NewWebhookHandler(),
-		cfg:        cfg,
-		waClient:   waClient,
+		router:         mux.NewRouter(),
+		logger:         logger,
+		msgService:     msgService,
+		waWebhook:      whatsapp.NewWebhookHandler(),
+		cfg:            cfg,
+		waClient:       waClient,
+		channelManager: channelManager,
 	}
 
 	s.setupRoutes()
@@ -106,7 +108,9 @@ func (s *Server) setupWebhookHandlers() {
 			"type":      msg.Type,
 		}).Info("Received WhatsApp message")
 
-		return s.msgService.HandleWhatsAppMessage(ctx, msg.ChatID, msg.ID, msg.Sender, msg.Content, msg.MediaURL)
+		// Use default session name for legacy webhook handler
+	sessionName := "default"
+	return s.msgService.HandleWhatsAppMessageWithSession(ctx, sessionName, msg.ChatID, msg.ID, msg.Sender, msg.Content, msg.MediaURL)
 	})
 }
 
@@ -285,8 +289,15 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 
 	chatID := payload.Payload.From
 	
-	return s.msgService.HandleWhatsAppMessage(
+	// Use session from webhook payload or default to "default"
+	sessionName := payload.Session
+	if sessionName == "" {
+		sessionName = "default"
+	}
+
+	return s.msgService.HandleWhatsAppMessageWithSession(
 		ctx,
+		sessionName,
 		chatID,
 		payload.Payload.ID,
 		payload.Payload.From,
@@ -310,7 +321,7 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 	}).Info("Processing WhatsApp reaction for forwarding to Signal")
 
 	// Find the original message mapping to get the Signal message ID
-	mapping, err := s.msgService.GetMessageByID(ctx, payload.Payload.Reaction.MessageID)
+	mapping, err := s.msgService.GetMessageMappingByWhatsAppID(ctx, payload.Payload.Reaction.MessageID)
 	if err != nil {
 		s.logger.WithError(err).Warn("Could not find original message for reaction")
 		return nil // Don't error out, just log and continue
@@ -329,14 +340,15 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 		reactionText = fmt.Sprintf("%s Reacted with %s", payload.Payload.Reaction.Text, payload.Payload.Reaction.Text)
 	}
 
-	signalMsg := &models.Message{
-		ID:       payload.Payload.ID + "_reaction",
-		Platform: "signal",
-		ThreadID: s.cfg.Signal.DestinationPhoneNumber,
-		Content:  reactionText,
+	// Send reaction notification to the appropriate Signal destination
+	// Use the session from the mapping to determine the destination
+	sessionName := "default"
+	if mapping.SessionName != "" {
+		sessionName = mapping.SessionName
 	}
 
-	err = s.msgService.SendMessage(ctx, signalMsg)
+	// Use the message service to send via the bridge with session context
+	err = s.msgService.SendSignalNotification(ctx, sessionName, reactionText)
 	if err != nil {
 		s.logger.WithError(err).Error("Failed to forward reaction to Signal")
 		return err
@@ -366,7 +378,7 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	}).Info("Processing WhatsApp message edit")
 
 	// Find the original message mapping
-	mapping, err := s.msgService.GetMessageByID(ctx, *payload.Payload.EditedMessageID)
+	mapping, err := s.msgService.GetMessageMappingByWhatsAppID(ctx, *payload.Payload.EditedMessageID)
 	if err != nil {
 		s.logger.WithError(err).Warn("Could not find original message for edit")
 		return nil
@@ -381,14 +393,14 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	editNotification := fmt.Sprintf("✏️ Message edited: %s", payload.Payload.Body)
 	
 	// Send to Signal using message service
-	signalMsg := &models.Message{
-		ID:       payload.Payload.ID + "_edit",
-		Platform: "signal",
-		ThreadID: s.cfg.Signal.DestinationPhoneNumber,
-		Content:  editNotification,
+	// Send edit notification to the appropriate Signal destination
+	sessionName := "default"
+	if mapping.SessionName != "" {
+		sessionName = mapping.SessionName
 	}
-	
-	err = s.msgService.SendMessage(ctx, signalMsg)
+
+	// Use the message service to send via the bridge with session context
+	err = s.msgService.SendSignalNotification(ctx, sessionName, editNotification)
 	if err != nil {
 		s.logger.WithError(err).Error("Failed to send edit notification to Signal")
 		return err
@@ -431,7 +443,7 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 	}).Debug("Processing WhatsApp ACK status")
 
 	// Update delivery status in database if we have a mapping
-	mapping, err := s.msgService.GetMessageByID(ctx, payload.Payload.ID)
+	mapping, err := s.msgService.GetMessageMappingByWhatsAppID(ctx, payload.Payload.ID)
 	if err != nil || mapping == nil {
 		// No mapping found, might be a message we don't track
 		return nil
@@ -468,15 +480,12 @@ func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *mode
 
 	// For waiting messages, we might want to send a notification to Signal
 	waitingNotification := "⏳ WhatsApp is waiting for a message"
-	
-	signalMsg := &models.Message{
-		ID:       payload.Payload.ID + "_waiting",
-		Platform: "signal",
-		ThreadID: s.cfg.Signal.DestinationPhoneNumber,
-		Content:  waitingNotification,
-	}
-	
-	err := s.msgService.SendMessage(ctx, signalMsg)
+
+	// Send waiting notification to default session
+	sessionName := s.channelManager.GetDefaultSessionName()
+
+	// Use the message service to send via the bridge with session context
+	err := s.msgService.SendSignalNotification(ctx, sessionName, waitingNotification)
 	if err != nil {
 		s.logger.WithError(err).Warn("Failed to send waiting notification to Signal")
 		return err
@@ -527,12 +536,23 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 			"messageId": sigMsg.MessageID,
 			"sender":    sigMsg.Sender,
 			"timestamp": sigMsg.Timestamp,
+			"recipient": payload.Recipient,
 		}).Info("Received Signal message via webhook, calling ProcessIncomingSignalMessage")
 
-		if err := s.msgService.ProcessIncomingSignalMessage(r.Context(), sigMsg); err != nil {
-			s.logger.WithError(err).Error("Failed to handle Signal message from webhook")
-			http.Error(w, "Failed to process message", http.StatusInternalServerError)
-			return
+		// Use recipient as destination if available, otherwise use legacy method
+		if payload.Recipient != "" {
+			if err := s.msgService.ProcessIncomingSignalMessageWithDestination(r.Context(), sigMsg, payload.Recipient); err != nil {
+				s.logger.WithError(err).Error("Failed to handle Signal message from webhook")
+				http.Error(w, "Failed to process message", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			// Fallback to legacy method
+			if err := s.msgService.ProcessIncomingSignalMessage(r.Context(), sigMsg); err != nil {
+				s.logger.WithError(err).Error("Failed to handle Signal message from webhook")
+				http.Error(w, "Failed to process message", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		w.WriteHeader(http.StatusOK)

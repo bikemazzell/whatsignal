@@ -2,6 +2,8 @@
 
 This document describes all configuration options available in `config.json`.
 
+WhatSignal supports multiple WhatsApp-Signal channel pairs, allowing you to route messages between specific WhatsApp sessions and Signal destination numbers with complete isolation between channels.
+
 ## WhatsApp Configuration
 
 - `whatsapp.api_base_url`: URL of your Waha instance (WhatsApp HTTP API)
@@ -12,11 +14,6 @@ This document describes all configuration options available in `config.json`.
   - Required if WAHA is configured with `WHATSAPP_API_KEY`
   - Must match WAHA's `WHATSAPP_API_KEY` setting
   - Used in `X-Api-Key` header for all requests
-
-- `whatsapp.session_name`: Name of the WhatsApp session
-  - Default: `default`
-  - Used in API endpoints as `/api/{sessionName}/...`
-  - Must be unique if running multiple instances
 
 - `whatsapp.webhook_secret`: Secret for authenticating incoming webhooks from WAHA.
   - **Required for security.**
@@ -52,16 +49,14 @@ Signal configuration requires **two phone numbers** for the bridge to work:
   - Must be registered with Signal-CLI beforehand
   - Format: International format with country code (e.g., "+1234567890")
 
-- `signal.destinationPhoneNumber`: YOUR Signal phone number that receives the forwarded messages
-  - This is your personal Signal number where you'll receive WhatsApp messages
-  - Format: International format with country code (e.g., "+0987654321")
-
 ### Message Flow
 
 ```
-WhatsApp User → WAHA → WhatsSignal → Signal-CLI (intermediaryPhoneNumber) → Your Signal App (destinationPhoneNumber)
-Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber) → WhatsSignal → WAHA → WhatsApp User
+WhatsApp User → WAHA (session) → WhatsSignal → Signal-CLI (intermediaryPhoneNumber) → Your Signal App (channel destinationPhoneNumber)
+Your Signal App (channel destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber) → WhatsSignal → WAHA (session) → WhatsApp User
 ```
+
+The routing is now session-aware: each WhatsApp session is mapped to a specific Signal destination number via the `channels` configuration.
 
 ### Other Signal Settings
 
@@ -102,6 +97,96 @@ Your Signal App (destinationPhoneNumber) → Signal-CLI (intermediaryPhoneNumber
   - Default: `30`
   - Messages older than this will be automatically deleted
   - Set to `0` to keep messages indefinitely
+
+## Channels Configuration
+
+**Required**: WhatSignal now requires the `channels` array configuration for routing messages between WhatsApp sessions and Signal destinations.
+
+### `channels` (array, required)
+An array of channel configurations, each containing:
+
+- **`whatsappSessionName`** (string, required): The name of the WhatsApp session in WAHA
+  - Used in API endpoints as `/api/{sessionName}/...`
+  - Must be unique across all channels
+  - Example: "default", "business", "personal"
+
+- **`signalDestinationPhoneNumber`** (string, required): The Signal phone number to receive messages from this WhatsApp session
+  - This is YOUR personal Signal number where you'll receive WhatsApp messages from this specific session
+  - Format: International format with country code (e.g., "+0987654321")
+  - Must be unique across all channels
+
+### Validation Rules
+
+1. **Unique Session Names**: Each `whatsappSessionName` must be unique
+2. **Unique Destinations**: Each `signalDestinationPhoneNumber` must be unique  
+3. **Non-empty Values**: Both fields are required and cannot be empty
+4. **At Least One Channel**: The `channels` array must contain at least one channel
+
+### Message Routing
+
+#### WhatsApp → Signal
+When a message is received from WhatsApp:
+1. WhatSignal extracts the session name from the webhook payload
+2. Looks up the corresponding Signal destination using the channel configuration
+3. Forwards the message to the correct Signal number
+4. Stores the mapping with session context for reply routing
+
+#### Signal → WhatsApp  
+When a message is received from Signal:
+1. WhatSignal identifies which Signal destination number received the message
+2. Looks up the corresponding WhatsApp session using the channel configuration
+3. Routes the message to the correct WhatsApp session
+4. Maintains conversation context within the session
+
+#### Message Isolation
+Each channel operates independently:
+- Messages from different WhatsApp sessions go to their configured Signal numbers only
+- Reply messages maintain proper channel isolation
+- No cross-channel message leakage
+
+### Example Channel Configurations
+
+#### Single Channel (minimum requirement)
+```json
+"channels": [
+  {
+    "whatsappSessionName": "default",
+    "signalDestinationPhoneNumber": "+1234567890"
+  }
+]
+```
+
+#### Personal + Business
+```json
+"channels": [
+  {
+    "whatsappSessionName": "personal",
+    "signalDestinationPhoneNumber": "+1234567890"
+  },
+  {
+    "whatsappSessionName": "business", 
+    "signalDestinationPhoneNumber": "+0987654321"
+  }
+]
+```
+
+#### Team Management
+```json
+"channels": [
+  {
+    "whatsappSessionName": "support",
+    "signalDestinationPhoneNumber": "+1111111111"
+  },
+  {
+    "whatsappSessionName": "sales",
+    "signalDestinationPhoneNumber": "+2222222222"
+  },
+  {
+    "whatsappSessionName": "marketing", 
+    "signalDestinationPhoneNumber": "+3333333333"
+  }
+]
+```
 
 ## Database Configuration
 
@@ -182,19 +267,29 @@ To add support for new file types, simply update your `config.json`:
   "whatsapp": {
     "api_base_url": "http://localhost:3000",
     "api_key": "your-waha-api-key",
-    "session_name": "default",
     "timeout_ms": 10000,
     "retry_count": 3,
-    "webhook_secret": "your-whatsapp-webhook-secret"
+    "webhook_secret": "your-whatsapp-webhook-secret",
+    "contactSyncOnStartup": true,
+    "contactCacheHours": 24
   },
   "signal": {
     "rpc_url": "http://localhost:8080",
     "auth_token": "your-signal-auth-token",
     "intermediaryPhoneNumber": "+1234567890",
-    "destinationPhoneNumber": "+0987654321",
     "device_name": "whatsignal-device",
     "webhook_secret": "your-signal-webhook-secret"
   },
+  "channels": [
+    {
+      "whatsappSessionName": "default",
+      "signalDestinationPhoneNumber": "+0987654321"
+    },
+    {
+      "whatsappSessionName": "business",
+      "signalDestinationPhoneNumber": "+1122334455"
+    }
+  ],
   "retry": {
     "initial_backoff_ms": 1000,
     "max_backoff_ms": 60000,

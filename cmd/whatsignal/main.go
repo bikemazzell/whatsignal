@@ -113,10 +113,22 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}
 
+	// Create channel manager first to get the default session name
+	channelManager, err := service.NewChannelManager(cfg.Channels)
+	if err != nil {
+		return fmt.Errorf("failed to create channel manager: %w", err)
+	}
+
+	// Use the first configured session as the default for client operations
+	defaultSessionName := channelManager.GetDefaultSessionName()
+	if defaultSessionName == "" {
+		return fmt.Errorf("no channels configured")
+	}
+
 	waClient := whatsapp.NewClient(types.ClientConfig{
 		BaseURL:     cfg.WhatsApp.APIBaseURL,
 		APIKey:      apiKey,
-		SessionName: cfg.WhatsApp.SessionName,
+		SessionName: defaultSessionName, // Use first configured session
 		Timeout:     cfg.WhatsApp.Timeout,
 		RetryCount:  cfg.WhatsApp.RetryCount,
 	})
@@ -137,7 +149,7 @@ func run(ctx context.Context) error {
 
 	cacheHours := cfg.WhatsApp.ContactCacheHours
 	if cacheHours <= 0 {
-		cacheHours = 24
+		cacheHours = constants.DefaultContactCacheHours
 	}
 	contactService := service.NewContactServiceWithConfig(db, waClient, cacheHours)
 
@@ -160,11 +172,15 @@ func run(ctx context.Context) error {
 		logger.Info("Contact sync on startup is disabled")
 	}
 
+	// Channel manager was already created above
+
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, models.RetryConfig{
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:      cfg.Retry.MaxAttempts,
-	}, cfg.Media, cfg.Signal.DestinationPhoneNumber, contactService)
+	}, cfg.Media, channelManager, contactService)
+
+	logger.WithField("channels", len(cfg.Channels)).Info("Multi-channel bridge initialized")
 
 	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal)
 
@@ -196,8 +212,8 @@ func run(ctx context.Context) error {
 	}
 	defer signalPoller.Stop()
 
-	server := NewServer(cfg, messageService, logger, waClient)
-	serverErrCh := make(chan error, 1)
+	server := NewServer(cfg, messageService, logger, waClient, channelManager)
+	serverErrCh := make(chan error, constants.ServerErrorChannelSize)
 	go func() {
 		if err := server.Start(); err != nil {
 			serverErrCh <- fmt.Errorf("server error: %w", err)
@@ -230,9 +246,7 @@ func validateConfig(cfg *models.Config) error {
 	if cfg.Signal.IntermediaryPhoneNumber == "" {
 		return fmt.Errorf("signal intermediary phone number is required")
 	}
-	if cfg.Signal.DestinationPhoneNumber == "" {
-		return fmt.Errorf("signal destination phone number is required")
-	}
+	// Signal destination phone numbers are now validated in the channels configuration
 	if cfg.Database.Path == "" {
 		return fmt.Errorf("database path is required")
 	}

@@ -22,21 +22,26 @@ func TestConfig_Validation(t *testing.T) {
 			name: "valid config",
 			config: Config{
 				WhatsApp: WhatsAppConfig{
-					APIBaseURL:      "http://localhost:8080",
-					SessionName:     "test-session",
-					Timeout:         5 * time.Second,
-					RetryCount:      3,
-					WebhookSecret:   "secret",
-					PollIntervalSec: 30,
+					APIBaseURL:            "http://localhost:8080",
+					Timeout:               5 * time.Second,
+					RetryCount:            3,
+					WebhookSecret:         "secret",
+					ContactSyncOnStartup:  false,
+					ContactCacheHours:     24,
 				},
 				Signal: SignalConfig{
 					RPCURL:                  "http://localhost:8081",
 					AuthToken:               "test-token",
 					IntermediaryPhoneNumber: "+1234567890",
-					DestinationPhoneNumber:  "+0987654321",
 					DeviceName:              "test-device",
 					PollIntervalSec:         5,
 					PollingEnabled:          true,
+				},
+				Channels: []Channel{
+					{
+						WhatsAppSessionName:          "test-session",
+						SignalDestinationPhoneNumber: "+0987654321",
+					},
 				},
 				Retry: RetryConfig{
 					InitialBackoffMs: 100,

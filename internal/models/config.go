@@ -12,12 +12,12 @@ type Config struct {
 	Server        ServerConfig   `json:"server" mapstructure:"server"`
 	LogLevel      string         `json:"log_level" mapstructure:"log_level"`
 	RetentionDays int            `json:"retentionDays"`
+	Channels      []Channel      `json:"channels" mapstructure:"channels"` // Multi-channel support
 }
 
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
 	APIBaseURL               string        `json:"api_base_url" mapstructure:"api_base_url"`
-	SessionName              string        `json:"session_name" mapstructure:"session_name"`
 	Timeout                  time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
 	RetryCount               int           `json:"retry_count" mapstructure:"retry_count"`
 	WebhookSecret            string        `json:"webhook_secret" mapstructure:"webhook_secret"`
@@ -33,7 +33,6 @@ type SignalConfig struct {
 	RPCURL                   string `json:"rpc_url" mapstructure:"rpc_url"`
 	AuthToken                string `json:"auth_token" mapstructure:"auth_token"`
 	IntermediaryPhoneNumber  string `json:"intermediaryPhoneNumber" mapstructure:"intermediaryPhoneNumber"`   // Signal-CLI service number
-	DestinationPhoneNumber   string `json:"destinationPhoneNumber" mapstructure:"destinationPhoneNumber"`    // Your Signal number to receive messages
 	DeviceName               string `json:"device_name" mapstructure:"device_name"`
 	WebhookSecret            string `json:"webhook_secret" mapstructure:"webhook_secret"`
 	PollIntervalSec          int    `json:"pollIntervalSec" mapstructure:"pollIntervalSec"`
@@ -58,7 +57,6 @@ type MediaConfig struct {
 type MediaSizeLimits struct {
 	Image    int `json:"image"`
 	Video    int `json:"video"`
-	Gif      int `json:"gif"`
 	Document int `json:"document"`
 	Voice    int `json:"voice"`
 }
@@ -83,6 +81,12 @@ type ServerConfig struct {
 	ReadTimeoutSec  int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
 	WriteTimeoutSec int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
 	IdleTimeoutSec  int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
+}
+
+// Channel represents a WhatsApp-Signal channel pairing
+type Channel struct {
+	WhatsAppSessionName           string `json:"whatsappSessionName" mapstructure:"whatsappSessionName"`
+	SignalDestinationPhoneNumber  string `json:"signalDestinationPhoneNumber" mapstructure:"signalDestinationPhoneNumber"`
 }
 
 type ConfigError struct {

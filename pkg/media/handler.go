@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
 )
@@ -41,7 +42,7 @@ func NewHandlerWithWAHA(cacheDir string, config models.MediaConfig, wahaBaseURL,
 	return &handler{
 		cacheDir:    cacheDir,
 		config:      config,
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		httpClient:  &http.Client{Timeout: time.Duration(constants.DefaultDownloadTimeoutSec) * time.Second},
 		wahaBaseURL: wahaBaseURL,
 		wahaAPIKey:  wahaAPIKey,
 	}, nil
@@ -159,10 +160,6 @@ func (h *handler) validateMedia(ext string, size int64) error {
 		}
 	}
 
-	if maxSizeMB == 0 && ext == "gif" {
-		maxSizeMB = h.config.MaxSizeMB.Gif
-		mediaType = "gif"
-	}
 
 	if maxSizeMB == 0 {
 		for _, allowedExt := range h.config.AllowedTypes.Document {
@@ -190,7 +187,7 @@ func (h *handler) validateMedia(ext string, size int64) error {
 		mediaType = "document"
 	}
 
-	maxSizeBytes := int64(maxSizeMB) * 1024 * 1024
+	maxSizeBytes := int64(maxSizeMB) * constants.BytesPerMegabyte
 	if size > maxSizeBytes {
 		return fmt.Errorf("%s too large: %d > %d bytes", mediaType, size, maxSizeBytes)
 	}
@@ -224,7 +221,7 @@ func (h *handler) CleanupOldFiles(maxAge int64) error {
 }
 
 func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(constants.DefaultDownloadTimeoutSec)*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", mediaURL, nil)
@@ -308,7 +305,8 @@ func (h *handler) rewriteMediaURL(mediaURL string) string {
 	}
 
 	// Check if this is a localhost URL that needs rewriting
-	if u.Host == "localhost:3000" || u.Host == "127.0.0.1:3000" || u.Host == "[::1]:3000" {
+	devPort := fmt.Sprintf(":%d", constants.DefaultDevServerPort)
+	if u.Host == "localhost"+devPort || u.Host == "127.0.0.1"+devPort || u.Host == "[::1]"+devPort {
 		// Parse the WAHA base URL to get the correct host
 		wahaURL, err := url.Parse(h.wahaBaseURL)
 		if err != nil {
@@ -356,7 +354,7 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 	defer file.Close()
 
 	// Read first 512 bytes for content type detection
-	buffer := make([]byte, 512)
+	buffer := make([]byte, constants.MimeDetectionBufferSize)
 	n, err := file.Read(buffer)
 	if err != nil && err != io.EOF {
 		return "", fmt.Errorf("failed to read file content: %w", err)
@@ -370,49 +368,37 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 	// Detect MIME type from content
 	contentType := http.DetectContentType(buffer[:n])
 	
-	// Map MIME types to file extensions
+	// Try direct mapping first
+	if ext, ok := constants.ContentTypeToExtension[contentType]; ok {
+		return ext, nil
+	}
+	
+	// Fallback to partial matching for complex content types
 	switch {
 	case strings.HasPrefix(contentType, "audio/"):
-		// For audio files, try to detect specific formats
-		if strings.Contains(contentType, "ogg") {
-			return "ogg", nil
+		// Check for partial matches in audio types
+		for contentTypeKey, ext := range constants.ContentTypeToExtension {
+			if strings.HasPrefix(contentTypeKey, "audio/") && strings.Contains(contentType, strings.TrimPrefix(contentTypeKey, "audio/")) {
+				return ext, nil
+			}
 		}
-		if strings.Contains(contentType, "mpeg") || strings.Contains(contentType, "mp3") {
-			return "mp3", nil
-		}
-		if strings.Contains(contentType, "aac") {
-			return "aac", nil
-		}
-		if strings.Contains(contentType, "m4a") {
-			return "m4a", nil
-		}
-		// Default to ogg for unrecognized audio (Signal's default)
-		return "ogg", nil
+		return constants.DefaultAudioExtension, nil
 	case strings.HasPrefix(contentType, "image/"):
-		if strings.Contains(contentType, "jpeg") {
-			return "jpg", nil
+		// Check for partial matches in image types
+		for contentTypeKey, ext := range constants.ContentTypeToExtension {
+			if strings.HasPrefix(contentTypeKey, "image/") && strings.Contains(contentType, strings.TrimPrefix(contentTypeKey, "image/")) {
+				return ext, nil
+			}
 		}
-		if strings.Contains(contentType, "png") {
-			return "png", nil
-		}
-		if strings.Contains(contentType, "gif") {
-			return "gif", nil
-		}
-		if strings.Contains(contentType, "webp") {
-			return "webp", nil
-		}
-		return "jpg", nil // Default for images
+		return constants.DefaultImageExtension, nil
 	case strings.HasPrefix(contentType, "video/"):
-		if strings.Contains(contentType, "mp4") {
-			return "mp4", nil
+		// Check for partial matches in video types
+		for contentTypeKey, ext := range constants.ContentTypeToExtension {
+			if strings.HasPrefix(contentTypeKey, "video/") && strings.Contains(contentType, strings.TrimPrefix(contentTypeKey, "video/")) {
+				return ext, nil
+			}
 		}
-		if strings.Contains(contentType, "mov") {
-			return "mov", nil
-		}
-		if strings.Contains(contentType, "avi") {
-			return "avi", nil
-		}
-		return "mp4", nil // Default for videos
+		return constants.DefaultVideoExtension, nil
 	default:
 		// For other types, return empty string to use document default
 		return "", nil
@@ -420,25 +406,30 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 }
 
 func (h *handler) detectByFileSignature(data []byte) string {
-	if len(data) < 4 {
+	if len(data) < 3 {
 		return ""
 	}
 
-	// Check for OGG file signature (OggS)
-	if len(data) >= 4 && string(data[0:4]) == "OggS" {
-		return "ogg"
+	// Check for known file signatures from constants
+	for signature, ext := range constants.FileSignatures {
+		sigBytes := []byte(signature)
+		if len(data) >= len(sigBytes) {
+			if string(data[0:len(sigBytes)]) == signature {
+				// Special case for WebP: also check for WEBP marker
+				if signature == "RIFF" && len(data) >= 12 && string(data[8:12]) == "WEBP" {
+					return ext
+				} else if signature != "RIFF" {
+					return ext
+				}
+			}
+		}
 	}
 
-	// Check for MP3 file signatures
-	if len(data) >= 3 {
-		// ID3v2 tag
-		if string(data[0:3]) == "ID3" {
-			return "mp3"
-		}
-		// MP3 frame sync
-		if data[0] == 0xFF && (data[1]&0xE0) == 0xE0 {
-			return "mp3"
-		}
+	// Special binary signatures that can't be easily stored as strings
+	
+	// Check for MP3 frame sync (binary pattern)
+	if len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0 {
+		return "mp3"
 	}
 
 	// Check for AAC file signature (ADTS header)
@@ -446,44 +437,21 @@ func (h *handler) detectByFileSignature(data []byte) string {
 		return "aac"
 	}
 
-	// Check for M4A/MP4 signature
-	if len(data) >= 8 {
-		// Check for ftyp box at offset 4
-		if string(data[4:8]) == "ftyp" {
-			// Check for M4A-specific brand codes
-			if len(data) >= 12 {
-				brand := string(data[8:12])
-				if brand == "M4A " || brand == "mp41" || brand == "mp42" {
-					return "m4a"
-				}
+	// Check for M4A/MP4 signature (ftyp box)
+	if len(data) >= 8 && string(data[4:8]) == "ftyp" {
+		// Check for M4A-specific brand codes
+		if len(data) >= 12 {
+			brand := string(data[8:12])
+			if brand == "M4A " || brand == "mp41" || brand == "mp42" {
+				return "m4a"
 			}
-			return "mp4" // Default to mp4 for other ftyp variants
 		}
+		return "mp4" // Default to mp4 for other ftyp variants
 	}
 
-	// Check for JPEG signatures
+	// Check for JPEG signatures (binary pattern)
 	if len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
 		return "jpg"
-	}
-
-	// Check for PNG signature
-	if len(data) >= 8 && string(data[0:8]) == "\x89PNG\r\n\x1a\n" {
-		return "png"
-	}
-
-	// Check for GIF signatures
-	if len(data) >= 6 && (string(data[0:6]) == "GIF87a" || string(data[0:6]) == "GIF89a") {
-		return "gif"
-	}
-
-	// Check for WebP signature
-	if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
-		return "webp"
-	}
-
-	// Check for PDF signature
-	if len(data) >= 4 && string(data[0:4]) == "%PDF" {
-		return "pdf"
 	}
 
 	return ""

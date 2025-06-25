@@ -105,7 +105,12 @@ func TestValidateConfig(t *testing.T) {
 				},
 				Signal: models.SignalConfig{
 					IntermediaryPhoneNumber: "+1234567890",
-					DestinationPhoneNumber:  "+0987654321",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+0987654321",
+					},
 				},
 				Database: models.DatabaseConfig{
 					Path: "/tmp/test.db",
@@ -122,7 +127,12 @@ func TestValidateConfig(t *testing.T) {
 				WhatsApp: models.WhatsAppConfig{},
 				Signal: models.SignalConfig{
 					IntermediaryPhoneNumber: "+1234567890",
-					DestinationPhoneNumber:  "+0987654321",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+0987654321",
+					},
 				},
 				Database: models.DatabaseConfig{
 					Path: "/tmp/test.db",
@@ -159,7 +169,12 @@ func TestValidateConfig(t *testing.T) {
 				},
 				Signal: models.SignalConfig{
 					IntermediaryPhoneNumber: "+1234567890",
-					DestinationPhoneNumber:  "+0987654321",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+0987654321",
+					},
 				},
 				Database: models.DatabaseConfig{},
 				Media: models.MediaConfig{
@@ -177,7 +192,12 @@ func TestValidateConfig(t *testing.T) {
 				},
 				Signal: models.SignalConfig{
 					IntermediaryPhoneNumber: "+1234567890",
-					DestinationPhoneNumber:  "+0987654321",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+0987654321",
+					},
 				},
 				Database: models.DatabaseConfig{
 					Path: "/tmp/test.db",
@@ -245,9 +265,14 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 			"rpc_url": "http://localhost:8081",
 			"auth_token": "test-token",
 			"intermediaryPhoneNumber": "+1234567890",
-			"destinationPhoneNumber": "+0987654321",
 			"device_name": "test-device"
 		},
+		"channels": [
+			{
+				"whatsappSessionName": "default",
+				"signalDestinationPhoneNumber": "+0987654321"
+			}
+		],
 		"retry": {
 			"initialBackoffMs": 1000,
 			"maxBackoffMs": 5000,
@@ -325,9 +350,14 @@ func setupTestEnv(t *testing.T) {
 			"rpc_url": "http://localhost:8081",
 			"auth_token": "test-token",
 			"intermediaryPhoneNumber": "+1234567890",
-			"destinationPhoneNumber": "+1987654321",
 			"device_name": "test-device"
 		},
+		"channels": [
+			{
+				"whatsappSessionName": "default",
+				"signalDestinationPhoneNumber": "+1987654321"
+			}
+		],
 		"retry": {
 			"initialBackoffMs": 1000,
 			"maxBackoffMs": 5000,

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
 )
@@ -53,15 +54,40 @@ func validate(c *models.Config) error {
 		return ErrMissingMediaDir
 	}
 
+	// Channels configuration is now required
+	if len(c.Channels) == 0 {
+		return models.ConfigError{Message: "channels array is required and must contain at least one channel"}
+	}
+
+	// Validate each channel
+	sessionNames := make(map[string]bool)
+	destinations := make(map[string]bool)
+	for i, channel := range c.Channels {
+		if channel.WhatsAppSessionName == "" {
+			return models.ConfigError{Message: fmt.Sprintf("empty WhatsApp session name in channel %d", i)}
+		}
+		if channel.SignalDestinationPhoneNumber == "" {
+			return models.ConfigError{Message: fmt.Sprintf("empty Signal destination in channel %d", i)}
+		}
+
+		// Check for duplicates
+		if sessionNames[channel.WhatsAppSessionName] {
+			return models.ConfigError{Message: fmt.Sprintf("duplicate WhatsApp session name: %s", channel.WhatsAppSessionName)}
+		}
+		if destinations[channel.SignalDestinationPhoneNumber] {
+			return models.ConfigError{Message: fmt.Sprintf("duplicate Signal destination: %s", channel.SignalDestinationPhoneNumber)}
+		}
+
+		sessionNames[channel.WhatsAppSessionName] = true
+		destinations[channel.SignalDestinationPhoneNumber] = true
+	}
+
 	// Set default media configuration if not provided
 	if c.Media.MaxSizeMB.Image == 0 {
 		c.Media.MaxSizeMB.Image = 5
 	}
 	if c.Media.MaxSizeMB.Video == 0 {
 		c.Media.MaxSizeMB.Video = 100
-	}
-	if c.Media.MaxSizeMB.Gif == 0 {
-		c.Media.MaxSizeMB.Gif = 25
 	}
 	if c.Media.MaxSizeMB.Document == 0 {
 		c.Media.MaxSizeMB.Document = 100
@@ -72,23 +98,23 @@ func validate(c *models.Config) error {
 
 	// Set default allowed types if not provided
 	if len(c.Media.AllowedTypes.Image) == 0 {
-		c.Media.AllowedTypes.Image = []string{"jpg", "jpeg", "png"}
+		c.Media.AllowedTypes.Image = constants.DefaultImageTypes
 	}
 	if len(c.Media.AllowedTypes.Video) == 0 {
-		c.Media.AllowedTypes.Video = []string{"mp4", "mov"}
+		c.Media.AllowedTypes.Video = constants.DefaultVideoTypes
 	}
 	if len(c.Media.AllowedTypes.Document) == 0 {
-		c.Media.AllowedTypes.Document = []string{"pdf", "doc", "docx"}
+		c.Media.AllowedTypes.Document = constants.DefaultDocumentTypes
 	}
 	if len(c.Media.AllowedTypes.Voice) == 0 {
-		c.Media.AllowedTypes.Voice = []string{"ogg"}
+		c.Media.AllowedTypes.Voice = constants.DefaultVoiceTypes
 	}
 
 	if c.RetentionDays <= 0 {
 		c.RetentionDays = 30
 	}
 	if c.WhatsApp.PollIntervalSec <= 0 {
-		c.WhatsApp.PollIntervalSec = 30
+		c.WhatsApp.PollIntervalSec = constants.DefaultWhatsAppPollIntervalSec
 	}
 	return nil
 }

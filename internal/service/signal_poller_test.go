@@ -66,6 +66,7 @@ func (m *mockMessageService) DeleteMessage(ctx context.Context, id string) error
 	return args.Error(0)
 }
 
+// Deprecated: Use HandleWhatsAppMessageWithSession instead
 func (m *mockMessageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
 	args := m.Called(ctx, chatID, msgID, sender, content, mediaPath)
 	return args.Error(0)
@@ -84,6 +85,29 @@ func (m *mockMessageService) ProcessIncomingSignalMessage(ctx context.Context, r
 func (m *mockMessageService) UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error {
 	args := m.Called(ctx, msgID, status)
 	return args.Error(0)
+}
+
+func (m *mockMessageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
+	args := m.Called(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
+	return args.Error(0)
+}
+
+func (m *mockMessageService) ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error {
+	args := m.Called(ctx, rawSignalMsg, destination)
+	return args.Error(0)
+}
+
+func (m *mockMessageService) SendSignalNotification(ctx context.Context, sessionName, message string) error {
+	args := m.Called(ctx, sessionName, message)
+	return args.Error(0)
+}
+
+func (m *mockMessageService) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
+	args := m.Called(ctx, whatsappID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
 func TestSignalPoller_NewSignalPoller(t *testing.T) {

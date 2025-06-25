@@ -298,3 +298,57 @@ func (m *mockDatabaseService) CleanupOldContacts(retentionDays int) error {
 	return args.Error(0)
 }
 
+func (m *mockDatabaseService) GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error) {
+	args := m.Called(ctx, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
+}
+
+// Mock contact service
+type mockContactService struct {
+	mock.Mock
+}
+
+func (m *mockContactService) GetContactDisplayName(ctx context.Context, phoneNumber string) string {
+	args := m.Called(ctx, phoneNumber)
+	return args.String(0)
+}
+
+func (m *mockContactService) SyncContacts(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockContactService) GetContact(ctx context.Context, contactID string) (*models.Contact, error) {
+	args := m.Called(ctx, contactID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Contact), args.Error(1)
+}
+
+func (m *mockContactService) GetAllContacts(ctx context.Context, limit, offset int) ([]models.Contact, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Contact), args.Error(1)
+}
+
+func (m *mockContactService) CleanupOldContacts(retentionDays int) error {
+	args := m.Called(retentionDays)
+	return args.Error(0)
+}
+
+func (m *mockContactService) RefreshContact(ctx context.Context, contactID string) error {
+	args := m.Called(ctx, contactID)
+	return args.Error(0)
+}
+
+func (m *mockContactService) SyncAllContacts(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+

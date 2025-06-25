@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
@@ -35,11 +36,14 @@ type MessageService interface {
 	GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error)
 	MarkMessageDelivered(ctx context.Context, id string) error
 	DeleteMessage(ctx context.Context, id string) error
-	HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error
+	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *models.Message) error
 	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error
+	ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
 	PollSignalMessages(ctx context.Context) error
+	SendSignalNotification(ctx context.Context, sessionName, message string) error
+	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 }
 
 type messageService struct {
@@ -65,7 +69,7 @@ func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache,
 }
 
 func generateUniqueID() string {
-	bytes := make([]byte, 16)
+	bytes := make([]byte, constants.MessageIDRandomBytesLength)
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
 }
@@ -219,7 +223,7 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgID, sender, content string, mediaPath string) error {
+func (s *messageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
 	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMapping(ctx, msgID)
 	s.mu.RUnlock()
@@ -231,7 +235,7 @@ func (s *messageService) HandleWhatsAppMessage(ctx context.Context, chatID, msgI
 
 	LogMessageProcessing(ctx, s.logger, "WhatsApp", chatID, msgID, sender, content)
 
-	return s.bridge.HandleWhatsAppMessage(ctx, chatID, msgID, sender, content, mediaPath)
+	return s.bridge.HandleWhatsAppMessageWithSession(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
 }
 
 func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Message) error {
@@ -258,24 +262,15 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 }
 
 func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error {
+	// Legacy method - uses bridge's default logic
+	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
+}
+
+func (s *messageService) ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error {
 	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
-	// Enhanced debugging for potential deletion events
-	s.logger.WithFields(logrus.Fields{
-		"messageID":       rawSignalMsg.MessageID,
-		"sender":          rawSignalMsg.Sender,
-		"timestamp":       rawSignalMsg.Timestamp,
-		"message":         rawSignalMsg.Message,
-		"messageLength":   len(rawSignalMsg.Message),
-		"attachments":     rawSignalMsg.Attachments,
-		"attachmentCount": len(rawSignalMsg.Attachments),
-		"quotedMessage":   rawSignalMsg.QuotedMessage,
-		"reaction":        rawSignalMsg.Reaction,
-		"deletion":        rawSignalMsg.Deletion,
-		"isEmpty":         rawSignalMsg.Message == "" && len(rawSignalMsg.Attachments) == 0,
-	}).Debug("Raw Signal message received - detailed analysis")
 
-	return s.bridge.HandleSignalMessage(ctx, rawSignalMsg)
+	return s.bridge.HandleSignalMessageWithDestination(ctx, rawSignalMsg, destination)
 }
 
 func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error {
@@ -309,4 +304,16 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *messageService) SendSignalNotification(ctx context.Context, sessionName, message string) error {
+	// Use the bridge to send a Signal notification for the given session
+	// This will handle session-to-destination mapping automatically
+	return s.bridge.SendSignalNotificationForSession(ctx, sessionName, message)
+}
+
+func (s *messageService) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.db.GetMessageMappingByWhatsAppID(ctx, whatsappID)
 }

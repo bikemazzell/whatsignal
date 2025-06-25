@@ -30,15 +30,14 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - **Config-driven file types**: Add new file formats without rebuilding
   - **Smart defaults**: Unknown file types automatically sent as documents
   - **Binary file detection**: Automatic detection of file types using content signatures
-  - Images (JPEG, PNG, GIF, WebP) - up to 5MB
-  - Videos (MP4, MOV, AVI) - up to 100MB
-  - Documents (PDF, DOC, DOCX, TXT, SVG, ZIP, etc.) - up to 100MB
-  - Voice messages (OGG, AAC, M4A, MP3) - up to 16MB, including extensionless Signal recordings
+  - Images (JPEG, PNG, GIF, WebP)
+  - Videos (MP4, MOV, AVI)
+  - Documents (PDF, DOC, DOCX, TXT, SVG, ZIP, etc.)
+  - Voice messages (OGG, AAC, M4A, MP3)
   - Intelligent media caching and cleanup
 
 - **Message Features**:
   - Text with formatting preservation
-  - URL previews
   - Media attachments in replies
   - Message delivery status tracking
   - **Auto-reply to last sender**: Replies without quotes automatically go to the most recent WhatsApp contact

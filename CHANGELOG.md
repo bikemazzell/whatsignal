@@ -5,6 +5,35 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 25-06-2025
+
+### Added
+- **Code organization and maintainability improvements**: Major refactoring to improve code structure and constants management
+  - Created centralized constants package (`internal/constants/`) for all hardcoded values
+  - Added `defaults.go` with numeric constants, timeouts, size limits, and conversion factors
+  - Added `mime_types.go` with MIME type mappings, file extensions, and content type detection
+  - Added `queries.go` with all SQL queries as named constants for better maintainability
+  - Moved default file type arrays to constants for configuration validation
+
+### Changed
+- **SQL query organization**: Extracted all inline SQL queries from `database.go` into named constants
+  - Improved code readability by removing large SQL blocks from functions
+  - Enhanced maintainability with centralized query management
+  - Consistent naming convention for all database queries
+- **Constants consolidation**: Moved all magic numbers and hardcoded strings to centralized constants
+  - Eliminated hardcoded timeout values (30 seconds, 1024*1024 bytes, etc.)
+  - Centralized MIME type mappings and file extension handling
+  - Moved default media type configurations to constants
+- **Code quality improvements**: Removed debugging messages that were used for troubleshooting specific issues
+  - Cleaned up production code by removing temporary debug logging
+  - Preserved functional logging while removing troubleshooting artifacts
+
+### Technical Debt Reduction
+- **Breaking changes**: This is a major version bump due to significant internal restructuring
+- **Improved maintainability**: All configuration values, SQL queries, and constants are now centrally managed
+- **Enhanced developer experience**: Easier to modify timeouts, limits, and queries without hunting through code
+- **Better testing**: Constants can be easily adjusted for testing scenarios
+
 ## [0.54.0] - 24-06-2025
 
 ### Added
@@ -133,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.0.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.0.0
 [0.54.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.54.0
 [0.53.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.53.0
 [0.51.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.51.0

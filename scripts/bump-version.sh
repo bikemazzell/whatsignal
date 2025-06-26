@@ -52,10 +52,10 @@ if grep -q "version.*$CURRENT_VERSION" README.md 2>/dev/null; then
     echo "Updated README.md"
 fi
 
-# Update docker-compose.prod.yml if it exists
-if [ -f "docker-compose.prod.yml" ] && grep -q "whatsignal:$CURRENT_VERSION" docker-compose.prod.yml 2>/dev/null; then
-    sed -i.bak "s/whatsignal:$CURRENT_VERSION/whatsignal:$NEW_VERSION/g" docker-compose.prod.yml && rm docker-compose.prod.yml.bak
-    echo "Updated docker-compose.prod.yml"
+# Update docker-compose.yml if it exists and contains version references
+if [ -f "docker-compose.yml" ] && grep -q "whatsignal:$CURRENT_VERSION" docker-compose.yml 2>/dev/null; then
+    sed -i.bak "s/whatsignal:$CURRENT_VERSION/whatsignal:$NEW_VERSION/g" docker-compose.yml && rm docker-compose.yml.bak
+    echo "Updated docker-compose.yml"
 fi
 
 echo ""

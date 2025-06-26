@@ -44,7 +44,7 @@ cd "$DEPLOY_DIR"
 echo "📥 Downloading configuration files..."
 
 # Download required files
-curl -fsSL "$REPO_URL/docker-compose.prod.yml" -o docker-compose.yml
+curl -fsSL "$REPO_URL/docker-compose.yml" -o docker-compose.yml
 curl -fsSL "$REPO_URL/env.example" -o env.example
 curl -fsSL "$REPO_URL/config.json.example" -o config.json.example
 

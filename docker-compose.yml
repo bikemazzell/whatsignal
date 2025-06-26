@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Signal CLI REST API - handles Signal messaging
   signal-cli-rest-api:
@@ -39,9 +37,11 @@ services:
 
   # WhatSignal - main bridge application
   whatsignal:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/bikemazzell/whatsignal:latest
+    # Uncomment the following lines for local development:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: whatsignal
     ports:
       - "8082:8082"

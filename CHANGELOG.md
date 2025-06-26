@@ -5,6 +5,82 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 26-06-2025
+
+### Security
+- **CRITICAL**: Enhanced input validation and sanitization across all endpoints
+  - Added comprehensive phone number validation (E.164 format required)
+  - Added message ID validation with length limits and character restrictions
+  - Added session name validation with alphanumeric-only requirements
+  - Enhanced webhook payload validation for both WhatsApp and Signal endpoints
+- **HIGH**: Improved file path security and directory traversal protection
+  - Enhanced path validation in all file operations
+  - Added validation to media handler, signal client, and configuration loader
+  - Improved file permissions (0600 for files, 0750 for directories)
+- **MEDIUM**: Added rate limiting and security middleware
+  - Implemented IP-based rate limiting (100 requests/minute per IP)
+  - Added security headers (X-Content-Type-Options, X-Frame-Options, etc.)
+  - Enhanced webhook authentication with better error handling
+- **LOW**: Improved error handling and logging security
+  - Fixed unhandled errors in HTTP response handling
+  - Enhanced random number generation with proper error checking
+  - Added security-focused logging with IP tracking
+
+### Added
+- **WAHA version detection**: Intelligent handling of video messages based on WAHA version
+  - Automatic detection of WAHA Plus vs Core for video compatibility
+  - Version-specific fallback logic for unsupported video formats in WAHA Core
+  - Caching of version detection results for performance
+- **Session-aware messaging**: All messaging operations now support session context
+  - Session-specific message sending for better channel management
+  - Enhanced error handling with session context
+  - Improved test coverage for session-based operations
+- **Signal CLI simplification**: Removed authentication token requirement
+  - Simplified Signal CLI configuration (no auth tokens needed)
+  - Updated documentation and examples
+  - Cleaner REST API integration
+- **Privacy protection system**: Comprehensive logging sanitization
+  - Phone number sanitization in logs (show only last 4 digits)
+  - Message ID truncation for privacy
+  - Content hiding in non-verbose mode
+  - WhatsApp message ID sanitization with phone number masking
+- **Security validation functions**: New comprehensive input validation system
+  - `ValidatePhoneNumber()` - E.164 format validation
+  - `ValidateMessageID()` - Length and character validation
+  - `ValidateSessionName()` - Alphanumeric validation
+- **Rate limiting system**: IP-based request throttling for webhook endpoints
+- **Security middleware**: Comprehensive security headers and content-type validation
+- **Enhanced configuration security**: Production mode validation and webhook secret requirements
+
+### Changed
+- **Video message handling**: Automatic fallback from video to document for WAHA Core
+  - Smart detection prevents 422 errors when sending videos to unsupported WAHA versions
+  - Maintains functionality across different WAHA deployment types
+- **Test data sanitization**: All test cases now use safe placeholder data
+  - Removed real phone numbers and IP addresses from test files
+  - Added consistent test patterns for privacy protection
+- **Encryption implementation**: Added security annotations for deterministic encryption
+  - Documented intentional use of deterministic nonces for searchable encryption
+  - Added #nosec annotations with explanations for legitimate security patterns
+- **Test data**: Updated all test cases to use realistic phone numbers and validation-compliant data
+- **Configuration validation**: Enhanced security checks for production deployments
+
+### Fixed
+- **Session-aware method implementations**: All mock interfaces updated for compatibility
+  - Fixed missing session-aware methods in test mocks
+  - Resolved interface compliance issues in unit tests
+  - Enhanced test coverage for session-based functionality
+- **Authorization header handling**: Updated Signal CLI tests to remove auth token expectations
+  - Fixed test failures related to removed authentication requirements
+  - Consistent handling across all Signal CLI operations
+- **Channel manager initialization**: Fixed nil pointer errors in tests
+  - Proper channel configuration in test setups
+  - Enhanced error handling for channel operations
+- **File permissions**: Changed from 0755/0644 to 0750/0600 for better security
+- **Error handling**: Fixed multiple unhandled error cases identified by security analysis
+- **Input validation**: Resolved all input validation gaps in webhook handlers
+- **Security annotations**: Added #nosec annotations with explanations for all false positive security warnings
+
 ## [1.0.0] - 25-06-2025
 
 ### Added
@@ -162,6 +238,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.1.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.1.0
 [1.0.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.0.0
 [0.54.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.54.0
 [0.53.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.53.0

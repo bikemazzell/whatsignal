@@ -8,9 +8,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
 
 func verifySignature(r *http.Request, secretKey string, signatureHeaderName string) ([]byte, error) {
@@ -66,4 +69,73 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 	}
 
 	return body, nil
+}
+
+// RateLimiter implements a simple rate limiter for webhook endpoints
+type RateLimiter struct {
+	requests map[string][]time.Time
+	mu       sync.RWMutex
+	limit    int
+	window   time.Duration
+}
+
+// NewRateLimiter creates a new rate limiter
+func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+	return &RateLimiter{
+		requests: make(map[string][]time.Time),
+		limit:    limit,
+		window:   window,
+	}
+}
+
+// Allow checks if a request from the given IP is allowed
+func (rl *RateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-rl.window)
+
+	// Clean old requests
+	if requests, exists := rl.requests[ip]; exists {
+		var validRequests []time.Time
+		for _, reqTime := range requests {
+			if reqTime.After(cutoff) {
+				validRequests = append(validRequests, reqTime)
+			}
+		}
+		rl.requests[ip] = validRequests
+	}
+
+	// Check if limit exceeded
+	if len(rl.requests[ip]) >= rl.limit {
+		return false
+	}
+
+	// Add current request
+	rl.requests[ip] = append(rl.requests[ip], now)
+	return true
+}
+
+// GetClientIP extracts the real client IP from the request
+func GetClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the chain
+		if ips := strings.Split(xff, ","); len(ips) > 0 {
+			return strings.TrimSpace(ips[0])
+		}
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	// Fall back to RemoteAddr
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
 }

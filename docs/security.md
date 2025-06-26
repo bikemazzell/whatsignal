@@ -83,7 +83,7 @@ Store all secrets in environment variables, never in code:
 
 ```bash
 # Required secrets
-WEBHOOK_SECRET=your-very-secure-random-string-for-waha
+WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET=your-very-secure-whatsapp-webhook-secret
 WHATSIGNAL_ENCRYPTION_SECRET=your-very-secure-encryption-secret
 
 # Optional overrides

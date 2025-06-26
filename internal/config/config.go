@@ -22,7 +22,7 @@ func LoadConfig(path string) (*models.Config, error) {
 		return nil, fmt.Errorf("invalid config path: %w", err)
 	}
 
-	file, err := os.ReadFile(path)
+	file, err := os.ReadFile(path) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +37,12 @@ func LoadConfig(path string) (*models.Config, error) {
 	}
 
 	applyEnvironmentOverrides(&config)
+
+	// Perform security validation after environment overrides
+	if err := validateSecurity(&config); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
 }
 
@@ -123,19 +129,59 @@ func applyEnvironmentOverrides(c *models.Config) {
 	if url := os.Getenv("WHATSAPP_API_URL"); url != "" {
 		c.WhatsApp.APIBaseURL = url
 	}
-	if secret := os.Getenv("WHATSAPP_WEBHOOK_SECRET"); secret != "" {
+
+	// SECURITY: Webhook secrets should be set via environment variables
+	if secret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET"); secret != "" {
 		c.WhatsApp.WebhookSecret = secret
 	}
+
 	if url := os.Getenv("SIGNAL_RPC_URL"); url != "" {
 		c.Signal.RPCURL = url
 	}
-	if token := os.Getenv("SIGNAL_AUTH_TOKEN"); token != "" {
-		c.Signal.AuthToken = token
-	}
+	// Signal CLI REST API typically doesn't require auth tokens
+	// Remove the auth token override as it's not part of the standard API
+
+
 	if path := os.Getenv("DB_PATH"); path != "" {
 		c.Database.Path = path
 	}
 	if dir := os.Getenv("MEDIA_DIR"); dir != "" {
 		c.Media.CacheDir = dir
 	}
+}
+
+// validateSecurity performs security-specific validation
+func validateSecurity(c *models.Config) error {
+	// Check if we're in production mode
+	isProduction := os.Getenv("WHATSIGNAL_ENV") == "production"
+
+	if isProduction {
+		// In production, webhook secrets are mandatory
+		if c.WhatsApp.WebhookSecret == "" {
+			return models.ConfigError{Message: "WhatsApp webhook secret is required in production (set WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable)"}
+		}
+
+		// Validate webhook secret strength
+		if len(c.WhatsApp.WebhookSecret) < 32 {
+			return models.ConfigError{Message: "WhatsApp webhook secret must be at least 32 characters long"}
+		}
+
+		// Signal CLI REST API typically doesn't require auth tokens in standard deployments
+		// Remove auth token validation as it's not part of the standard Signal CLI REST API
+
+
+		// Warn about debug logging in production
+		if c.LogLevel == "debug" {
+			return models.ConfigError{Message: "debug logging should not be used in production (security risk)"}
+		}
+	} else {
+		// In development, warn if secrets are missing
+		if c.WhatsApp.WebhookSecret == "" {
+			fmt.Fprintf(os.Stderr, "WARNING: WhatsApp webhook secret not set. Set WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable for security.\n")
+		}
+		// Signal CLI REST API typically doesn't require auth tokens
+		// Remove the warning as it's not applicable to standard Signal CLI REST API deployments
+	}
+
+	return nil
 }

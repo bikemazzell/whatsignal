@@ -36,6 +36,17 @@ WhatSignal supports multiple WhatsApp-Signal channel pairs, allowing you to rout
   - Default: `24` hours
   - Adjust based on how frequently contact names change
 
+### WAHA Version Detection & Video Support
+
+WhatSignal automatically detects your WAHA version and capabilities:
+
+- **WAHA Plus Detection**: Automatically detects if you're running WAHA Plus with Chrome browser support
+- **Intelligent Video Handling**: 
+  - If WAHA Plus is detected → videos are sent as native video messages
+  - If WAHA Core is detected → videos are automatically sent as document attachments for better compatibility
+- **Automatic Fallback**: No configuration needed - WhatSignal adapts to your WAHA instance capabilities
+- **Version Caching**: WAHA version detection is cached per session to improve performance
+
 **Note**: Media configuration has been moved to a separate `media` section in the root of config.json for better organization. See the Media Configuration section below for details.
 
 ## Signal Configuration
@@ -64,18 +75,12 @@ The routing is now session-aware: each WhatsApp session is mapped to a specific 
   - Default: `http://localhost:8080`
   - Example: `http://signal-cli:8080` (if running in Docker)
 
-- `signal.auth_token`: Authentication token for Signal API access
-  - Required if your signal-cli daemon requires authentication
-  - Leave empty if authentication is not enabled
+**Note**: Authentication tokens are not required for Signal CLI REST API. WhatSignal connects directly to the signal-cli daemon without additional authentication.
 
 - `signal.device_name`: Name for this Signal device
   - Default: "whatsignal-device"
   - Used during registration to identify this device
 
-- `signal.webhook_secret`: Secret for authenticating incoming webhooks from Signal (if you configure Signal to send webhooks to WhatSignal).
-  - **Recommended if Signal webhooks are used.**
-  - Must be set to a secure random string.
-  - Used to verify webhook calls using the `X-Signal-Signature-256` header.
 
 ## Retry Configuration
 
@@ -126,7 +131,7 @@ An array of channel configurations, each containing:
 
 #### WhatsApp → Signal
 When a message is received from WhatsApp:
-1. WhatSignal extracts the session name from the webhook payload
+1. WhatSignal extracts the session name from the WhatsApp webhook payload
 2. Looks up the corresponding Signal destination using the channel configuration
 3. Forwards the message to the correct Signal number
 4. Stores the mapping with session context for reply routing
@@ -275,10 +280,8 @@ To add support for new file types, simply update your `config.json`:
   },
   "signal": {
     "rpc_url": "http://localhost:8080",
-    "auth_token": "your-signal-auth-token",
     "intermediaryPhoneNumber": "+1234567890",
     "device_name": "whatsignal-device",
-    "webhook_secret": "your-signal-webhook-secret"
   },
   "channels": [
     {
@@ -334,4 +337,43 @@ To add support for new file types, simply update your `config.json`:
 3. Ensure proper file permissions:
    ```bash
    chmod 600 config.json  # Restrict access since it contains secrets
-   ``` 
+   ```
+
+## Database Encryption
+
+WhatSignal supports encryption at rest for sensitive data in the database. This feature is controlled by environment variables:
+
+### Environment Variables
+
+- **`WHATSIGNAL_ENABLE_ENCRYPTION`**: Set to `"true"` to enable database encryption
+  - Default: `"false"` (disabled)
+  - When enabled, encrypts phone numbers, messages, and other sensitive data
+
+- **`WHATSIGNAL_ENCRYPTION_SECRET`**: The encryption key used for database encryption
+  - **Required** when encryption is enabled
+  - Must be at least 32 characters long
+  - Should be a strong, random string
+  - **CRITICAL**: Never change this after initial setup - doing so will make existing encrypted data unreadable
+
+### Important Notes on Encryption
+
+1. **Encryption salts are hardcoded**: The application uses internal salts for key derivation and deterministic encryption. These are intentionally not configurable to prevent accidental data loss.
+
+2. **Cannot change encryption secret**: Once you've encrypted data with a specific `WHATSIGNAL_ENCRYPTION_SECRET`, you cannot change it without losing access to all existing encrypted data.
+
+3. **Backup considerations**: Always backup your encryption secret securely. Without it, encrypted data cannot be recovered.
+
+4. **Performance impact**: Encryption adds minimal overhead but enables searching on encrypted fields through deterministic encryption for lookups.
+
+### Example Setup
+
+```bash
+# Enable encryption before first run
+export WHATSIGNAL_ENABLE_ENCRYPTION=true
+export WHATSIGNAL_ENCRYPTION_SECRET="your-very-long-random-secret-at-least-32-chars"
+
+# Start the application
+./whatsignal
+```
+
+**Warning**: These environment variables must be set consistently every time the application runs. Consider using a `.env` file or systemd environment configuration to ensure they're always available. 

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -46,7 +47,7 @@ func (e *encryptor) Encrypt(plaintext string) (string, error) {
 		return "", fmt.Errorf("failed to generate nonce: %w", err)
 	}
 
-	ciphertext := e.gcm.Seal(nil, nonce, []byte(plaintext), nil)
+	ciphertext := e.gcm.Seal(nil, nonce, []byte(plaintext), nil) // #nosec G407 - Deterministic nonce required for searchable encryption
 	// Prepend nonce to ciphertext for storage
 	result := append(nonce, ciphertext...)
 	return base64.StdEncoding.EncodeToString(result), nil
@@ -86,23 +87,28 @@ func deriveKey() ([]byte, error) {
 		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
 	}
 
-	salt := []byte("whatsignal-salt-v1")
+	salt := []byte(constants.EncryptionSalt)
 
 	key := pbkdf2.Key([]byte(secret), salt, models.Iterations, models.KeySize, sha256.New)
 	return key, nil
 }
 
 // EncryptForLookup creates deterministic encryption for database lookups
-// Uses a fixed nonce derived from the plaintext for consistent results
+// Uses a deterministic nonce derived from the plaintext for consistent results
+// This is intentionally deterministic to enable encrypted database searches
+// #nosec G407 - Deterministic encryption is required for searchable encryption
 func (e *encryptor) EncryptForLookup(plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
 
-	// Create deterministic nonce from plaintext hash
-	hash := sha256.Sum256([]byte(plaintext + "lookup-salt"))
+	// Create deterministic nonce from plaintext hash with application-specific salt
+	// This ensures the same plaintext always produces the same ciphertext for database lookups
+	lookupSalt := constants.EncryptionLookupSalt
+	hash := sha256.Sum256([]byte(plaintext + lookupSalt))
 	nonce := hash[:models.NonceSize]
 
+	// #nosec G407 - Using deterministic nonce for searchable encryption by design
 	ciphertext := e.gcm.Seal(nil, nonce, []byte(plaintext), nil)
 	// Prepend nonce to ciphertext for consistency
 	result := append(nonce, ciphertext...)

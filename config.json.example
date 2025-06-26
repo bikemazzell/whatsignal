@@ -3,25 +3,27 @@
   // - api_base_url: URL of your Waha instance (WhatsApp HTTP API)
   // - timeout_ms: Timeout for API requests
   // - retry_count: Maximum number of retry attempts
+  // - webhook_secret: SECURITY CRITICAL - Set via WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable
   // - contactSyncOnStartup: Sync all contacts on startup for better performance (recommended: true)
   // - contactCacheHours: How many hours to cache contact info before refreshing (default: 24)
-  
+  // - WAHA version is auto-detected: Plus = native videos, Core = document fallback
+
   "whatsapp": {
     "api_base_url": "http://localhost:3000",
     "timeout_ms": 10000,
     "retry_count": 3,
+    "webhook_secret": "MUST_BE_SET_VIA_WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET_ENV_VAR",
     "contactSyncOnStartup": true,
     "contactCacheHours": 24
   },
 
   // Signal configuration
   // - rpc_url: URL of your signal-cli REST API daemon
-  // - auth_token: Authentication token for Signal API access
   // - intermediaryPhoneNumber: Phone number that signal-cli service runs on (intermediate number)
   // - device_name: Device name for Signal API access
+  // Signal uses polling (not webhooks) - no authentication required for signal-cli REST API
   "signal": {
     "rpc_url": "http://localhost:8080",
-    "auth_token": "your-signal-auth-token",
     "intermediaryPhoneNumber": "+1234567890",
     "device_name": "whatsignal-device"
   },
@@ -55,6 +57,7 @@
   "retentionDays": 30,
 
   // Logging level (debug, info, warn, error)
+  // SECURITY: Use "info" or higher in production, "debug" only for development
   "log_level": "info",
 
   // Database configuration

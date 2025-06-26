@@ -9,6 +9,7 @@ bin/**
 build/***
 whatsignal.db
 whatsignal.test
+whatsignal-release
 
 # Test binary, built with 'go test -c'
 *.test
@@ -55,5 +56,3 @@ signal-attachments/
 # Debug files
 __debug_bin
 debug.test 
-
-#Binaries

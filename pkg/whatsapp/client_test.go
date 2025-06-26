@@ -329,7 +329,7 @@ func TestClient_SendImage(t *testing.T) {
 	// Test file not found
 	_, err = client.SendImage(ctx, "123456", "/nonexistent/path.jpg", "Test image")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read media file")
+	assert.Contains(t, err.Error(), "failed to get file info")
 }
 
 func TestClient_SendFile(t *testing.T) {
@@ -484,46 +484,61 @@ func TestClient_SendVideo(t *testing.T) {
 	require.NoError(t, err)
 	tmpFile.Close()
 
-	// Set up test server
+	// Set up test server that handles version check and defaults to no video support
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify request
-		assert.Equal(t, testAPIBase+testEndpointSendVideo, r.URL.Path)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		switch r.URL.Path {
+		case "/api/server/version":
+			// Return version without video support (simulating WAHA Core)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "WEBJS",
+				Tier:    "CORE",
+				Browser: "",
+			})
+			
+		case testAPIBase+testEndpointSendFile:
+			// Video will be sent as file due to lack of video support
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Parse JSON body
-		var payload map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&payload)
-		require.NoError(t, err)
+			// Parse JSON body
+			var payload map[string]interface{}
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err)
 
-		// Verify JSON fields
-		assert.Equal(t, "123456", payload["chatId"])
-		assert.Equal(t, "test-session", payload["session"])
-		assert.Equal(t, "Test video", payload["caption"])
+			// Verify JSON fields
+			assert.Equal(t, "123456", payload["chatId"])
+			assert.Equal(t, "test-session", payload["session"])
+			assert.Equal(t, "Test video", payload["caption"])
 
-		// Verify file structure
-		file, ok := payload["file"].(map[string]interface{})
-		require.True(t, ok, "file field should be an object")
-		assert.Equal(t, "video/mp4", file["mimetype"])
-		assert.NotEmpty(t, file["data"], "file data should not be empty")
-		assert.Contains(t, file["filename"], ".mp4")
+			// Verify file structure
+			file, ok := payload["file"].(map[string]interface{})
+			require.True(t, ok, "file field should be an object")
+			assert.Equal(t, "video/mp4", file["mimetype"])
+			assert.NotEmpty(t, file["data"], "file data should not be empty")
+			assert.Contains(t, file["filename"], ".mp4")
 
-		// Send response in WAHA format
-		w.Header().Set("Content-Type", "application/json")
-		resp := types.WAHAMessageResponse{
-			ID: &struct {
-				FromMe     bool   `json:"fromMe"`
-				Remote     string `json:"remote"`
-				ID         string `json:"id"`
-				Serialized string `json:"_serialized"`
-			}{
-				FromMe:     true,
-				Remote:     "123456@c.us",
-				ID:         "test-msg-id",
-				Serialized: "test-msg-id",
-			},
-		}
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			// Send response in WAHA format
+			w.Header().Set("Content-Type", "application/json")
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "test-msg-id",
+					Serialized: "test-msg-id",
+				},
+			}
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
+			
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
@@ -537,7 +552,7 @@ func TestClient_SendVideo(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test successful send
+	// Test successful send (will be sent as document due to no video support)
 	resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
 	assert.NoError(t, err)
 	assert.Equal(t, "test-msg-id", resp.MessageID)
@@ -1004,6 +1019,290 @@ func TestClient_DeleteMessage(t *testing.T) {
 	}
 }
 
+func TestClient_ServerVersionDetection(t *testing.T) {
+	tests := []struct {
+		name           string
+		serverResponse types.ServerVersion
+		expectSupport  bool
+		expectError    bool
+	}{
+		{
+			name: "WAHA Plus with Chrome - supports video",
+			serverResponse: types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "NOWEB",
+				Tier:    "PLUS",
+				Browser: "/usr/bin/google-chrome-stable",
+			},
+			expectSupport: true,
+			expectError:   false,
+		},
+		{
+			name: "WAHA Core - no video support",
+			serverResponse: types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "WEBJS",
+				Tier:    "CORE",
+				Browser: "",
+			},
+			expectSupport: false,
+			expectError:   false,
+		},
+		{
+			name: "WAHA Plus without Chrome - no video support",
+			serverResponse: types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "NOWEB",
+				Tier:    "PLUS",
+				Browser: "/usr/bin/firefox",
+			},
+			expectSupport: false,
+			expectError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/server/version" {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(tt.serverResponse)
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			client := &WhatsAppClient{
+				baseURL: server.URL,
+				client:  &http.Client{Timeout: 5 * time.Second},
+			}
+
+			ctx := context.Background()
+			version, err := client.getServerVersion(ctx)
+			
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.serverResponse.Tier, version.Tier)
+				assert.Equal(t, tt.serverResponse.Browser, version.Browser)
+			}
+
+			// Test video support detection
+			supportsVideo := client.checkVideoSupport(ctx)
+			assert.Equal(t, tt.expectSupport, supportsVideo)
+			
+			// Verify caching works
+			cachedSupport := client.checkVideoSupport(ctx)
+			assert.Equal(t, supportsVideo, cachedSupport)
+		})
+	}
+}
+
+func TestClient_VideoWithVersionDetection(t *testing.T) {
+	// Create a temporary video file
+	tmpFile, err := os.CreateTemp("", "test-video-*.mp4")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	
+	_, err = tmpFile.Write([]byte("test video data"))
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	tests := []struct {
+		name             string
+		serverVersion    types.ServerVersion
+		expectVideoCall  bool  // true if we expect /sendVideo, false if we expect /sendFile
+		expectEndpoint   string
+	}{
+		{
+			name: "WAHA Plus - sends as video",
+			serverVersion: types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "NOWEB",
+				Tier:    "PLUS",
+				Browser: "/usr/bin/google-chrome-stable",
+			},
+			expectVideoCall: true,
+			expectEndpoint:  testAPIBase + testEndpointSendVideo,
+		},
+		{
+			name: "WAHA Core - sends as document",
+			serverVersion: types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "WEBJS",
+				Tier:    "CORE",
+				Browser: "",
+			},
+			expectVideoCall: false,
+			expectEndpoint:  testAPIBase + testEndpointSendFile,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var actualEndpoint string
+			
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/server/version":
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(tt.serverVersion)
+					
+				case testAPIBase + testEndpointSendVideo, testAPIBase + testEndpointSendFile:
+					actualEndpoint = r.URL.Path
+					
+					// Verify request payload
+					var payload map[string]interface{}
+					err := json.NewDecoder(r.Body).Decode(&payload)
+					require.NoError(t, err)
+					
+					// Check common fields
+					assert.Equal(t, "123456", payload["chatId"])
+					assert.Equal(t, "test-session", payload["session"])
+					assert.Equal(t, "Test video", payload["caption"])
+					
+					// Check video-specific fields only for video endpoint
+					if r.URL.Path == testAPIBase + testEndpointSendVideo {
+						assert.Equal(t, false, payload["convert"])
+						assert.Equal(t, false, payload["asNote"])
+					}
+					
+					// Send success response
+					resp := types.WAHAMessageResponse{
+						ID: &struct {
+							FromMe     bool   `json:"fromMe"`
+							Remote     string `json:"remote"`
+							ID         string `json:"id"`
+							Serialized string `json:"_serialized"`
+						}{
+							FromMe:     true,
+							Remote:     "123456@c.us",
+							ID:         "msg123",
+							Serialized: "msg123",
+						},
+					}
+					json.NewEncoder(w).Encode(resp)
+					
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			client := NewClient(types.ClientConfig{
+				BaseURL:     server.URL,
+				SessionName: "test-session",
+				Timeout:     5 * time.Second,
+			})
+
+			ctx := context.Background()
+			resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
+			
+			assert.NoError(t, err)
+			assert.Equal(t, "msg123", resp.MessageID)
+			assert.Equal(t, "sent", resp.Status)
+			
+			// Verify the correct endpoint was called
+			assert.Equal(t, tt.expectEndpoint, actualEndpoint)
+		})
+	}
+}
+
+func TestClient_VideoSupportCaching(t *testing.T) {
+	callCount := 0
+	
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/server/version" {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(types.ServerVersion{
+				Version: "2024.2.3",
+				Engine:  "NOWEB",
+				Tier:    "PLUS",
+				Browser: "/usr/bin/google-chrome-stable",
+			})
+		}
+	}))
+	defer server.Close()
+
+	client := &WhatsAppClient{
+		baseURL: server.URL,
+		client:  &http.Client{Timeout: 5 * time.Second},
+	}
+
+	ctx := context.Background()
+	
+	// First call should fetch from server
+	support1 := client.checkVideoSupport(ctx)
+	assert.True(t, support1)
+	assert.Equal(t, 1, callCount)
+	
+	// Second call should use cache
+	support2 := client.checkVideoSupport(ctx)
+	assert.True(t, support2)
+	assert.Equal(t, 1, callCount) // No additional calls
+	
+	// Third call should still use cache
+	support3 := client.checkVideoSupport(ctx)
+	assert.True(t, support3)
+	assert.Equal(t, 1, callCount) // Still no additional calls
+}
+
+func TestClient_ServerVersionError(t *testing.T) {
+	tests := []struct {
+		name           string
+		serverBehavior func(w http.ResponseWriter, r *http.Request)
+		expectSupport  bool
+	}{
+		{
+			name: "server returns 404",
+			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+			expectSupport: false,
+		},
+		{
+			name: "server returns invalid JSON",
+			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte("invalid json"))
+			},
+			expectSupport: false,
+		},
+		{
+			name: "server times out",
+			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
+				// Simulate timeout by not responding
+				time.Sleep(100 * time.Millisecond)
+			},
+			expectSupport: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
+			defer server.Close()
+
+			client := &WhatsAppClient{
+				baseURL: server.URL,
+				client:  &http.Client{Timeout: 50 * time.Millisecond},
+			}
+
+			ctx := context.Background()
+			support := client.checkVideoSupport(ctx)
+			
+			// Should default to no video support on error
+			assert.Equal(t, tt.expectSupport, support)
+			
+			// Should be cached even on error
+			assert.NotNil(t, client.supportsVideo)
+			assert.Equal(t, tt.expectSupport, *client.supportsVideo)
+		})
+	}
+}
+
 func TestWAHAResponseParsing(t *testing.T) {
 	tests := []struct {
 		name                string
@@ -1017,11 +1316,11 @@ func TestWAHAResponseParsing(t *testing.T) {
 				"id": {
 					"fromMe": true,
 					"remote": "1234567890123@c.us",
-					"id": "3EB054C52D883CF0E06FCF",
-					"_serialized": "true_1234567890123@c.us_3EB054C52D883CF0E06FCF"
+					"id": "ABCD1234567890ABCDEF",
+					"_serialized": "true_1234567890123@c.us_ABCD1234567890ABCDEF"
 				}
 			}`,
-			expectedMessageID: "true_1234567890123@c.us_3EB054C52D883CF0E06FCF",
+			expectedMessageID: "true_1234567890123@c.us_ABCD1234567890ABCDEF",
 		},
 		{
 			name: "valid WAHA response with _data field",
@@ -1030,12 +1329,12 @@ func TestWAHAResponseParsing(t *testing.T) {
 					"id": {
 						"fromMe": true,
 						"remote": "1234567890123@c.us",
-						"id": "3EB054C52D883CF0E06FCF",
-						"_serialized": "true_1234567890123@c.us_3EB054C52D883CF0E06FCF"
+						"id": "ABCD1234567890ABCDEF",
+						"_serialized": "true_1234567890123@c.us_ABCD1234567890ABCDEF"
 					}
 				}
 			}`,
-			expectedMessageID: "true_1234567890123@c.us_3EB054C52D883CF0E06FCF",
+			expectedMessageID: "true_1234567890123@c.us_ABCD1234567890ABCDEF",
 		},
 		{
 			name: "WAHA response with both fields (ID field takes precedence)",

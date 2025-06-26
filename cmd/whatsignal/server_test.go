@@ -74,8 +74,24 @@ func (m *mockWAClient) SendText(ctx context.Context, chatID, message string) (*t
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, message, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, imagePath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, imagePath, caption, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -90,8 +106,24 @@ func (m *mockWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, videoPath, caption, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, docPath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, docPath, caption, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -108,6 +140,14 @@ func (m *mockWAClient) SendFile(ctx context.Context, chatID, filePath, caption s
 
 func (m *mockWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, voicePath)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, voicePath, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -165,6 +205,14 @@ func (m *mockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([
 
 func (m *mockWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, messageID, reaction)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, messageID, reaction, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -505,7 +553,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				"event": "message",
 				"payload": map[string]interface{}{
 					"id":      "msg123",
-					"from":    "sender123",
+					"from":    "+1234567890",
 					"fromMe":  false,
 					"body":    "Hello, World!",
 					"hasMedia": false,
@@ -515,9 +563,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				msgService.On("HandleWhatsAppMessageWithSession",
 					mock.Anything,
 					"default", // session name
-					"sender123",
+					"+1234567890",
 					"msg123",
-					"sender123",
+					"+1234567890",
 					"Hello, World!",
 					"",
 				).Return(nil).Once()
@@ -531,7 +579,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				"event": "message",
 				"payload": map[string]interface{}{
 					"id":      "msg124",
-					"from":    "sender124",
+					"from":    "+1234567891",
 					"fromMe":  false,
 					"body":    "Check this out!",
 					"hasMedia": true,
@@ -544,9 +592,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				msgService.On("HandleWhatsAppMessageWithSession",
 					mock.Anything,
 					"default", // session name
-					"sender124",
+					"+1234567891",
 					"msg124",
-					"sender124",
+					"+1234567891",
 					"Check this out!",
 					"/path/to/image.jpg",
 				).Return(nil).Once()
@@ -589,7 +637,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			payload: map[string]interface{}{
 				"event": "message",
 				"payload": map[string]interface{}{
-					"from":    "sender123",
+					"from":    "+1234567892",
 					"fromMe":  false,
 					"body":    "Hello",
 					"hasMedia": false,
@@ -605,7 +653,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				"event": "message",
 				"payload": map[string]interface{}{
 					"id":      "msg125",
-					"from":    "sender125",
+					"from":    "+1234567893",
 					"fromMe":  false,
 					"body":    "Error message",
 					"hasMedia": false,
@@ -615,9 +663,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				msgService.On("HandleWhatsAppMessageWithSession",
 					mock.Anything,
 					"default", // session name
-					"sender125",
+					"+1234567893",
 					"msg125",
-					"sender125",
+					"+1234567893",
 					"Error message",
 					"",
 				).Return(assert.AnError).Once()
@@ -631,7 +679,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				"event": "message",
 				"payload": map[string]interface{}{
 					"id":      "msg126",
-					"from":    "sender126",
+					"from":    "+1234567894",
 					"fromMe":  false,
 					"body":    "Test message",
 					"hasMedia": false,
@@ -678,12 +726,12 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 }
 
 func TestServer_SignalWebhook(t *testing.T) {
+	t.Skip("Signal webhook functionality removed - Signal uses polling instead")
+	/*
 	msgService := &mockMessageService{}
 	logger := logrus.New()
 	cfg := &models.Config{
-		Signal: models.SignalConfig{
-			WebhookSecret: "test-secret",
-		},
+		Signal: models.SignalConfig{},
 	}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
@@ -818,10 +866,10 @@ func TestServer_SignalWebhook(t *testing.T) {
 				mac := hmac.New(sha256.New, []byte("test-secret"))
 				mac.Write(payload)
 				signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-				req.Header.Set(XSignalSignatureHeader, signature)
+				req.Header.Set("X-Signal-Signature-256", signature)
 			} else {
 				// Create invalid signature
-				req.Header.Set(XSignalSignatureHeader, "sha256=invalidsignature")
+				req.Header.Set("X-Signal-Signature-256", "sha256=invalidsignature")
 			}
 
 			w := httptest.NewRecorder()
@@ -833,9 +881,12 @@ func TestServer_SignalWebhook(t *testing.T) {
 			msgService.AssertExpectations(t)
 		})
 	}
+	*/
 }
 
 func TestConvertWebhookPayloadToSignalMessage(t *testing.T) {
+	t.Skip("Signal webhook functionality removed - Signal uses polling instead")
+	/*
 	tests := []struct {
 		name     string
 		payload  *models.SignalWebhookPayload
@@ -944,6 +995,7 @@ func TestConvertWebhookPayloadToSignalMessage(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+	*/
 }
 
 func TestServer_WhatsAppEventHandlers(t *testing.T) {
@@ -1241,7 +1293,7 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 				"session": "default",
 				"payload": map[string]interface{}{
 					"id":      "msg123",
-					"from":    "sender123",
+					"from":    "+1234567895",
 					"fromMe":  false,
 					"body":    "Hello from default session",
 					"hasMedia": false,
@@ -1258,7 +1310,7 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 				"session": "jo",
 				"payload": map[string]interface{}{
 					"id":      "msg456",
-					"from":    "sender456",
+					"from":    "+1234567896",
 					"fromMe":  false,
 					"body":    "Hello from jo session",
 					"hasMedia": false,
@@ -1274,7 +1326,8 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 				"event": "message.reaction",
 				"session": "unknown",
 				"payload": map[string]interface{}{
-					"from": "sender789",
+					"id":   "reaction123",
+					"from": "+1234567897",
 					"reaction": map[string]interface{}{
 						"messageId": "msg789",
 						"text": "👍",
@@ -1291,7 +1344,8 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 				"event": "message.edited",
 				"session": "another",
 				"payload": map[string]interface{}{
-					"from": "sender999",
+					"id":   "edited123",
+					"from": "+1234567898",
 					"body": "Edited message",
 					"editedMessageId": "msg999",
 				},
@@ -1322,7 +1376,8 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(body))
-			
+			req.Header.Set("Content-Type", "application/json")
+
 			// Add timestamp header (required for WAHA webhooks)
 			timestamp := fmt.Sprintf("%d", time.Now().Unix())
 			req.Header.Set("X-Webhook-Timestamp", timestamp)

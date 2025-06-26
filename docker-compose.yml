@@ -47,12 +47,11 @@ services:
       - "8082:8082"
     volumes:
       - ./config.json:/app/config.json:ro
-      - whatsignal_cache:/app/cache
       - whatsignal_data:/app/data
     environment:
       # Load from .env file or use defaults
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET=${WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET}
       - WHATSIGNAL_ENABLE_ENCRYPTION=${WHATSIGNAL_ENABLE_ENCRYPTION:-true}
       - WHATSIGNAL_ENCRYPTION_SECRET=${WHATSIGNAL_ENCRYPTION_SECRET}
     depends_on:
@@ -71,5 +70,4 @@ networks:
 volumes:
   signal_cli_data:
   waha_data:
-  whatsignal_data:
-  whatsignal_cache: 
+  whatsignal_data: 

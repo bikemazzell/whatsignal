@@ -43,7 +43,7 @@ COPY --from=builder /app/whatsignal .
 RUN chmod 755 /app/whatsignal
 
 # Create directories and set ownership
-RUN mkdir -p /app/cache /app/data && \
+RUN mkdir -p /app/cache /app/data /app/media-cache /app/signal-attachments /app/database && \
     chown -R whatsignal:whatsignal /app
 
 # Switch to non-root user

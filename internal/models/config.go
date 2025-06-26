@@ -31,10 +31,8 @@ type WhatsAppConfig struct {
 // SignalConfig holds Signal related configurations
 type SignalConfig struct {
 	RPCURL                   string `json:"rpc_url" mapstructure:"rpc_url"`
-	AuthToken                string `json:"auth_token" mapstructure:"auth_token"`
 	IntermediaryPhoneNumber  string `json:"intermediaryPhoneNumber" mapstructure:"intermediaryPhoneNumber"`   // Signal-CLI service number
 	DeviceName               string `json:"device_name" mapstructure:"device_name"`
-	WebhookSecret            string `json:"webhook_secret" mapstructure:"webhook_secret"`
 	PollIntervalSec          int    `json:"pollIntervalSec" mapstructure:"pollIntervalSec"`
 	PollTimeoutSec           int    `json:"pollTimeoutSec" mapstructure:"pollTimeoutSec"`
 	PollingEnabled           bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`

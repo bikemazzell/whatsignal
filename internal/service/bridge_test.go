@@ -524,7 +524,7 @@ func TestHandleSignalMessage(t *testing.T) {
 					MessageID: "reaction_msg_id",
 					Status:    "sent",
 				}
-				bridge.waClient.(*mockWhatsAppClient).On("SendReaction", ctx, "chat123", "wa_msg456", "👍").
+				bridge.waClient.(*mockWhatsAppClient).On("SendReactionWithSession", ctx, "chat123", "wa_msg456", "👍", "default").
 					Return(resp, nil).Once()
 			},
 		},
@@ -900,11 +900,11 @@ func TestHandleSignalReaction(t *testing.T) {
 					MessageID: "reaction_msg_id",
 					Status:    "sent",
 				}
-				mockWA.On("SendReaction", ctx, tt.mapping.WhatsAppChatID, tt.mapping.WhatsAppMsgID, reaction).
+				mockWA.On("SendReactionWithSession", ctx, tt.mapping.WhatsAppChatID, tt.mapping.WhatsAppMsgID, reaction, "default").
 					Return(resp, tt.reactionError).Once()
 			}
 
-			err := bridge.handleSignalReaction(ctx, tt.msg)
+			err := bridge.handleSignalReactionWithSession(ctx, tt.msg, "default")
 
 			if tt.expectError {
 				assert.Error(t, err)

@@ -170,25 +170,24 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		return b.handleSignalGroupMessage(ctx, msg)
 	}
 
-	// Handle reactions
-	if msg.Reaction != nil {
-		return b.handleSignalReaction(ctx, msg)
-	}
-
-	// Handle message deletions
-	if msg.Deletion != nil {
-		return b.handleSignalDeletion(ctx, msg)
-	}
-
-	var mapping *models.MessageMapping
-	var err error
-	
-	// Determine the WhatsApp session based on the Signal destination
+	// Determine the WhatsApp session based on the Signal destination first
 	session, err := b.channelManager.GetWhatsAppSession(destination)
 	if err != nil {
 		return fmt.Errorf("failed to determine WhatsApp session for Signal destination %s: %w", destination, err)
 	}
 	sessionName := session
+
+	// Handle reactions
+	if msg.Reaction != nil {
+		return b.handleSignalReactionWithSession(ctx, msg, sessionName)
+	}
+
+	// Handle message deletions
+	if msg.Deletion != nil {
+		return b.handleSignalDeletionWithSession(ctx, msg, sessionName)
+	}
+
+	var mapping *models.MessageMapping
 
 	if msg.QuotedMessage == nil {
 		// No quoted message - find the latest message that was sent to the Signal user (auto-reply to last sender)
@@ -298,19 +297,20 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			"messageID": msg.MessageID,
 			"method":    "SendImage",
 		}).Debug("Sending image to WhatsApp")
-		resp, sendErr = b.waClient.SendImage(ctx, whatsappChatID, attachments[0], msg.Message)
+		resp, sendErr = b.waClient.SendImageWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 	case len(attachments) > 0 && b.isVideoAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendVideo",
 		}).Debug("Sending video to WhatsApp")
-		resp, sendErr = b.waClient.SendVideo(ctx, whatsappChatID, attachments[0], msg.Message)
+		// The WhatsApp client will automatically handle video support detection
+		resp, sendErr = b.waClient.SendVideoWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 	case len(attachments) > 0 && b.isVoiceAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendVoice",
 		}).Debug("Sending voice to WhatsApp")
-		resp, sendErr = b.waClient.SendVoice(ctx, whatsappChatID, attachments[0])
+		resp, sendErr = b.waClient.SendVoiceWithSession(ctx, whatsappChatID, attachments[0], sessionName)
 	case len(attachments) > 0:
 		// Default: treat all other attachments (including configured documents and unrecognized files) as documents
 		b.logger.WithFields(logrus.Fields{
@@ -318,7 +318,7 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			"method":    "SendDocument",
 			"filePath":  attachments[0],
 		}).Debug("Sending attachment as document to WhatsApp")
-		resp, sendErr = b.waClient.SendDocument(ctx, whatsappChatID, attachments[0], msg.Message)
+		resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 	default:
 		// Only send text if there's actually text content
 		if msg.Message != "" {
@@ -326,7 +326,7 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 				"messageID": msg.MessageID,
 				"method":    "SendText",
 			}).Debug("Sending text to WhatsApp")
-			resp, sendErr = b.waClient.SendText(ctx, whatsappChatID, msg.Message)
+			resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
 		} else {
 			
 			b.logger.WithFields(logrus.Fields{
@@ -542,6 +542,11 @@ func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.Sig
 }
 
 func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	// Legacy method - should not be used when sessions are configured
+	return fmt.Errorf("handleSignalReaction called without session context")
+}
+
+func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
 	b.logger.WithFields(logrus.Fields{
 		"messageID": msg.MessageID,
 		"sender":    msg.Sender,
@@ -571,7 +576,7 @@ func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.Sign
 	}
 
 
-	resp, err := b.waClient.SendReaction(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID, reaction)
+	resp, err := b.waClient.SendReactionWithSession(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID, reaction, sessionName)
 	if err != nil {
 		b.logger.WithError(err).Error("Failed to send reaction to WhatsApp")
 		return fmt.Errorf("failed to send reaction to WhatsApp: %w", err)
@@ -587,6 +592,11 @@ func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.Sign
 }
 
 func (b *bridge) handleSignalDeletion(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	// Legacy method - should not be used when sessions are configured
+	return fmt.Errorf("handleSignalDeletion called without session context")
+}
+
+func (b *bridge) handleSignalDeletionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
 	b.logger.WithFields(logrus.Fields{
 		"messageID":        msg.MessageID,
 		"sender":           msg.Sender,

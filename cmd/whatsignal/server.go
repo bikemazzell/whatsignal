@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
-	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp"
 	"whatsignal/pkg/whatsapp/types"
 
@@ -22,7 +22,6 @@ import (
 
 const (
 	XWahaSignatureHeader   = "X-Webhook-Hmac"
-	XSignalSignatureHeader = "X-Signal-Signature-256"
 )
 
 // ValidationError represents a validation error that should return HTTP 400
@@ -44,27 +43,9 @@ type Server struct {
 	cfg            *models.Config
 	waClient       types.WAClient
 	channelManager *service.ChannelManager
+	rateLimiter    *RateLimiter
 }
 
-func convertWebhookPayloadToSignalMessage(payload *models.SignalWebhookPayload) *signaltypes.SignalMessage {
-	attachments := payload.Attachments
-	if attachments == nil {
-		attachments = []string{}
-	}
-
-	if payload.MediaPath != "" {
-		attachments = append(attachments, payload.MediaPath)
-	}
-
-	return &signaltypes.SignalMessage{
-		MessageID:     payload.MessageID,
-		Sender:        payload.Sender,
-		Message:       payload.Message,
-		Timestamp:     payload.Timestamp,
-		Attachments:   attachments,
-		QuotedMessage: nil,
-	}
-}
 
 func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient, channelManager *service.ChannelManager) *Server {
 	s := &Server{
@@ -75,6 +56,7 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 		cfg:            cfg,
 		waClient:       waClient,
 		channelManager: channelManager,
+		rateLimiter:    NewRateLimiter(100, time.Minute), // 100 requests per minute per IP
 	}
 
 	s.setupRoutes()
@@ -83,15 +65,15 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 }
 
 func (s *Server) setupRoutes() {
+	// Public endpoints (no rate limiting for health checks)
 	s.router.HandleFunc("/health", s.handleHealth()).Methods(http.MethodGet)
 	s.router.HandleFunc("/session/status", s.handleSessionStatus()).Methods(http.MethodGet)
 
+	// Webhook endpoints with security middleware
 	whatsapp := s.router.PathPrefix("/webhook/whatsapp").Subrouter()
+	whatsapp.Use(s.securityMiddleware)
 	whatsapp.HandleFunc("", s.handleWhatsAppWebhook()).Methods(http.MethodPost)
 
-	signal := s.router.PathPrefix("/webhook/signal").Subrouter()
-	signal.HandleFunc("", s.handleSignalWebhook()).Methods(http.MethodPost)
-	
 }
 
 func (s *Server) setupWebhookHandlers() {
@@ -155,6 +137,48 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
+// securityMiddleware applies security measures to webhook endpoints
+func (s *Server) securityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Rate limiting
+		clientIP := GetClientIP(r)
+		if !s.rateLimiter.Allow(clientIP) {
+			s.logger.WithField("ip", clientIP).Warn("Rate limit exceeded")
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+
+		// Security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		// Content-Type validation for POST requests
+		if r.Method == http.MethodPost {
+			contentType := r.Header.Get("Content-Type")
+			if !strings.Contains(contentType, "application/json") {
+				s.logger.WithFields(logrus.Fields{
+					"ip":           clientIP,
+					"content_type": contentType,
+				}).Warn("Invalid content type for webhook")
+				http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Log security-relevant information
+		s.logger.WithFields(logrus.Fields{
+			"ip":         clientIP,
+			"method":     r.Method,
+			"path":       r.URL.Path,
+			"user_agent": r.Header.Get("User-Agent"),
+		}).Debug("Webhook request received")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		health := map[string]interface{}{
@@ -184,10 +208,12 @@ func (s *Server) handleSessionStatus() http.HandlerFunc {
 			s.logger.WithError(err).Error("Failed to get session status")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
 				"error": "Failed to get session status",
 				"details": err.Error(),
-			})
+			}); err != nil {
+				s.logger.WithError(err).Error("Failed to write error response")
+			}
 			return
 		}
 
@@ -279,7 +305,17 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		return ValidationError{Message: "missing required field: Payload.From"}
 	}
 	if payload.Payload.Body == "" && !payload.Payload.HasMedia {
-		return ValidationError{Message: "message must have either body or media"}
+		// Skip empty system messages (status updates, typing indicators, etc.)
+		s.logger.WithField("messageID", payload.Payload.ID).Debug("Ignoring empty system message")
+		return nil
+	}
+
+	// Enhanced input validation
+	if err := service.ValidateMessageID(payload.Payload.ID); err != nil {
+		return ValidationError{Message: fmt.Sprintf("invalid message ID: %v", err)}
+	}
+	if err := service.ValidatePhoneNumber(payload.Payload.From); err != nil {
+		return ValidationError{Message: fmt.Sprintf("invalid sender phone number: %v", err)}
 	}
 
 	var mediaURL string
@@ -293,6 +329,11 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 	sessionName := payload.Session
 	if sessionName == "" {
 		sessionName = "default"
+	}
+
+	// Validate session name
+	if err := service.ValidateSessionName(sessionName); err != nil {
+		return ValidationError{Message: fmt.Sprintf("invalid session name: %v", err)}
 	}
 
 	// Check if session is configured
@@ -520,68 +561,5 @@ func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *mode
 	return nil
 }
 
-func (s *Server) handleSignalWebhook() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s.logger.Info("Received Signal webhook request")
-		
-		bodyBytes, err := verifySignature(r, s.cfg.Signal.WebhookSecret, XSignalSignatureHeader)
-		if err != nil {
-			s.logger.WithError(err).Error("Signal webhook signature verification failed")
-			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
-			return
-		}
 
-		var payload models.SignalWebhookPayload
-		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&payload); err != nil {
-			s.logger.WithError(err).Error("Failed to decode Signal webhook payload after signature verification")
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-
-		if payload.MessageID == "" {
-			http.Error(w, "Missing required field: MessageID", http.StatusBadRequest)
-			return
-		}
-		if payload.Sender == "" {
-			http.Error(w, "Missing required field: Sender", http.StatusBadRequest)
-			return
-		}
-		if payload.Type == "" {
-			http.Error(w, "Missing required field: Type", http.StatusBadRequest)
-			return
-		}
-
-		if payload.Type == "text" && payload.Message == "" {
-			http.Error(w, "Text messages must have content", http.StatusBadRequest)
-			return
-		}
-
-		sigMsg := convertWebhookPayloadToSignalMessage(&payload)
-
-		s.logger.WithFields(logrus.Fields{
-			"messageId": service.SanitizeMessageID(sigMsg.MessageID),
-			"sender":    service.SanitizePhoneNumber(sigMsg.Sender),
-			"timestamp": sigMsg.Timestamp,
-			"recipient": service.SanitizePhoneNumber(payload.Recipient),
-		}).Info("Received Signal message via webhook, calling ProcessIncomingSignalMessage")
-
-		// Use recipient as destination if available, otherwise use legacy method
-		if payload.Recipient != "" {
-			if err := s.msgService.ProcessIncomingSignalMessageWithDestination(r.Context(), sigMsg, payload.Recipient); err != nil {
-				s.logger.WithError(err).Error("Failed to handle Signal message from webhook")
-				http.Error(w, "Failed to process message", http.StatusInternalServerError)
-				return
-			}
-		} else {
-			// Fallback to legacy method
-			if err := s.msgService.ProcessIncomingSignalMessage(r.Context(), sigMsg); err != nil {
-				s.logger.WithError(err).Error("Failed to handle Signal message from webhook")
-				http.Error(w, "Failed to process message", http.StatusInternalServerError)
-				return
-			}
-		}
-
-		w.WriteHeader(http.StatusOK)
-	}
-}
 

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/security"
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
@@ -31,7 +32,6 @@ type Client interface {
 
 type SignalClient struct {
 	baseURL        string
-	authToken      string
 	client         *http.Client
 	phoneNumber    string
 	deviceName     string
@@ -40,11 +40,11 @@ type SignalClient struct {
 	mu             sync.Mutex // Prevent concurrent Signal-CLI operations
 }
 
-func NewClient(baseURL, authToken, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client) Client {
-	return NewClientWithLogger(baseURL, authToken, phoneNumber, deviceName, attachmentsDir, httpClient, nil)
+func NewClient(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client) Client {
+	return NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir, httpClient, nil)
 }
 
-func NewClientWithLogger(baseURL, authToken, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client, logger *logrus.Logger) Client {
+func NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client, logger *logrus.Logger) Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 60 * time.Second} // Increased timeout for polling
 	}
@@ -58,7 +58,6 @@ func NewClientWithLogger(baseURL, authToken, phoneNumber, deviceName, attachment
 
 	return &SignalClient{
 		baseURL:        baseURL,
-		authToken:      authToken,
 		phoneNumber:    phoneNumber,
 		deviceName:     deviceName,
 		attachmentsDir: attachmentsDir,
@@ -102,9 +101,7 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-	}
+	// Signal CLI REST API typically doesn't require authentication headers
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -146,9 +143,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-	}
+	// Signal CLI REST API typically doesn't require authentication headers
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -346,7 +341,8 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 
 	// Ensure attachments directory exists
 	if c.attachmentsDir != "" {
-		if err := os.MkdirAll(c.attachmentsDir, 0755); err != nil {
+		// Use more restrictive permissions for security
+		if err := os.MkdirAll(c.attachmentsDir, 0750); err != nil {
 			return "", fmt.Errorf("failed to create attachments directory: %w", err)
 		}
 	}
@@ -363,8 +359,8 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 		filePath = filename
 	}
 
-	// Write attachment data to file
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	// Write attachment data to file with secure permissions
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return "", fmt.Errorf("failed to save attachment: %w", err)
 	}
 
@@ -396,9 +392,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 		return fmt.Errorf("failed to create initialize device request: %w", err)
 	}
 
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-	}
+	// Signal CLI REST API typically doesn't require authentication headers
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -442,9 +436,7 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 		return nil, fmt.Errorf("failed to create attachment download request: %w", err)
 	}
 
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-	}
+	// Signal CLI REST API typically doesn't require authentication headers
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -471,8 +463,13 @@ func (c *SignalClient) EncodeAttachment(filePath string) (string, string, string
 }
 
 func (c *SignalClient) encodeAttachment(filePath string) (string, string, string, error) {
+	// Validate file path to prevent directory traversal
+	if err := security.ValidateFilePath(filePath); err != nil {
+		return "", "", "", fmt.Errorf("invalid attachment path: %w", err)
+	}
+
 	// Read the file
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filePath) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to read attachment file: %w", err)
 	}
@@ -514,9 +511,7 @@ func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to create list attachments request: %w", err)
 	}
 
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-	}
+	// Signal CLI REST API typically doesn't require authentication headers
 
 	resp, err := c.client.Do(req)
 	if err != nil {

@@ -91,7 +91,6 @@ func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name           string
 		baseURL        string
-		authToken      string
 		phoneNumber    string
 		deviceName     string
 		attachmentsDir string
@@ -100,7 +99,6 @@ func TestNewClient(t *testing.T) {
 		{
 			name:           "basic client creation",
 			baseURL:        "http://localhost:8080",
-			authToken:      "test-token",
 			phoneNumber:    "+1234567890",
 			deviceName:     "test-device",
 			attachmentsDir: "/test/attachments",
@@ -109,7 +107,6 @@ func TestNewClient(t *testing.T) {
 		{
 			name:           "client with trailing slash",
 			baseURL:        "http://localhost:8080/",
-			authToken:      "test-token",
 			phoneNumber:    "+1234567890",
 			deviceName:     "test-device",
 			attachmentsDir: "/test/attachments",
@@ -118,7 +115,6 @@ func TestNewClient(t *testing.T) {
 		{
 			name:           "client without attachments directory",
 			baseURL:        "http://localhost:8080",
-			authToken:      "test-token",
 			phoneNumber:    "+1234567890",
 			deviceName:     "test-device",
 			attachmentsDir: "",
@@ -128,12 +124,11 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(tt.baseURL, tt.authToken, tt.phoneNumber, tt.deviceName, tt.attachmentsDir, nil)
+			client := NewClient(tt.baseURL, tt.phoneNumber, tt.deviceName, tt.attachmentsDir, nil)
 			
 			signalClient, ok := client.(*SignalClient)
 			assert.True(t, ok, "Client should be of type *SignalClient")
 			assert.Equal(t, tt.expectedURL, signalClient.baseURL)
-			assert.Equal(t, tt.authToken, signalClient.authToken)
 			assert.Equal(t, tt.phoneNumber, signalClient.phoneNumber)
 			assert.Equal(t, tt.deviceName, signalClient.deviceName)
 			assert.Equal(t, tt.attachmentsDir, signalClient.attachmentsDir)
@@ -313,7 +308,7 @@ func TestJFIFSupport(t *testing.T) {
 func TestClientMutexSynchronization(t *testing.T) {
 	// This test verifies that the mutex is properly initialized
 	// and that concurrent operations don't cause data races
-	client := NewClient("http://localhost:8080", "", "+1234567890", "test", "", nil)
+	client := NewClient("http://localhost:8080", "+1234567890", "test", "", nil)
 
 	signalClient, ok := client.(*SignalClient)
 	require.True(t, ok, "Client should be of type *SignalClient")
@@ -393,7 +388,7 @@ func TestSendMessage(t *testing.T) {
 				assert.Contains(t, r.URL.Path, "/v2/send")
 
 				// Verify auth header
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "", r.Header.Get("Authorization")) // No auth token required for Signal CLI REST API
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
@@ -413,7 +408,7 @@ func TestSendMessage(t *testing.T) {
 			}
 
 			// Create client
-			client := NewClient(server.URL, "test-token", "+0987654321", "test-device", "", nil)
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
 
 			// Test SendMessage
 			ctx := context.Background()
@@ -536,7 +531,7 @@ func TestReceiveMessages(t *testing.T) {
 				assert.Contains(t, r.URL.Path, "/v1/receive/")
 
 				// Verify auth header
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "", r.Header.Get("Authorization")) // No auth token required for Signal CLI REST API
 
 				// Check timeout parameter
 				timeout := r.URL.Query().Get("timeout")
@@ -550,7 +545,7 @@ func TestReceiveMessages(t *testing.T) {
 			defer server.Close()
 
 			// Create client
-			client := NewClient(server.URL, "test-token", "+0987654321", "test-device", "", nil)
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
 
 			// Test ReceiveMessages
 			ctx := context.Background()
@@ -624,7 +619,7 @@ func TestInitializeDevice(t *testing.T) {
 				assert.Equal(t, "/v1/about", r.URL.Path)
 
 				// Verify auth header
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "", r.Header.Get("Authorization")) // No auth token required for Signal CLI REST API
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
@@ -634,7 +629,7 @@ func TestInitializeDevice(t *testing.T) {
 			defer server.Close()
 
 			// Create client
-			client := NewClient(server.URL, "test-token", "+0987654321", "test-device", "", nil)
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
 
 			// Test InitializeDevice
 			ctx := context.Background()
@@ -686,7 +681,7 @@ func TestDownloadAttachment(t *testing.T) {
 				assert.Contains(t, r.URL.Path, "/v1/attachments/")
 
 				// Verify auth header
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "", r.Header.Get("Authorization")) // No auth token required for Signal CLI REST API
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != nil {
@@ -696,7 +691,7 @@ func TestDownloadAttachment(t *testing.T) {
 			defer server.Close()
 
 			// Create client
-			client := NewClient(server.URL, "test-token", "+0987654321", "test-device", "", nil)
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
 
 			// Test DownloadAttachment
 			ctx := context.Background()
@@ -761,7 +756,7 @@ func TestListAttachments(t *testing.T) {
 				assert.Equal(t, "/v1/attachments", r.URL.Path)
 
 				// Verify auth header
-				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "", r.Header.Get("Authorization")) // No auth token required for Signal CLI REST API
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
@@ -771,7 +766,7 @@ func TestListAttachments(t *testing.T) {
 			defer server.Close()
 
 			// Create client
-			client := NewClient(server.URL, "test-token", "+0987654321", "test-device", "", nil)
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
 
 			// Test ListAttachments
 			ctx := context.Background()
@@ -839,7 +834,7 @@ func TestDownloadAndSaveAttachment(t *testing.T) {
 			defer server.Close()
 
 			// Create client with attachments directory
-			client := NewClient(server.URL, "test-token", "+0987654321", "test-device", tmpDir, nil)
+			client := NewClient(server.URL, "+0987654321", "test-device", tmpDir, nil)
 			signalClient := client.(*SignalClient)
 
 			// Test downloadAndSaveAttachment
@@ -1047,7 +1042,7 @@ func TestEncodeAttachmentPublic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create client
-	client := NewClient("http://localhost:8080", "test-token", "+1234567890", "test-device", "", nil)
+	client := NewClient("http://localhost:8080", "+1234567890", "test-device", "", nil)
 	signalClient := client.(*SignalClient)
 
 	// Test public EncodeAttachment method
@@ -1192,7 +1187,7 @@ func TestReceiveMessages_RemoteDeleteHandling(t *testing.T) {
 			logger := logrus.New()
 			logger.SetLevel(logrus.ErrorLevel) // Suppress debug output during tests
 			
-			client := NewClientWithLogger(server.URL, "", "+1234567890", "test", "/tmp", &http.Client{}, logger)
+			client := NewClientWithLogger(server.URL, "+1234567890", "test", "/tmp", &http.Client{}, logger)
 
 			ctx := context.Background()
 			messages, err := client.ReceiveMessages(ctx, 5)

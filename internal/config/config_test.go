@@ -24,8 +24,7 @@ func TestLoadConfig(t *testing.T) {
 			"pollIntervalSec": 30
 		},
 		"signal": {
-			"rpc_url": "https://signal.example.com",
-			"auth_token": "token123"
+			"rpc_url": "https://signal.example.com"
 		},
 		"retry": {
 			"initialBackoffMs": 1000,
@@ -80,7 +79,6 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, "secret123", config.WhatsApp.WebhookSecret)
 				assert.Equal(t, 30, config.WhatsApp.PollIntervalSec)
 				assert.Equal(t, "https://signal.example.com", config.Signal.RPCURL)
-				assert.Equal(t, "token123", config.Signal.AuthToken)
 				assert.Equal(t, 1000, config.Retry.InitialBackoffMs)
 				assert.Equal(t, 5000, config.Retry.MaxBackoffMs)
 				assert.Equal(t, 3, config.Retry.MaxAttempts)
@@ -94,9 +92,8 @@ func TestLoadConfig(t *testing.T) {
 			path: validConfigPath,
 			setEnv: map[string]string{
 				"WHATSAPP_API_URL":        "https://wa.override.com",
-				"WHATSAPP_WEBHOOK_SECRET": "override_secret",
+				"WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET": "override_secret",
 				"SIGNAL_RPC_URL":          "https://signal.override.com",
-				"SIGNAL_AUTH_TOKEN":       "override_token",
 				"DB_PATH":                 "/override/path/to/db.sqlite",
 				"MEDIA_DIR":               "/override/path/to/cache",
 			},
@@ -105,7 +102,6 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, "https://wa.override.com", config.WhatsApp.APIBaseURL)
 				assert.Equal(t, "override_secret", config.WhatsApp.WebhookSecret)
 				assert.Equal(t, "https://signal.override.com", config.Signal.RPCURL)
-				assert.Equal(t, "override_token", config.Signal.AuthToken)
 				assert.Equal(t, "/override/path/to/db.sqlite", config.Database.Path)
 				assert.Equal(t, "/override/path/to/cache", config.Media.CacheDir)
 			},

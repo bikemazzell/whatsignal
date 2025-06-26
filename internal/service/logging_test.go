@@ -120,6 +120,57 @@ func TestSanitizeMessageID(t *testing.T) {
 	}
 }
 
+func TestSanitizeWhatsAppMessageID(t *testing.T) {
+	tests := []struct {
+		name     string
+		msgID    string
+		expected string
+	}{
+		{
+			name:     "full WhatsApp message ID",
+			msgID:    "false_555222777156@c.us_E8XYZ450FD81FABC9C5DA1",
+			expected: "false_***7156@c.us_E8XYZ450...",
+		},
+		{
+			name:     "WhatsApp message ID with short hash",
+			msgID:    "true_1234567890@c.us_ABC123",
+			expected: "true_***7890@c.us_ABC123",
+		},
+		{
+			name:     "WhatsApp group message ID",
+			msgID:    "false_120363044444444444@g.us_3EB0589C54321",
+			expected: "false_***4444@g.us_3EB0589C...",
+		},
+		{
+			name:     "invalid format - no underscores",
+			msgID:    "invalidmessageid",
+			expected: "invalidm...",
+		},
+		{
+			name:     "invalid format - missing phone part",
+			msgID:    "false__ABC123",
+			expected: "false__A...",
+		},
+		{
+			name:     "empty message ID",
+			msgID:    "",
+			expected: "",
+		},
+		{
+			name:     "WhatsApp ID without domain",
+			msgID:    "false_1234567890_ABC123",
+			expected: "false_12...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeWhatsAppMessageID(tt.msgID)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestSanitizeContent(t *testing.T) {
 	tests := []struct {
 		name     string

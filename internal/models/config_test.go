@@ -31,7 +31,6 @@ func TestConfig_Validation(t *testing.T) {
 				},
 				Signal: SignalConfig{
 					RPCURL:                  "http://localhost:8081",
-					AuthToken:               "test-token",
 					IntermediaryPhoneNumber: "+1234567890",
 					DeviceName:              "test-device",
 					PollIntervalSec:         5,

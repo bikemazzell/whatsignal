@@ -30,13 +30,13 @@ if [ ! -f .env ]; then
     
     # Generate secure secrets
     echo "🔐 Generating secure secrets..."
-    WEBHOOK_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
-    ENCRYPTION_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
+    WHATSAPP_WEBHOOK_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
+    WHATSIGNAL_ENCRYPTION_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
     
     # Update .env file with generated secrets
     sed -i.bak "s/your-waha-api-key/$(openssl rand -base64 16 | tr -d '=' | tr -d '\n')/" .env
-    sed -i.bak "s/your-very-secure-random-string-for-waha/$WEBHOOK_SECRET/" .env
-    sed -i.bak "s/your-very-secure-encryption-secret-change-this/$ENCRYPTION_SECRET/" .env
+    sed -i.bak "s/your-very-secure-whatsapp-webhook-secret/$WHATSAPP_WEBHOOK_SECRET/" .env
+    sed -i.bak "s/your-very-secure-encryption-secret-change-this/$WHATSIGNAL_ENCRYPTION_SECRET/" .env
     
     # Remove backup file
     rm -f .env.bak

@@ -177,49 +177,6 @@ func TestWebhookIntegrationMultiChannel(t *testing.T) {
 		}
 	})
 
-	t.Run("Signal webhook with destination", func(t *testing.T) {
-		testCases := []struct {
-			name        string
-			destination string
-			payload     models.SignalWebhookPayload
-		}{
-			{
-				name:        "Personal destination message",
-				destination: "+1111111111",
-				payload: models.SignalWebhookPayload{
-					MessageID: "sig-personal-1",
-					Sender:    "+9999999999",
-					Message:   "Reply to personal",
-					Timestamp: time.Now().Unix() * 1000,
-					Type:      "text",
-					Recipient: "+1111111111",
-				},
-			},
-			{
-				name:        "Business destination message",
-				destination: "+2222222222",
-				payload: models.SignalWebhookPayload{
-					MessageID: "sig-business-1",
-					Sender:    "+8888888888",
-					Message:   "Reply to business",
-					Timestamp: time.Now().Unix() * 1000,
-					Type:      "text",
-					Recipient: "+2222222222",
-				},
-			},
-		}
-
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				// Verify that the payload contains the correct recipient/destination
-				assert.Equal(t, tc.destination, tc.payload.Recipient)
-				assert.Equal(t, "text", tc.payload.Type)
-				assert.NotEmpty(t, tc.payload.MessageID)
-				assert.NotEmpty(t, tc.payload.Sender)
-				assert.NotEmpty(t, tc.payload.Message)
-			})
-		}
-	})
 }
 
 // TestConfigurationValidation tests configuration validation for multi-channel setup
@@ -233,9 +190,9 @@ func TestConfigurationValidation(t *testing.T) {
 		{
 			name: "Valid multi-channel configuration",
 			channels: []models.Channel{
-				{"personal", "+1111111111"},
-				{"business", "+2222222222"},
-				{"family", "+3333333333"},
+				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+1111111111"},
+				{WhatsAppSessionName: "business", SignalDestinationPhoneNumber: "+2222222222"},
+				{WhatsAppSessionName: "family", SignalDestinationPhoneNumber: "+3333333333"},
 			},
 			expectedError: false,
 		},
@@ -248,8 +205,8 @@ func TestConfigurationValidation(t *testing.T) {
 		{
 			name: "Duplicate session names",
 			channels: []models.Channel{
-				{"default", "+1111111111"},
-				{"default", "+2222222222"},
+				{WhatsAppSessionName: "default", SignalDestinationPhoneNumber: "+1111111111"},
+				{WhatsAppSessionName: "default", SignalDestinationPhoneNumber: "+2222222222"},
 			},
 			expectedError: true,
 			errorMessage:  "duplicate WhatsApp session name: default",
@@ -257,8 +214,8 @@ func TestConfigurationValidation(t *testing.T) {
 		{
 			name: "Duplicate Signal destinations",
 			channels: []models.Channel{
-				{"personal", "+1111111111"},
-				{"business", "+1111111111"},
+				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+1111111111"},
+				{WhatsAppSessionName: "business", SignalDestinationPhoneNumber: "+1111111111"},
 			},
 			expectedError: true,
 			errorMessage:  "duplicate Signal destination number: +1111111111",
@@ -266,7 +223,7 @@ func TestConfigurationValidation(t *testing.T) {
 		{
 			name: "Empty session name",
 			channels: []models.Channel{
-				{"", "+1111111111"},
+				{WhatsAppSessionName: "", SignalDestinationPhoneNumber: "+1111111111"},
 			},
 			expectedError: true,
 			errorMessage:  "empty WhatsApp session name",
@@ -274,7 +231,7 @@ func TestConfigurationValidation(t *testing.T) {
 		{
 			name: "Empty Signal destination",
 			channels: []models.Channel{
-				{"personal", ""},
+				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: ""},
 			},
 			expectedError: true,
 			errorMessage:  "empty Signal destination phone number",

@@ -110,7 +110,7 @@ func (h *handler) processMediaFromFile(path string) (string, error) {
 		return "", err
 	}
 
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
@@ -257,7 +257,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	// Copy response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		os.Remove(tempFile.Name())
+		_ = os.Remove(tempFile.Name())
 		return "", "", fmt.Errorf("failed to save downloaded file: %w", err)
 	}
 
@@ -265,7 +265,12 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 }
 
 func (h *handler) processDownloadedFile(tempPath, ext string) (string, error) {
-	file, err := os.Open(tempPath)
+	// Validate file path to prevent directory traversal
+	if err := security.ValidateFilePath(tempPath); err != nil {
+		return "", fmt.Errorf("invalid temp file path: %w", err)
+	}
+
+	file, err := os.Open(tempPath) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return "", fmt.Errorf("failed to open downloaded file: %w", err)
 	}
@@ -347,7 +352,12 @@ func (h *handler) getFileExtensionFromResponse(resp *http.Response, mediaURL str
 }
 
 func (h *handler) detectFileTypeFromContent(path string) (string, error) {
-	file, err := os.Open(path)
+	// Validate file path to prevent directory traversal
+	if err := security.ValidateFilePath(path); err != nil {
+		return "", fmt.Errorf("invalid file path for content detection: %w", err)
+	}
+
+	file, err := os.Open(path) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return "", fmt.Errorf("failed to open file for content detection: %w", err)
 	}
@@ -463,13 +473,18 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("invalid source path: %w", err)
 	}
 
-	srcFile, err := os.Open(src)
+	// Validate destination path to prevent directory traversal
+	if err := security.ValidateFilePath(dst); err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
+
+	srcFile, err := os.Open(src) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.Create(dst)
+	dstFile, err := os.Create(dst) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return err
 	}

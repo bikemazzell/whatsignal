@@ -383,7 +383,7 @@ func setupTestEnv(t *testing.T) {
 	os.Setenv("SIGNAL_PHONE_NUMBER", "+1234567890")
 	os.Setenv("SIGNAL_CONFIG_PATH", tmpDir+"/signal")
 	os.Setenv("WEBHOOK_PORT", "8081")
-	os.Setenv("WEBHOOK_SECRET", "test-secret")
+	os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "test-secret")
 	os.Setenv("DB_PATH", tmpDir+"/whatsignal.db")
 	os.Setenv("MEDIA_DIR", tmpDir+"/media")
 	os.Setenv("MEDIA_RETENTION_DAYS", "7")
@@ -403,7 +403,7 @@ func cleanupTestEnv(t *testing.T) {
 		"SIGNAL_PHONE_NUMBER",
 		"SIGNAL_CONFIG_PATH",
 		"WEBHOOK_PORT",
-		"WEBHOOK_SECRET",
+		"WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET",
 		"DB_PATH",
 		"MEDIA_DIR",
 		"MEDIA_RETENTION_DAYS",

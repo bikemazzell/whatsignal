@@ -1,6 +1,6 @@
 # WhatSignal
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
 [![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -21,6 +21,8 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 
 - **WAHA API Integration**:
   - Full WAHA API compliance with best practices
+  - **Automatic WAHA version detection**: Detects WAHA Plus vs Core capabilities
+  - **Intelligent video handling**: Adapts video sending based on WAHA version
   - Natural typing simulation
   - Message seen status
   - Proper message flow handling
@@ -30,8 +32,9 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - **Config-driven file types**: Add new file formats without rebuilding
   - **Smart defaults**: Unknown file types automatically sent as documents
   - **Binary file detection**: Automatic detection of file types using content signatures
+  - **Intelligent video routing**: WAHA Plus gets native videos, WAHA Core gets document fallback
   - Images (JPEG, PNG, GIF, WebP)
-  - Videos (MP4, MOV, AVI)
+  - Videos (MP4, MOV, AVI) with automatic WAHA compatibility detection
   - Documents (PDF, DOC, DOCX, TXT, SVG, ZIP, etc.)
   - Voice messages (OGG, AAC, M4A, MP3)
   - Intelligent media caching and cleanup
@@ -48,10 +51,12 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
   - Database encryption at rest
   - Webhook authentication and validation
   - Path traversal protection
+  - **Simplified authentication**: No auth tokens required for Signal CLI
   - Configurable data retention
   - Automated cleanup scheduling
   - Contact information encryption
   - Deterministic encryption for message lookup optimization
+  - Comprehensive security scanning and vulnerability protection
 
 - **System Features**:
   - Health monitoring endpoint

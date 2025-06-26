@@ -84,3 +84,15 @@ const (
 	BytesPerMegabyte        = 1024 * 1024
 	DefaultDownloadTimeoutSec = 30
 )
+
+// Validation and security constants
+const (
+	MaxMessageIDLength   = 256  // Maximum allowed message ID length
+	MaxSessionNameLength = 64   // Maximum allowed session name length
+)
+
+// Encryption constants
+const (
+	EncryptionSalt       = "whatsignal-salt-v1"
+	EncryptionLookupSalt = "whatsignal-lookup-salt-v1"
+)

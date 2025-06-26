@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
@@ -47,30 +48,35 @@ type MessageService interface {
 }
 
 type messageService struct {
-	logger       *logrus.Logger
-	db           Database
-	bridge       MessageBridge
-	mediaCache   MediaCache
-	signalClient signal.Client
-	signalConfig models.SignalConfig
-	mu           sync.RWMutex
+	logger         *logrus.Logger
+	db             Database
+	bridge         MessageBridge
+	mediaCache     MediaCache
+	signalClient   signal.Client
+	signalConfig   models.SignalConfig
+	channelManager *ChannelManager
+	mu             sync.RWMutex
 }
 
-func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig) MessageService {
+func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig, channelManager *ChannelManager) MessageService {
 	return &messageService{
-		logger:       logrus.New(),
-		bridge:       bridge,
-		db:           db,
-		mediaCache:   mediaCache,
-		signalClient: signalClient,
-		signalConfig: signalConfig,
-		mu:           sync.RWMutex{},
+		logger:         logrus.New(),
+		bridge:         bridge,
+		db:             db,
+		mediaCache:     mediaCache,
+		signalClient:   signalClient,
+		signalConfig:   signalConfig,
+		channelManager: channelManager,
+		mu:             sync.RWMutex{},
 	}
 }
 
 func generateUniqueID() string {
 	bytes := make([]byte, constants.MessageIDRandomBytesLength)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based ID if random generation fails
+		return fmt.Sprintf("fallback_%d", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(bytes)
 }
 
@@ -294,7 +300,18 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	LogSignalPolling(ctx, s.logger, len(messages))
 
 	for _, msg := range messages {
-		if err := s.ProcessIncomingSignalMessage(ctx, &msg); err != nil {
+		// For polled messages, we need to determine the Signal destination
+		// If there's only one channel, use its destination
+		// For multiple channels, we'd need additional logic to determine the correct destination
+		destinations := s.channelManager.GetAllSignalDestinations()
+		if len(destinations) == 0 {
+			s.logger.Error("No Signal destinations configured")
+			continue
+		}
+		
+		// Use the first destination if only one channel, otherwise this needs enhancement
+		destination := destinations[0]
+		if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &msg, destination); err != nil {
 			if IsVerboseLogging(ctx) {
 				s.logger.WithError(err).WithField("messageID", msg.MessageID).Error("Failed to process Signal message from polling")
 			} else {

@@ -30,7 +30,7 @@ func GetInitialSchema() (string, error) {
 			continue // Skip invalid paths
 		}
 
-		schemaContent, err = os.ReadFile(path)
+		schemaContent, err = os.ReadFile(path) // #nosec G304 - Path validated by security.ValidateFilePath above
 		if err == nil {
 			return string(schemaContent), nil
 		}

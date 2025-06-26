@@ -22,8 +22,24 @@ func (m *MockWAClient) SendText(ctx context.Context, chatID, message string) (*S
 	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
+func (m *MockWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, message, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
 func (m *MockWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, imagePath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
+func (m *MockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, imagePath, caption, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -38,8 +54,24 @@ func (m *MockWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption
 	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
+func (m *MockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, videoPath, caption, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
 func (m *MockWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, docPath, caption)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
+func (m *MockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, docPath, caption, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -56,6 +88,22 @@ func (m *MockWAClient) SendFile(ctx context.Context, chatID, filePath, caption s
 
 func (m *MockWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, voicePath)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
+func (m *MockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, voicePath, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*SendMessageResponse), args.Error(1)
+}
+
+func (m *MockWAClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, messageID, reaction, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

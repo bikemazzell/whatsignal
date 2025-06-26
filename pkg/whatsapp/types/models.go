@@ -74,6 +74,13 @@ type WAHAMessageResponse struct {
 	} `json:"id"`
 }
 
+// WAHAErrorResponse represents error responses from WAHA API
+type WAHAErrorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+	Status  int    `json:"status"`
+}
+
 // Contact represents a WhatsApp contact from WAHA API
 type Contact struct {
 	ID          string `json:"id"`
@@ -107,9 +114,17 @@ type ContactsResponse struct {
 
 // ClientConfig represents the configuration for WhatsApp client
 type ClientConfig struct {
-	BaseURL     string
-	APIKey      string
-	SessionName string
-	Timeout     time.Duration
-	RetryCount  int
+	BaseURL      string
+	APIKey       string
+	SessionName  string
+	Timeout      time.Duration
+	RetryCount   int
+}
+
+// ServerVersion represents WAHA server version info from /api/server/version
+type ServerVersion struct {
+	Version string `json:"version"`
+	Engine  string `json:"engine"`
+	Tier    string `json:"tier"`
+	Browser string `json:"browser"`
 }

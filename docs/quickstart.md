@@ -18,7 +18,7 @@ cd whatsignal-deploy
 ### 2. Configure Environment
 Edit `.env` file:
 - [ ] Set `WHATSAPP_API_KEY` (get from your WAHA setup)
-- [ ] Verify `WEBHOOK_SECRET` (auto-generated)
+- [ ] Verify `WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET` (auto-generated)
 - [ ] Verify `WHATSIGNAL_ENCRYPTION_SECRET` (auto-generated)
 
 ### 3. Configure Application

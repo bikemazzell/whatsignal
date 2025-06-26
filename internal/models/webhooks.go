@@ -59,14 +59,3 @@ type WhatsAppWebhookPayload struct {
 	} `json:"environment"`
 }
 
-type SignalWebhookPayload struct {
-	MessageID   string   `json:"messageId"`
-	Sender      string   `json:"sender"`
-	Message     string   `json:"message"`
-	Timestamp   int64    `json:"timestamp"`
-	Type        string   `json:"type"`
-	ThreadID    string   `json:"threadId"`
-	Recipient   string   `json:"recipient"`
-	MediaPath   string   `json:"mediaPath,omitempty"`
-	Attachments []string `json:"attachments,omitempty"`
-}

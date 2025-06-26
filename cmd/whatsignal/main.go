@@ -126,16 +126,15 @@ func run(ctx context.Context) error {
 	}
 
 	waClient := whatsapp.NewClient(types.ClientConfig{
-		BaseURL:     cfg.WhatsApp.APIBaseURL,
-		APIKey:      apiKey,
-		SessionName: defaultSessionName, // Use first configured session
-		Timeout:     cfg.WhatsApp.Timeout,
-		RetryCount:  cfg.WhatsApp.RetryCount,
+		BaseURL:      cfg.WhatsApp.APIBaseURL,
+		APIKey:       apiKey,
+		SessionName:  defaultSessionName, // Use first configured session
+		Timeout:      cfg.WhatsApp.Timeout,
+		RetryCount:   cfg.WhatsApp.RetryCount,
 	})
 
 	sigClient := signalapi.NewClientWithLogger(
 		cfg.Signal.RPCURL,
-		cfg.Signal.AuthToken,
 		cfg.Signal.IntermediaryPhoneNumber,
 		cfg.Signal.DeviceName,
 		cfg.Signal.AttachmentsDir,
@@ -182,7 +181,7 @@ func run(ctx context.Context) error {
 
 	logger.WithField("channels", len(cfg.Channels)).Info("Multi-channel bridge initialized")
 
-	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal)
+	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal, channelManager)
 
 	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, logger)
 	go scheduler.Start(ctx)

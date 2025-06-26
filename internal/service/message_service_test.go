@@ -119,7 +119,13 @@ func setupTestService(t *testing.T) (MessageService, context.Context) {
 		PollIntervalSec: 5,
 		PollTimeoutSec: 10,
 	}
-	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
+	channelManager, _ := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
 	require.NotNil(t, service)
 	return service, ctx
 }
@@ -130,7 +136,13 @@ func createTestMessageService(bridge *mockBridge, db *mockDB, mediaCache *mockMe
 		PollIntervalSec: 5,
 		PollTimeoutSec: 10,
 	}
-	return NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
+	channelManager, _ := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	return NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
 }
 
 func TestNewMessageService(t *testing.T) {
@@ -650,7 +662,13 @@ func TestProcessIncomingSignalMessage(t *testing.T) {
 		PollIntervalSec: 5,
 		PollTimeoutSec: 10,
 	}
-	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
+	channelManager, _ := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
 
 	ctx := context.Background()
 
@@ -746,9 +764,9 @@ func TestPollSignalMessages(t *testing.T) {
 						Timestamp: time.Now().UnixMilli(),
 					},
 				}, nil).Once()
-				bridge.On("HandleSignalMessage", mock.AnythingOfType("context.backgroundCtx"), mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+				bridge.On("HandleSignalMessageWithDestination", mock.AnythingOfType("context.backgroundCtx"), mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
 					return msg.Sender == "+1234567890" || msg.Sender == "+0987654321"
-				})).Return(nil).Twice()
+				}), mock.AnythingOfType("string")).Return(nil).Twice()
 			},
 		},
 		{
@@ -778,7 +796,13 @@ func TestPollSignalMessages(t *testing.T) {
 				PollIntervalSec: 5,
 				PollTimeoutSec: 10,
 			}
-			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig)
+			channelManager, _ := NewChannelManager([]models.Channel{
+				{
+					WhatsAppSessionName:          "default",
+					SignalDestinationPhoneNumber: "+1234567890",
+				},
+			})
+			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
 
 			if tt.setup != nil {
 				tt.setup(bridge, signalClient)

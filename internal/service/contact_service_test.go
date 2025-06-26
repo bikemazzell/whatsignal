@@ -66,8 +66,18 @@ func (m *mockWAClient) SendText(ctx context.Context, chatID, message string) (*t
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, message, sessionName)
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, imagePath, caption)
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, imagePath, caption, sessionName)
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
@@ -76,8 +86,18 @@ func (m *mockWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, videoPath, caption, sessionName)
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, docPath, caption)
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, docPath, caption, sessionName)
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
@@ -88,6 +108,11 @@ func (m *mockWAClient) SendFile(ctx context.Context, chatID, filePath, caption s
 
 func (m *mockWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, voicePath)
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, voicePath, sessionName)
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
@@ -123,6 +148,14 @@ func (m *mockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time
 
 func (m *mockWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, messageID, reaction)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, messageID, reaction, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

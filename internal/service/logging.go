@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"whatsignal/internal/constants"
@@ -47,7 +48,7 @@ func SanitizeMessageID(msgID string) string {
 }
 
 // SanitizeWhatsAppMessageID sanitizes WhatsApp message IDs that contain phone numbers
-// Format: false_1234567890123@c.us_E844B47A450FD81F92B4ED74929C5DA1
+// Format: false_1234567890123@c.us_EXAMPLE1234567890ABCDEF1234567890
 func SanitizeWhatsAppMessageID(msgID string) string {
 	if msgID == "" {
 		return ""
@@ -82,6 +83,83 @@ func SanitizeContent(content string) string {
 // LogWithContext creates a logger entry with optional sensitive information
 func LogWithContext(ctx context.Context, logger *logrus.Logger) *logrus.Entry {
 	return logger.WithField("verbose", IsVerboseLogging(ctx))
+}
+
+// ValidatePhoneNumber performs basic phone number validation
+// Accepts phone numbers with or without + prefix (WhatsApp API compatibility)
+func ValidatePhoneNumber(phone string) error {
+	if phone == "" {
+		return fmt.Errorf("phone number cannot be empty")
+	}
+
+	// Remove @c.us suffix for validation
+	cleaned := strings.TrimSuffix(phone, "@c.us")
+
+	var digits string
+	// Handle both formats: with + prefix (Signal) and without + prefix (WhatsApp)
+	if strings.HasPrefix(cleaned, "+") {
+		digits = cleaned[1:]
+	} else {
+		// WhatsApp format without + prefix
+		digits = cleaned
+	}
+
+	// Check length (minimum 7, maximum 15 digits)
+	if len(digits) < 7 || len(digits) > 15 {
+		return fmt.Errorf("phone number must be between 7 and 15 digits")
+	}
+
+	// Check if all characters are digits
+	for _, char := range digits {
+		if char < '0' || char > '9' {
+			return fmt.Errorf("phone number must contain only digits")
+		}
+	}
+
+	return nil
+}
+
+// ValidateMessageID performs basic message ID validation
+func ValidateMessageID(msgID string) error {
+	if msgID == "" {
+		return fmt.Errorf("message ID cannot be empty")
+	}
+
+	// Check length limits
+	if len(msgID) > constants.MaxMessageIDLength {
+		return fmt.Errorf("message ID too long (max %d characters)", constants.MaxMessageIDLength)
+	}
+
+	// Check for potentially dangerous characters
+	if strings.ContainsAny(msgID, "\x00\n\r\t") {
+		return fmt.Errorf("message ID contains invalid characters")
+	}
+
+	return nil
+}
+
+// ValidateSessionName performs session name validation
+func ValidateSessionName(sessionName string) error {
+	if sessionName == "" {
+		return fmt.Errorf("session name cannot be empty")
+	}
+
+	// Check length limits
+	if len(sessionName) > constants.MaxSessionNameLength {
+		return fmt.Errorf("session name too long (max %d characters)", constants.MaxSessionNameLength)
+	}
+
+	// Allow only alphanumeric characters, hyphens, and underscores
+	for _, char := range sessionName {
+		if !((char >= 'a' && char <= 'z') ||
+			 (char >= 'A' && char <= 'Z') ||
+			 (char >= '0' && char <= '9') ||
+			 char == '-' || char == '_') {
+			return fmt.Errorf("session name must contain only alphanumeric characters, hyphens, and underscores")
+		}
+	}
+
+	return nil
 }
 
 // LogMessageProcessing logs message processing with appropriate privacy controls

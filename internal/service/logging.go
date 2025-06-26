@@ -46,6 +46,31 @@ func SanitizeMessageID(msgID string) string {
 	return msgID
 }
 
+// SanitizeWhatsAppMessageID sanitizes WhatsApp message IDs that contain phone numbers
+// Format: false_1234567890123@c.us_E844B47A450FD81F92B4ED74929C5DA1
+func SanitizeWhatsAppMessageID(msgID string) string {
+	if msgID == "" {
+		return ""
+	}
+	
+	// Split by underscore to get parts
+	parts := strings.Split(msgID, "_")
+	if len(parts) >= 3 {
+		// Sanitize the phone number part
+		phonePart := parts[1]
+		if idx := strings.Index(phonePart, "@"); idx > 0 {
+			phoneNum := phonePart[:idx]
+			domain := phonePart[idx:]
+			sanitizedPhone := SanitizePhoneNumber(phoneNum)
+			// Reconstruct: false_***7277@c.us_E844B47A...
+			return parts[0] + "_" + sanitizedPhone + domain + "_" + SanitizeMessageID(parts[2])
+		}
+	}
+	
+	// Fallback to regular message ID sanitization
+	return SanitizeMessageID(msgID)
+}
+
 // SanitizeContent completely hides message content for privacy
 func SanitizeContent(content string) string {
 	if content == "" {

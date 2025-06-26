@@ -1212,3 +1212,149 @@ func TestNewServer(t *testing.T) {
 	assert.NotNil(t, server.waWebhook)
 	assert.Equal(t, cfg, server.cfg)
 }
+
+func TestServer_UndefinedSessionHandling(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+	}
+	mockWAClient := &mockWAClient{}
+	// Channel manager only has "default" session configured
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+
+	tests := []struct {
+		name         string
+		payload      interface{}
+		session      string
+		expectHandled bool
+		wantStatus   int
+	}{
+		{
+			name: "message from configured session",
+			session: "default",
+			payload: map[string]interface{}{
+				"event": "message",
+				"session": "default",
+				"payload": map[string]interface{}{
+					"id":      "msg123",
+					"from":    "sender123",
+					"fromMe":  false,
+					"body":    "Hello from default session",
+					"hasMedia": false,
+				},
+			},
+			expectHandled: true,
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name: "message from undefined session",
+			session: "jo",
+			payload: map[string]interface{}{
+				"event": "message",
+				"session": "jo",
+				"payload": map[string]interface{}{
+					"id":      "msg456",
+					"from":    "sender456",
+					"fromMe":  false,
+					"body":    "Hello from jo session",
+					"hasMedia": false,
+				},
+			},
+			expectHandled: false,
+			wantStatus:   http.StatusOK, // Still returns OK but doesn't process
+		},
+		{
+			name: "reaction from undefined session",
+			session: "unknown",
+			payload: map[string]interface{}{
+				"event": "message.reaction",
+				"session": "unknown",
+				"payload": map[string]interface{}{
+					"from": "sender789",
+					"reaction": map[string]interface{}{
+						"messageId": "msg789",
+						"text": "👍",
+					},
+				},
+			},
+			expectHandled: false,
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name: "edited message from undefined session",
+			session: "another",
+			payload: map[string]interface{}{
+				"event": "message.edited",
+				"session": "another",
+				"payload": map[string]interface{}{
+					"from": "sender999",
+					"body": "Edited message",
+					"editedMessageId": "msg999",
+				},
+			},
+			expectHandled: false,
+			wantStatus:   http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expectHandled {
+				// Set up expectation for handled messages
+				msgService.On("HandleWhatsAppMessageWithSession",
+					mock.Anything,
+					tt.session,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(nil).Once()
+			}
+			// For unhandled messages, no expectation is set
+
+			// Create request with webhook payload
+			body, err := json.Marshal(tt.payload)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(body))
+			
+			// Add timestamp header (required for WAHA webhooks)
+			timestamp := fmt.Sprintf("%d", time.Now().Unix())
+			req.Header.Set("X-Webhook-Timestamp", timestamp)
+			
+			// Add signature for authentication (using SHA512 for WAHA)
+			mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
+			mac.Write(body)
+			signature := hex.EncodeToString(mac.Sum(nil))
+			req.Header.Set("X-Webhook-Hmac", signature)
+
+			// Send request
+			recorder := httptest.NewRecorder()
+			server.router.ServeHTTP(recorder, req)
+
+			// Check response
+			assert.Equal(t, tt.wantStatus, recorder.Code)
+
+			// Verify expectations
+			if tt.expectHandled {
+				msgService.AssertExpectations(t)
+			} else {
+				// Verify that HandleWhatsAppMessageWithSession was NOT called
+				msgService.AssertNotCalled(t, "HandleWhatsAppMessageWithSession",
+					mock.Anything,
+					tt.session,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				)
+			}
+		})
+	}
+}

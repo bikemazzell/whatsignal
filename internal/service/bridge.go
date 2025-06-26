@@ -369,22 +369,22 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 
 func (b *bridge) HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error {
 	b.logger.WithFields(logrus.Fields{
-		"targetMessageID": targetMessageID,
-		"sender":          sender,
+		"targetMessageID": SanitizeMessageID(targetMessageID),
+		"sender":          SanitizePhoneNumber(sender),
 	}).Debug("Processing Signal message deletion")
 
 	// Look up the message mapping for the target message by Signal ID
 	mapping, err := b.db.GetMessageMappingBySignalID(ctx, targetMessageID)
 	if err != nil {
 		b.logger.WithFields(logrus.Fields{
-			"targetMessageID": targetMessageID,
+			"targetMessageID": SanitizeMessageID(targetMessageID),
 			"error":           err,
 		}).Error("Failed to get message mapping for deletion")
 		return fmt.Errorf("failed to get message mapping for deletion: %w", err)
 	}
 
 	if mapping == nil {
-		b.logger.WithField("targetMessageID", targetMessageID).Warn("No mapping found for deletion target message")
+		b.logger.WithField("targetMessageID", SanitizeMessageID(targetMessageID)).Warn("No mapping found for deletion target message")
 		return fmt.Errorf("no mapping found for deletion target message: %s", targetMessageID)
 	}
 
@@ -392,17 +392,17 @@ func (b *bridge) HandleSignalMessageDeletion(ctx context.Context, targetMessageI
 	err = b.waClient.DeleteMessage(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID)
 	if err != nil {
 		b.logger.WithFields(logrus.Fields{
-			"whatsappChatID": mapping.WhatsAppChatID,
-			"whatsappMsgID":  mapping.WhatsAppMsgID,
+			"whatsappChatID": SanitizePhoneNumber(mapping.WhatsAppChatID),
+			"whatsappMsgID":  SanitizeWhatsAppMessageID(mapping.WhatsAppMsgID),
 			"error":          err,
 		}).Error("Failed to delete message in WhatsApp")
 		return fmt.Errorf("failed to delete message in WhatsApp: %w", err)
 	}
 
 	b.logger.WithFields(logrus.Fields{
-		"whatsappChatID":  mapping.WhatsAppChatID,
-		"whatsappMsgID":   mapping.WhatsAppMsgID,
-		"targetMessageID": targetMessageID,
+		"whatsappChatID":  SanitizePhoneNumber(mapping.WhatsAppChatID),
+		"whatsappMsgID":   SanitizeWhatsAppMessageID(mapping.WhatsAppMsgID),
+		"targetMessageID": SanitizeMessageID(targetMessageID),
 	}).Info("Successfully deleted message in WhatsApp")
 
 	return nil
@@ -578,7 +578,7 @@ func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.Sign
 	}
 
 	b.logger.WithFields(logrus.Fields{
-		"whatsappMsgID": mapping.WhatsAppMsgID,
+		"whatsappMsgID": SanitizeWhatsAppMessageID(mapping.WhatsAppMsgID),
 		"reaction": reaction,
 		"response": resp,
 	}).Info("Successfully forwarded reaction to WhatsApp")

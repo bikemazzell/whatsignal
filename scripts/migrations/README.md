@@ -13,8 +13,14 @@ This directory contains all database migration files for the WhatsSignal project
 
 1. `001_initial_schema.sql` - Initial database schema
    - Creates message_mappings table
+   - Creates contacts table for caching
    - Sets up indexes for efficient querying
    - Configures triggers for timestamp management
+
+2. `002_add_session_name.sql` - Multi-channel support
+   - Adds session_name column to message_mappings
+   - Adds media_type column to message_mappings
+   - Creates indexes for session-based queries
 
 ## Development
 
@@ -27,14 +33,23 @@ When adding a new migration:
 
 ## Production
 
-Migrations are automatically applied when the application starts. The application will:
+For existing databases that need schema updates, use the migration tool:
 
-1. Look for migration files in several locations:
-   - Relative to the working directory
-   - Relative to the executable
-   - In parent directories until found
-2. Apply any new migrations in order
-3. Log the migration process
+```bash
+# Apply pending migrations
+go run ./cmd/migrate
+
+# Or specify a different database path
+go run ./cmd/migrate -db /path/to/your/database.db
+```
+
+The migration tool will:
+1. Create a schema_migrations tracking table
+2. Check which migrations have been applied
+3. Apply any pending migrations in order
+4. Log the migration process
+
+New installations automatically get the latest schema.
 
 ## Testing
 

@@ -66,6 +66,7 @@ help:
 	@echo "  run-release - Run release version"
 	@echo "  run-verbose - Run debug version with verbose logging"
 	@echo "  install    - Install debug version to GOPATH/bin"
+	@echo "  migrate    - Run database migrations"
 	@echo ""
 	@echo "Docker targets:"
 	@echo "  docker-up      - Start all services with Docker Compose"
@@ -183,6 +184,12 @@ tidy:
 install: debug
 	@echo "Installing $(APP_NAME) to GOPATH/bin..."
 	@cp $(DEBUG_DIR)/$(APP_NAME) $(shell go env GOPATH)/bin/
+
+# Run database migrations
+.PHONY: migrate
+migrate:
+	@echo "Running database migrations..."
+	@go run ./cmd/migrate
 
 # Run debug version
 .PHONY: run

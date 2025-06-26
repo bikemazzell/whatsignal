@@ -102,9 +102,9 @@ func (s *Server) setupWebhookHandlers() {
 		}
 
 		s.logger.WithFields(logrus.Fields{
-			"messageId": msg.ID,
-			"chatId":    msg.ChatID,
-			"sender":    msg.Sender,
+			"messageId": service.SanitizeWhatsAppMessageID(msg.ID),
+			"chatId":    service.SanitizePhoneNumber(msg.ChatID),
+			"sender":    service.SanitizePhoneNumber(msg.Sender),
 			"type":      msg.Type,
 		}).Info("Received WhatsApp message")
 
@@ -295,6 +295,12 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		sessionName = "default"
 	}
 
+	// Check if session is configured
+	if !s.channelManager.IsValidSession(sessionName) {
+		s.logger.WithField("session", sessionName).Debug("Ignoring message from unconfigured session")
+		return nil
+	}
+
 	return s.msgService.HandleWhatsAppMessageWithSession(
 		ctx,
 		sessionName,
@@ -314,9 +320,19 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 		return ValidationError{Message: "missing required field: Payload.From"}
 	}
 
+	// Check if session is configured
+	sessionName := payload.Session
+	if sessionName == "" {
+		sessionName = "default"
+	}
+	if !s.channelManager.IsValidSession(sessionName) {
+		s.logger.WithField("session", sessionName).Debug("Ignoring reaction from unconfigured session")
+		return nil
+	}
+
 	s.logger.WithFields(logrus.Fields{
-		"from":      payload.Payload.From,
-		"messageId": payload.Payload.Reaction.MessageID,
+		"from":      service.SanitizePhoneNumber(payload.Payload.From),
+		"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.Reaction.MessageID),
 		"emoji":     payload.Payload.Reaction.Text,
 	}).Info("Processing WhatsApp reaction for forwarding to Signal")
 
@@ -328,7 +344,7 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 	}
 
 	if mapping == nil {
-		s.logger.WithField("messageId", payload.Payload.Reaction.MessageID).Warn("No mapping found for reacted message")
+		s.logger.WithField("messageId", service.SanitizeWhatsAppMessageID(payload.Payload.Reaction.MessageID)).Warn("No mapping found for reacted message")
 		return nil // Don't error out, just log and continue
 	}
 
@@ -342,20 +358,20 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 
 	// Send reaction notification to the appropriate Signal destination
 	// Use the session from the mapping to determine the destination
-	sessionName := "default"
+	reactionSessionName := "default"
 	if mapping.SessionName != "" {
-		sessionName = mapping.SessionName
+		reactionSessionName = mapping.SessionName
 	}
 
 	// Use the message service to send via the bridge with session context
-	err = s.msgService.SendSignalNotification(ctx, sessionName, reactionText)
+	err = s.msgService.SendSignalNotification(ctx, reactionSessionName, reactionText)
 	if err != nil {
 		s.logger.WithError(err).Error("Failed to forward reaction to Signal")
 		return err
 	}
 
 	s.logger.WithFields(logrus.Fields{
-		"whatsappMessageId": payload.Payload.Reaction.MessageID,
+		"whatsappMessageId": service.SanitizeWhatsAppMessageID(payload.Payload.Reaction.MessageID),
 		"signalMessageId":   mapping.ID,
 		"emoji":             payload.Payload.Reaction.Text,
 	}).Info("Successfully forwarded WhatsApp reaction to Signal")
@@ -371,10 +387,20 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 		return ValidationError{Message: "missing required field: Payload.From"}
 	}
 
+	// Check if session is configured
+	sessionName := payload.Session
+	if sessionName == "" {
+		sessionName = "default"
+	}
+	if !s.channelManager.IsValidSession(sessionName) {
+		s.logger.WithField("session", sessionName).Debug("Ignoring edited message from unconfigured session")
+		return nil
+	}
+
 	s.logger.WithFields(logrus.Fields{
-		"from":             payload.Payload.From,
-		"editedMessageId":  *payload.Payload.EditedMessageID,
-		"newBody":          payload.Payload.Body,
+		"from":             service.SanitizePhoneNumber(payload.Payload.From),
+		"editedMessageId":  service.SanitizeWhatsAppMessageID(*payload.Payload.EditedMessageID),
+		"newBody":          service.SanitizeContent(payload.Payload.Body),
 	}).Info("Processing WhatsApp message edit")
 
 	// Find the original message mapping
@@ -385,7 +411,7 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	}
 
 	if mapping == nil {
-		s.logger.WithField("messageId", *payload.Payload.EditedMessageID).Warn("No mapping found for edited message")
+		s.logger.WithField("messageId", service.SanitizeWhatsAppMessageID(*payload.Payload.EditedMessageID)).Warn("No mapping found for edited message")
 		return nil
 	}
 
@@ -394,13 +420,13 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	
 	// Send to Signal using message service
 	// Send edit notification to the appropriate Signal destination
-	sessionName := "default"
+	editSessionName := "default"
 	if mapping.SessionName != "" {
-		sessionName = mapping.SessionName
+		editSessionName = mapping.SessionName
 	}
 
 	// Use the message service to send via the bridge with session context
-	err = s.msgService.SendSignalNotification(ctx, sessionName, editNotification)
+	err = s.msgService.SendSignalNotification(ctx, editSessionName, editNotification)
 	if err != nil {
 		s.logger.WithError(err).Error("Failed to send edit notification to Signal")
 		return err
@@ -435,9 +461,9 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 	}
 
 	s.logger.WithFields(logrus.Fields{
-		"messageId": payload.Payload.ID,
-		"from":      payload.Payload.From,
-		"to":        payload.Payload.To,
+		"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.ID),
+		"from":      service.SanitizePhoneNumber(payload.Payload.From),
+		"to":        service.SanitizePhoneNumber(payload.Payload.To),
 		"ack":       ackStatus,
 		"status":    statusText,
 	}).Debug("Processing WhatsApp ACK status")
@@ -474,8 +500,8 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 
 func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
 	s.logger.WithFields(logrus.Fields{
-		"from":      payload.Payload.From,
-		"messageId": payload.Payload.ID,
+		"from":      service.SanitizePhoneNumber(payload.Payload.From),
+		"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.ID),
 	}).Info("Processing WhatsApp waiting message event")
 
 	// For waiting messages, we might want to send a notification to Signal
@@ -533,10 +559,10 @@ func (s *Server) handleSignalWebhook() http.HandlerFunc {
 		sigMsg := convertWebhookPayloadToSignalMessage(&payload)
 
 		s.logger.WithFields(logrus.Fields{
-			"messageId": sigMsg.MessageID,
-			"sender":    sigMsg.Sender,
+			"messageId": service.SanitizeMessageID(sigMsg.MessageID),
+			"sender":    service.SanitizePhoneNumber(sigMsg.Sender),
 			"timestamp": sigMsg.Timestamp,
-			"recipient": payload.Recipient,
+			"recipient": service.SanitizePhoneNumber(payload.Recipient),
 		}).Info("Received Signal message via webhook, calling ProcessIncomingSignalMessage")
 
 		// Use recipient as destination if available, otherwise use legacy method

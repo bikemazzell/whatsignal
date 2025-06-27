@@ -976,3 +976,157 @@ func TestDatabase_GetLatestMessageMapping(t *testing.T) {
 	assert.Equal(t, "sig_msg_2", latest.SignalMsgID)
 	assert.Equal(t, "+2222222222@c.us", latest.WhatsAppChatID)
 }
+
+func TestDatabase_GetLatestMessageMappingBySession(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with no messages
+	latest, err := db.GetLatestMessageMappingBySession(ctx, "business")
+	assert.NoError(t, err)
+	assert.Nil(t, latest)
+
+	// Create test mappings for different sessions
+	mapping1 := &models.MessageMapping{
+		WhatsAppChatID:  "+1234567890@c.us",
+		WhatsAppMsgID:   "wa_msg_1",
+		SignalMsgID:     "sig_msg_1",
+		SessionName:     "personal",
+		SignalTimestamp: time.Now().Add(-2 * time.Hour),
+		ForwardedAt:     time.Now().Add(-2 * time.Hour),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	mapping2 := &models.MessageMapping{
+		WhatsAppChatID:  "+9876543210@c.us",
+		WhatsAppMsgID:   "wa_msg_2",
+		SignalMsgID:     "sig_msg_2",
+		SessionName:     "business",
+		SignalTimestamp: time.Now().Add(-1 * time.Hour),
+		ForwardedAt:     time.Now().Add(-1 * time.Hour),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	mapping3 := &models.MessageMapping{
+		WhatsAppChatID:  "+1111111111@c.us",
+		WhatsAppMsgID:   "wa_msg_3",
+		SignalMsgID:     "sig_msg_3",
+		SessionName:     "business",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	// Save mappings
+	err = db.SaveMessageMapping(ctx, mapping1)
+	require.NoError(t, err)
+	err = db.SaveMessageMapping(ctx, mapping2)
+	require.NoError(t, err)
+	err = db.SaveMessageMapping(ctx, mapping3)
+	require.NoError(t, err)
+
+	// Get latest for business session - should return mapping3 (most recent)
+	latest, err = db.GetLatestMessageMappingBySession(ctx, "business")
+	assert.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "wa_msg_3", latest.WhatsAppMsgID)
+	assert.Equal(t, "sig_msg_3", latest.SignalMsgID)
+	assert.Equal(t, "business", latest.SessionName)
+
+	// Get latest for personal session
+	latest, err = db.GetLatestMessageMappingBySession(ctx, "personal")
+	assert.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "wa_msg_1", latest.WhatsAppMsgID)
+	assert.Equal(t, "personal", latest.SessionName)
+
+	// Test with empty session name (should default to "default")
+	latest, err = db.GetLatestMessageMappingBySession(ctx, "")
+	assert.NoError(t, err)
+	assert.Nil(t, latest) // No messages for "default" session
+
+	// Test with non-existent session
+	latest, err = db.GetLatestMessageMappingBySession(ctx, "nonexistent")
+	assert.NoError(t, err)
+	assert.Nil(t, latest)
+}
+
+func TestDatabase_HasMessageHistoryBetween(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Test with no message history
+	hasHistory, err := db.HasMessageHistoryBetween(ctx, "personal", "+1234567890")
+	assert.NoError(t, err)
+	assert.False(t, hasHistory)
+
+	// Create a message mapping between session and Signal sender
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "+1234567890@c.us", // This represents the Signal sender as WhatsApp chat ID
+		WhatsAppMsgID:   "wa_msg_1",
+		SignalMsgID:     "sig_msg_1",
+		SessionName:     "personal",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+	}
+
+	err = db.SaveMessageMapping(ctx, mapping)
+	require.NoError(t, err)
+
+	// Now there should be message history
+	hasHistory, err = db.HasMessageHistoryBetween(ctx, "personal", "+1234567890")
+	assert.NoError(t, err)
+	assert.True(t, hasHistory)
+
+	// Test with Signal sender that already has @c.us suffix
+	hasHistory, err = db.HasMessageHistoryBetween(ctx, "personal", "+1234567890@c.us")
+	assert.NoError(t, err)
+	assert.True(t, hasHistory)
+
+	// Test with different session - no history
+	hasHistory, err = db.HasMessageHistoryBetween(ctx, "business", "+1234567890")
+	assert.NoError(t, err)
+	assert.False(t, hasHistory)
+
+	// Test with different Signal sender - no history
+	hasHistory, err = db.HasMessageHistoryBetween(ctx, "personal", "+9876543210")
+	assert.NoError(t, err)
+	assert.False(t, hasHistory)
+
+	// Test with empty session name (should default to "default")
+	hasHistory, err = db.HasMessageHistoryBetween(ctx, "", "+1234567890")
+	assert.NoError(t, err)
+	assert.False(t, hasHistory) // No messages for "default" session
+}
+
+func TestDatabase_New_ErrorCases(t *testing.T) {
+	// Set up encryption secret for tests
+	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+	defer func() {
+		if originalSecret != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+		}
+	}()
+
+	// Test with invalid database path
+	_, err := New("")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid database path")
+
+	// Test with null byte in path
+	_, err = New("/invalid\x00path")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create database file")
+
+	// Test with directory that doesn't exist
+	_, err = New("/nonexistent/dir/test.db")
+	assert.Error(t, err)
+}

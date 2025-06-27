@@ -186,3 +186,119 @@ func TestValidateDefaults(t *testing.T) {
 	assert.Equal(t, 30, config.RetentionDays)            // Default value
 	assert.Equal(t, 30, config.WhatsApp.PollIntervalSec) // Default value
 }
+
+func TestValidateSecurity(t *testing.T) {
+	// Store original environment value
+	originalEnv := os.Getenv("WHATSIGNAL_ENV")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("WHATSIGNAL_ENV", originalEnv)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENV")
+		}
+	}()
+
+	tests := []struct {
+		name        string
+		config      *models.Config
+		environment string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "development environment - no webhook secret",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "",
+				},
+			},
+			environment: "",
+			expectError: false,
+		},
+		{
+			name: "development environment - with webhook secret",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "test-secret-123",
+				},
+			},
+			environment: "",
+			expectError: false,
+		},
+		{
+			name: "production environment - missing webhook secret",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "",
+				},
+			},
+			environment: "production",
+			expectError: true,
+			errorMsg:    "WhatsApp webhook secret is required in production",
+		},
+		{
+			name: "production environment - short webhook secret",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "short",
+				},
+			},
+			environment: "production",
+			expectError: true,
+			errorMsg:    "WhatsApp webhook secret must be at least 32 characters long",
+		},
+		{
+			name: "production environment - valid webhook secret",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "this-is-a-very-long-webhook-secret-that-meets-requirements",
+				},
+			},
+			environment: "production",
+			expectError: false,
+		},
+		{
+			name: "production environment - debug logging enabled",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "this-is-a-very-long-webhook-secret-that-meets-requirements",
+				},
+				LogLevel: "debug",
+			},
+			environment: "production",
+			expectError: true,
+			errorMsg:    "debug logging should not be used in production",
+		},
+		{
+			name: "production environment - info logging allowed",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "this-is-a-very-long-webhook-secret-that-meets-requirements",
+				},
+				LogLevel: "info",
+			},
+			environment: "production",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set environment
+			if tt.environment != "" {
+				os.Setenv("WHATSIGNAL_ENV", tt.environment)
+			} else {
+				os.Unsetenv("WHATSIGNAL_ENV")
+			}
+
+			err := validateSecurity(tt.config)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

@@ -1,28 +1,28 @@
 # WhatsApp-Signal Bridge TODO
 
 
-# Next TODOs
-- implement message reactions (e.g. if a User reacts to a message with 👍, that should be forwarded to WhatsApp via `/api/reaction` PUT command)
-- check that sending an image, a file, voice message, and video all work (e.g. /api/sendImage, /api/sendFile, /api/sendVoice, /api/sendVideo)
-- check that any videos are converted to WhatsApp understandable format (e.g. may need to use /api/{sesion}/media/convert/
-- check that any voice responses are converted to WhatsApp understandable format (e.g. may need to use /api/{sesion}/media/convert/voice POST command)video POST command)
-- make sure that URL previews work (if enabled, i.e. "linkPreview": true in /api/sendText body)
-- if a person replies without quoting a particular message, reply to the last sender
+
+## Unit test code coverage improvements
 
 -improve code coverage to at least 90% across all packages; currently they are at:
-  - cmd/whatsignal: 78.8%
-  - internal/config: 96.4%
-  - internal/database: 79.3%
+
+  - cmd/whatsignal: 75.9%
+  - pkg/signal: 82.1%
+  - internal/database: 77.4%
+  - pkg/whatsapp: 80.5%
+  - pkg/media: 82.6%
+  - internal/service: 85.7%
+  - internal/security: 95.8%
+  - internal/config: 96.2%
   - internal/migrations: 100.0%
   - internal/models: 100.0%
-  - internal/security: 95.8%
-  - internal/service: 79.7%
-  - pkg/media: 84.9%
-  - pkg/whatsapp: 72.2%
-  - pkg/whatsapp/types: 100.0%
   - pkg/signal/types: 100.0%
+  - pkg/whatsapp/types: 100.0%
+
+  Total coverage: ~80%
 
 
+## Group chat support
 
 ## Dynamic Session-Based Signal Polling Implementation
 

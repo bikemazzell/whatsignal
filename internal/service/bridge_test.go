@@ -1223,3 +1223,85 @@ func TestHandleSignalDeletion(t *testing.T) {
 	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMappingBySignalID", ctx, "target_msg_789")
 	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_789")
 }
+
+func TestHandleSignalReactionLegacy(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "msg123",
+		Sender:    "sender123",
+		Reaction:  &signaltypes.SignalReaction{Emoji: "👍"},
+	}
+
+	err := bridge.handleSignalReaction(ctx, msg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "handleSignalReaction called without session context")
+}
+
+func TestHandleSignalDeletionLegacy(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "msg123",
+		Sender:    "sender123",
+		Deletion:  &signaltypes.SignalDeletion{TargetMessageID: "target123"},
+	}
+
+	err := bridge.handleSignalDeletion(ctx, msg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "handleSignalDeletion called without session context")
+}
+
+func TestSendSignalNotificationForSession(t *testing.T) {
+	// Test the method by testing its parts separately since we can't easily mock the ChannelManager
+	// This tests the behavior rather than the exact implementation
+
+	t.Run("test channel manager integration", func(t *testing.T) {
+		// Test that the method exists and works with valid data
+		bridge, _, cleanup := setupTestBridge(t)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		// The setupTestBridge creates a channel manager with "default" session -> "+1234567890"
+		// So we can test with this valid session
+		bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
+			MessageID: "notif123",
+			Timestamp: time.Now().UnixMilli(),
+		}
+
+		err := bridge.SendSignalNotificationForSession(ctx, "default", "Test notification")
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid session should error", func(t *testing.T) {
+		bridge, _, cleanup := setupTestBridge(t)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		err := bridge.SendSignalNotificationForSession(ctx, "invalid_session", "Test notification")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get Signal destination")
+	})
+
+	t.Run("signal send error should propagate", func(t *testing.T) {
+		bridge, _, cleanup := setupTestBridge(t)
+		defer cleanup()
+
+		ctx := context.Background()
+
+		// Set up signal client to return error
+		bridge.sigClient.(*mockSignalClient).sendMessageErr = assert.AnError
+
+		err := bridge.SendSignalNotificationForSession(ctx, "default", "Test notification")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to send Signal notification")
+	})
+}

@@ -22,6 +22,7 @@ type Database interface {
 	GetMessageMapping(ctx context.Context, id string) (*models.MessageMapping, error)
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
+	HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 }
 
@@ -300,17 +301,30 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	LogSignalPolling(ctx, s.logger, len(messages))
 
 	for _, msg := range messages {
-		// For polled messages, we need to determine the Signal destination
-		// If there's only one channel, use its destination
-		// For multiple channels, we'd need additional logic to determine the correct destination
+		// For polled messages, we need to determine the correct Signal destination
 		destinations := s.channelManager.GetAllSignalDestinations()
 		if len(destinations) == 0 {
 			s.logger.Error("No Signal destinations configured")
 			continue
 		}
 		
-		// Use the first destination if only one channel, otherwise this needs enhancement
-		destination := destinations[0]
+		var destination string
+		if len(destinations) == 1 {
+			// If there's only one channel, use its destination
+			destination = destinations[0]
+		} else {
+			// For multiple channels, determine destination based on message history
+			// Check which session has previously communicated with this Signal sender
+			destination = s.determineDestinationForSender(ctx, msg.Sender, destinations)
+			if destination == "" {
+				s.logger.WithFields(logrus.Fields{
+					"sender": msg.Sender,
+					"messageID": msg.MessageID,
+				}).Warn("Could not determine destination for Signal sender, skipping message")
+				continue
+			}
+		}
+		
 		if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &msg, destination); err != nil {
 			if IsVerboseLogging(ctx) {
 				s.logger.WithError(err).WithField("messageID", msg.MessageID).Error("Failed to process Signal message from polling")
@@ -321,6 +335,43 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// determineDestinationForSender finds which Signal destination should handle a message from a given sender
+// by checking message history to see which session has previously communicated with this sender
+func (s *messageService) determineDestinationForSender(ctx context.Context, sender string, availableDestinations []string) string {
+	// Check each destination to see if we have message history with this sender
+	for _, destination := range availableDestinations {
+		// Get the session for this destination
+		session, err := s.channelManager.GetWhatsAppSession(destination)
+		if err != nil {
+			s.logger.WithError(err).WithField("destination", destination).Warn("Failed to get session for destination")
+			continue
+		}
+		
+		// Check if we have any message history between this session and the sender
+		// We look for any message mapping where the Signal sender matches and the session matches
+		hasHistory, err := s.db.HasMessageHistoryBetween(ctx, session, sender)
+		if err != nil {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"session": session,
+				"sender": sender,
+			}).Warn("Failed to check message history")
+			continue
+		}
+		
+		if hasHistory {
+			s.logger.WithFields(logrus.Fields{
+				"sender": sender,
+				"destination": destination,
+				"session": session,
+			}).Debug("Found matching destination based on message history")
+			return destination
+		}
+	}
+	
+	s.logger.WithField("sender", sender).Debug("No message history found for sender")
+	return ""
 }
 
 func (s *messageService) SendSignalNotification(ctx context.Context, sessionName, message string) error {

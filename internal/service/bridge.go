@@ -36,6 +36,7 @@ type DatabaseService interface {
 	GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error)
 	GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error)
 	GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error)
+	HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(retentionDays int) error
 }

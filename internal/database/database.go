@@ -627,3 +627,41 @@ func (d *Database) CleanupOldContacts(retentionDays int) error {
 
 	return nil
 }
+
+// HasMessageHistoryBetween checks if there's any message history between a session and Signal sender
+func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error) {
+	// Use 'default' if sessionName is empty for backward compatibility
+	if sessionName == "" {
+		sessionName = "default"
+	}
+
+	// We need to check both directions:
+	// 1. Messages from WhatsApp (this session) that were forwarded to Signal (signal_msg_id exists)
+	// 2. Messages from Signal (this sender) that were forwarded to WhatsApp (this session)
+	
+	// For Signal messages, the sender is stored in the whatsapp_chat_id field (as phone@c.us)
+	// We need to convert the Signal sender to WhatsApp chat ID format
+	whatsappChatID := signalSender
+	if !strings.HasSuffix(whatsappChatID, "@c.us") {
+		whatsappChatID = signalSender + "@c.us"
+	}
+	
+	encryptedChatID, err := d.encryptor.EncryptIfEnabled(whatsappChatID)
+	if err != nil {
+		return false, fmt.Errorf("failed to encrypt chat ID: %w", err)
+	}
+
+	query := `
+		SELECT COUNT(*) FROM message_mappings 
+		WHERE session_name = ? AND whatsapp_chat_id = ?
+		LIMIT 1
+	`
+	
+	var count int
+	err = d.db.QueryRowContext(ctx, query, sessionName, encryptedChatID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check message history: %w", err)
+	}
+	
+	return count > 0, nil
+}

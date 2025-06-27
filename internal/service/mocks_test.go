@@ -334,6 +334,11 @@ func (m *mockDatabaseService) GetLatestMessageMappingBySession(ctx context.Conte
 	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
+func (m *mockDatabaseService) HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error) {
+	args := m.Called(ctx, sessionName, signalSender)
+	return args.Bool(0), args.Error(1)
+}
+
 // Mock contact service
 type mockContactService struct {
 	mock.Mock

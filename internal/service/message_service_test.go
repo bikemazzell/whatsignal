@@ -95,6 +95,11 @@ func (m *mockDB) UpdateDeliveryStatus(ctx context.Context, id string, status str
 	return args.Error(0)
 }
 
+func (m *mockDB) HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error) {
+	args := m.Called(ctx, sessionName, signalSender)
+	return args.Bool(0), args.Error(1)
+}
+
 type mockMediaCache struct {
 	mock.Mock
 }
@@ -820,6 +825,230 @@ func TestPollSignalMessages(t *testing.T) {
 
 			bridge.AssertExpectations(t)
 			signalClient.AssertExpectations(t)
+		})
+	}
+}
+
+func TestPollSignalMessages_MultiChannel(t *testing.T) {
+	tests := []struct {
+		name         string
+		messages     []signaltypes.SignalMessage
+		setupHistory func(*mockDB)
+		expectations func(*mockBridge)
+		description  string
+	}{
+		{
+			name: "multi-channel polling with message history routing",
+			messages: []signaltypes.SignalMessage{
+				{
+					MessageID: "sig1",
+					Sender:    "+1111111111", // Should route to personal session
+					Message:   "Hello from personal contact",
+					Timestamp: time.Now().UnixMilli(),
+				},
+				{
+					MessageID: "sig2", 
+					Sender:    "+2222222222", // Should route to business session
+					Message:   "Hello from business contact",
+					Timestamp: time.Now().UnixMilli(),
+				},
+			},
+			setupHistory: func(db *mockDB) {
+				ctx := context.Background()
+				// Personal contact has history with personal session (first destination checked)
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+1111111111").Return(true, nil)
+				// Since we found history with personal, we don't check business for +1111111111
+				
+				// Business contact has no history with personal session  
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+2222222222").Return(false, nil)
+				// Business contact has history with business session
+				db.On("HasMessageHistoryBetween", ctx, "business", "+2222222222").Return(true, nil)
+			},
+			expectations: func(bridge *mockBridge) {
+				ctx := context.Background()
+				// First message should route to personal destination
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+					return msg.MessageID == "sig1" && msg.Sender == "+1111111111"
+				}), "+1111111111").Return(nil)
+				
+				// Second message should route to business destination
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+					return msg.MessageID == "sig2" && msg.Sender == "+2222222222"
+				}), "+2222222222").Return(nil)
+			},
+			description: "Messages should route to correct destinations based on message history",
+		},
+		{
+			name: "multi-channel polling with unknown sender",
+			messages: []signaltypes.SignalMessage{
+				{
+					MessageID: "sig3",
+					Sender:    "+3333333333", // No history with any session
+					Message:   "Hello from unknown contact",
+					Timestamp: time.Now().UnixMilli(),
+				},
+			},
+			setupHistory: func(db *mockDB) {
+				ctx := context.Background()
+				// Unknown contact has no history with any session
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+3333333333").Return(false, nil)
+				db.On("HasMessageHistoryBetween", ctx, "business", "+3333333333").Return(false, nil)
+			},
+			expectations: func(bridge *mockBridge) {
+				// No bridge calls should be made for unknown senders
+			},
+			description: "Messages from unknown senders should be skipped",
+		},
+		{
+			name: "single channel polling (legacy behavior)", 
+			messages: []signaltypes.SignalMessage{
+				{
+					MessageID: "sig4",
+					Sender:    "+4444444444",
+					Message:   "Single channel message",
+					Timestamp: time.Now().UnixMilli(),
+				},
+			},
+			setupHistory: func(db *mockDB) {
+				// No history calls needed for single channel
+			},
+			expectations: func(bridge *mockBridge) {
+				ctx := context.Background()
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+					return msg.MessageID == "sig4" && msg.Sender == "+4444444444"
+				}), "+1234567890").Return(nil)
+			},
+			description: "Single channel should use first destination directly",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge := new(mockBridge)
+			db := new(mockDB)
+			mediaCache := new(mockMediaCache)
+			signalClient := &mockSignalClient{}
+
+			// Setup channels based on test case
+			var channels []models.Channel
+			if tt.name == "single channel polling (legacy behavior)" {
+				channels = []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				}
+			} else {
+				channels = []models.Channel{
+					{
+						WhatsAppSessionName:          "personal",
+						SignalDestinationPhoneNumber: "+1111111111",
+					},
+					{
+						WhatsAppSessionName:          "business", 
+						SignalDestinationPhoneNumber: "+2222222222",
+					},
+				}
+			}
+
+			signalConfig := models.SignalConfig{
+				PollIntervalSec: 5,
+				PollTimeoutSec:  10,
+			}
+			channelManager, _ := NewChannelManager(channels)
+			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
+
+			// Setup mocks
+			signalClient.On("ReceiveMessages", mock.Anything, 10).Return(tt.messages, nil)
+			tt.setupHistory(db)
+			tt.expectations(bridge)
+
+			ctx := context.Background()
+			err := service.PollSignalMessages(ctx)
+
+			assert.NoError(t, err, tt.description)
+			bridge.AssertExpectations(t)
+			signalClient.AssertExpectations(t)
+			db.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDetermineDestinationForSender(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	signalClient := &mockSignalClient{}
+	
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "personal",
+			SignalDestinationPhoneNumber: "+1111111111",
+		},
+		{
+			WhatsAppSessionName:          "business",
+			SignalDestinationPhoneNumber: "+2222222222",
+		},
+	}
+	
+	signalConfig := models.SignalConfig{}
+	channelManager, _ := NewChannelManager(channels)
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager).(*messageService)
+
+	tests := []struct {
+		name                   string
+		sender                 string
+		availableDestinations  []string
+		setupHistory          func(*mockDB)
+		expectedDestination   string
+		description           string
+	}{
+		{
+			name:                  "sender with personal history",
+			sender:                "+1111111111",
+			availableDestinations: []string{"+1111111111", "+2222222222"},
+			setupHistory: func(db *mockDB) {
+				ctx := context.Background()
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+1111111111").Return(true, nil)
+			},
+			expectedDestination: "+1111111111",
+			description:         "Should return personal destination for sender with personal history",
+		},
+		{
+			name:                  "sender with business history",
+			sender:                "+2222222222", 
+			availableDestinations: []string{"+1111111111", "+2222222222"},
+			setupHistory: func(db *mockDB) {
+				ctx := context.Background()
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+2222222222").Return(false, nil)
+				db.On("HasMessageHistoryBetween", ctx, "business", "+2222222222").Return(true, nil)
+			},
+			expectedDestination: "+2222222222",
+			description:         "Should return business destination for sender with business history",
+		},
+		{
+			name:                  "sender with no history",
+			sender:                "+3333333333",
+			availableDestinations: []string{"+1111111111", "+2222222222"}, 
+			setupHistory: func(db *mockDB) {
+				ctx := context.Background()
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+3333333333").Return(false, nil)
+				db.On("HasMessageHistoryBetween", ctx, "business", "+3333333333").Return(false, nil)
+			},
+			expectedDestination: "",
+			description:         "Should return empty string for sender with no history",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupHistory(db)
+
+			ctx := context.Background()
+			result := service.determineDestinationForSender(ctx, tt.sender, tt.availableDestinations)
+
+			assert.Equal(t, tt.expectedDestination, result, tt.description)
+			db.AssertExpectations(t)
 		})
 	}
 }

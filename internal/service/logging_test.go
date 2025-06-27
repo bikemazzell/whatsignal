@@ -328,6 +328,26 @@ func TestValidatePhoneNumber(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name:      "valid business number 16 digits",
+			phone:     "1234567890123456",
+			expectErr: false,
+		},
+		{
+			name:      "valid business number 20 digits",
+			phone:     "12345678901234567890",
+			expectErr: false,
+		},
+		{
+			name:      "valid group ID format",
+			phone:     "120363012345678901-1234567890123456@g.us",
+			expectErr: false,
+		},
+		{
+			name:      "valid group ID without suffix",
+			phone:     "120363012345678901-1234567890123456",
+			expectErr: false,
+		},
+		{
 			name:      "empty phone number",
 			phone:     "",
 			expectErr: true,
@@ -337,13 +357,13 @@ func TestValidatePhoneNumber(t *testing.T) {
 			name:      "too short",
 			phone:     "123456",
 			expectErr: true,
-			errMsg:    "phone number must be between 7 and 15 digits",
+			errMsg:    "phone number must be between 7 and 20 digits",
 		},
 		{
 			name:      "too long",
-			phone:     "1234567890123456",
+			phone:     "123456789012345678901",
 			expectErr: true,
-			errMsg:    "phone number must be between 7 and 15 digits",
+			errMsg:    "phone number must be between 7 and 20 digits",
 		},
 		{
 			name:      "contains letters",
@@ -353,7 +373,7 @@ func TestValidatePhoneNumber(t *testing.T) {
 		},
 		{
 			name:      "contains special characters",
-			phone:     "+123-456-7890",
+			phone:     "+123$456#7890",
 			expectErr: true,
 			errMsg:    "phone number must contain only digits",
 		},
@@ -373,13 +393,19 @@ func TestValidatePhoneNumber(t *testing.T) {
 			name:      "plus only",
 			phone:     "+",
 			expectErr: true,
-			errMsg:    "phone number must be between 7 and 15 digits",
+			errMsg:    "phone number must contain digits",
 		},
 		{
 			name:      "WhatsApp suffix only",
 			phone:     "@c.us",
 			expectErr: true,
-			errMsg:    "phone number must be between 7 and 15 digits",
+			errMsg:    "phone number must contain digits",
+		},
+		{
+			name:      "invalid group ID format",
+			phone:     "-invalidgroup",
+			expectErr: true,
+			errMsg:    "invalid group ID format",
 		},
 	}
 

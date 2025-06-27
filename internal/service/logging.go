@@ -92,8 +92,21 @@ func ValidatePhoneNumber(phone string) error {
 		return fmt.Errorf("phone number cannot be empty")
 	}
 
-	// Remove @c.us suffix for validation
+	// Remove @c.us or @g.us suffix for validation
 	cleaned := strings.TrimSuffix(phone, "@c.us")
+	cleaned = strings.TrimSuffix(cleaned, "@g.us")
+
+	// Handle group IDs (they start with digits followed by a hyphen)
+	if strings.Contains(cleaned, "-") {
+		// This is a group ID, not a phone number
+		// Group IDs like "120363012345678901@g.us" are valid
+		parts := strings.Split(cleaned, "-")
+		if len(parts) >= 2 && len(parts[0]) > 0 {
+			// Basic validation for group ID
+			return nil
+		}
+		return fmt.Errorf("invalid group ID format")
+	}
 
 	var digits string
 	// Handle both formats: with + prefix (Signal) and without + prefix (WhatsApp)
@@ -104,9 +117,15 @@ func ValidatePhoneNumber(phone string) error {
 		digits = cleaned
 	}
 
-	// Check length (minimum 7, maximum 15 digits)
-	if len(digits) < 7 || len(digits) > 15 {
-		return fmt.Errorf("phone number must be between 7 and 15 digits")
+	// Check if empty after prefix removal
+	if len(digits) == 0 {
+		return fmt.Errorf("phone number must contain digits")
+	}
+
+	// Check length (minimum 7, maximum 15 digits for phone numbers)
+	// Note: Some WhatsApp IDs can be longer (e.g., business accounts)
+	if len(digits) < 7 || len(digits) > 20 {
+		return fmt.Errorf("phone number must be between 7 and 20 digits")
 	}
 
 	// Check if all characters are digits

@@ -631,17 +631,37 @@ func TestGetFileExtensionFromResponse(t *testing.T) {
 }
 
 func TestProcessMediaFromURLTimeout(t *testing.T) {
-	handler, _, cleanup := setupTestHandler(t)
-	defer cleanup()
+	// Create a custom config with very short timeout
+	config := getTestMediaConfig()
+	
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+	
+	// Create handler with custom HTTP client with short timeout
+	handler := &handler{
+		cacheDir:    cacheDir,
+		config:      config,
+		httpClient:  &http.Client{Timeout: 2 * time.Second}, // Short timeout
+		wahaBaseURL: "",
+		wahaAPIKey:  "",
+	}
+	
+	// Ensure cache directory exists
+	err = os.MkdirAll(cacheDir, 0755)
+	require.NoError(t, err)
 
 	// Create server that delays response
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(35 * time.Second) // Longer than client timeout
+		// Sleep longer than client timeout
+		time.Sleep(3 * time.Second)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	_, err := handler.ProcessMedia(server.URL + "/slow.jpg")
+	_, err = handler.ProcessMedia(server.URL + "/slow.jpg")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to download media from URL")
 }

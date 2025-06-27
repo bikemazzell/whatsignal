@@ -318,8 +318,8 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			destination = s.determineDestinationForSender(ctx, msg.Sender, destinations)
 			if destination == "" {
 				s.logger.WithFields(logrus.Fields{
-					"sender": msg.Sender,
-					"messageID": msg.MessageID,
+					"sender": SanitizePhoneNumber(msg.Sender),
+					"messageID": SanitizeMessageID(msg.MessageID),
 				}).Warn("Could not determine destination for Signal sender, skipping message")
 				continue
 			}
@@ -355,22 +355,22 @@ func (s *messageService) determineDestinationForSender(ctx context.Context, send
 		if err != nil {
 			s.logger.WithError(err).WithFields(logrus.Fields{
 				"session": session,
-				"sender": sender,
+				"sender": SanitizePhoneNumber(sender),
 			}).Warn("Failed to check message history")
 			continue
 		}
 		
 		if hasHistory {
 			s.logger.WithFields(logrus.Fields{
-				"sender": sender,
-				"destination": destination,
+				"sender": SanitizePhoneNumber(sender),
+				"destination": SanitizePhoneNumber(destination),
 				"session": session,
 			}).Debug("Found matching destination based on message history")
 			return destination
 		}
 	}
 	
-	s.logger.WithField("sender", sender).Debug("No message history found for sender")
+	s.logger.WithField("sender", SanitizePhoneNumber(sender)).Debug("No message history found for sender")
 	return ""
 }
 

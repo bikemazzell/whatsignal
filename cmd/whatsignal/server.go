@@ -306,7 +306,7 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 	}
 	if payload.Payload.Body == "" && !payload.Payload.HasMedia {
 		// Skip empty system messages (status updates, typing indicators, etc.)
-		s.logger.WithField("messageID", payload.Payload.ID).Debug("Ignoring empty system message")
+		s.logger.WithField("messageID", service.SanitizeMessageID(payload.Payload.ID)).Debug("Ignoring empty system message")
 		return nil
 	}
 

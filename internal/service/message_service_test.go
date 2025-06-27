@@ -842,38 +842,40 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 			messages: []signaltypes.SignalMessage{
 				{
 					MessageID: "sig1",
-					Sender:    "+1111111111", // Should route to personal session
+					Sender:    "+9999999999", // External sender with personal session history
 					Message:   "Hello from personal contact",
 					Timestamp: time.Now().UnixMilli(),
 				},
 				{
 					MessageID: "sig2", 
-					Sender:    "+2222222222", // Should route to business session
+					Sender:    "+8888888888", // External sender with business session history
 					Message:   "Hello from business contact",
 					Timestamp: time.Now().UnixMilli(),
 				},
 			},
 			setupHistory: func(db *mockDB) {
 				ctx := context.Background()
-				// Personal contact has history with personal session (first session checked)
-				db.On("HasMessageHistoryBetween", ctx, "personal", "+1111111111").Return(true, nil)
-				// Since we found history with personal, we don't check business for +1111111111
+				// Set up history expectations. Due to non-deterministic map iteration,
+				// we need to handle both possible session orderings:
 				
-				// Business contact has no history with personal session  
-				db.On("HasMessageHistoryBetween", ctx, "personal", "+2222222222").Return(false, nil)
-				// Business contact has history with business session
-				db.On("HasMessageHistoryBetween", ctx, "business", "+2222222222").Return(true, nil)
+				// +9999999999 has history with personal only
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+9999999999").Return(true, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+9999999999").Return(false, nil).Maybe()
+				
+				// +8888888888 has history with business only  
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+8888888888").Return(false, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+8888888888").Return(true, nil).Maybe()
 			},
 			expectations: func(bridge *mockBridge) {
 				ctx := context.Background()
 				// First message should route to personal destination
 				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
-					return msg.MessageID == "sig1" && msg.Sender == "+1111111111"
+					return msg.MessageID == "sig1" && msg.Sender == "+9999999999"
 				}), "+1111111111").Return(nil)
 				
 				// Second message should route to business destination
 				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
-					return msg.MessageID == "sig2" && msg.Sender == "+2222222222"
+					return msg.MessageID == "sig2" && msg.Sender == "+8888888888"
 				}), "+2222222222").Return(nil)
 			},
 			description: "Messages should route to correct destinations based on message history",
@@ -995,24 +997,37 @@ func TestDetermineDestinationForSender(t *testing.T) {
 		description           string
 	}{
 		{
-			name:                  "sender with personal history",
+			name:                  "sender matches configured destination",
 			sender:                "+1111111111",
 			availableDestinations: []string{"+1111111111", "+2222222222"},
 			setupHistory: func(db *mockDB) {
+				// No history setup needed - sender matches destination directly
+			},
+			expectedDestination: "+1111111111",
+			description:         "Should return matching destination when sender is a configured destination",
+		},
+		{
+			name:                  "sender with personal history",
+			sender:                "+9999999999", // Different from destinations
+			availableDestinations: []string{"+1111111111", "+2222222222"},
+			setupHistory: func(db *mockDB) {
 				ctx := context.Background()
-				db.On("HasMessageHistoryBetween", ctx, "personal", "+1111111111").Return(true, nil)
+				// Due to non-deterministic map iteration, either session could be checked first
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+9999999999").Return(true, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+9999999999").Return(false, nil).Maybe()
 			},
 			expectedDestination: "+1111111111",
 			description:         "Should return personal destination for sender with personal history",
 		},
 		{
 			name:                  "sender with business history",
-			sender:                "+2222222222", 
+			sender:                "+8888888888", // Different from destinations
 			availableDestinations: []string{"+1111111111", "+2222222222"},
 			setupHistory: func(db *mockDB) {
 				ctx := context.Background()
-				db.On("HasMessageHistoryBetween", ctx, "personal", "+2222222222").Return(false, nil)
-				db.On("HasMessageHistoryBetween", ctx, "business", "+2222222222").Return(true, nil)
+				// Due to non-deterministic map iteration, either session could be checked first
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+8888888888").Return(false, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+8888888888").Return(true, nil).Maybe()
 			},
 			expectedDestination: "+2222222222",
 			description:         "Should return business destination for sender with business history",
@@ -1023,8 +1038,9 @@ func TestDetermineDestinationForSender(t *testing.T) {
 			availableDestinations: []string{"+1111111111", "+2222222222"}, 
 			setupHistory: func(db *mockDB) {
 				ctx := context.Background()
-				db.On("HasMessageHistoryBetween", ctx, "personal", "+3333333333").Return(false, nil)
-				db.On("HasMessageHistoryBetween", ctx, "business", "+3333333333").Return(false, nil)
+				// Due to non-deterministic map iteration, either session could be checked first
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+3333333333").Return(false, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+3333333333").Return(false, nil).Maybe()
 			},
 			expectedDestination: "",
 			description:         "Should return empty string for sender with no history",

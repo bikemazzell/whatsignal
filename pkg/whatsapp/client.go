@@ -559,10 +559,25 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
+	// Check if response body is empty - this is acceptable for some WAHA responses
+	if len(bodyBytes) == 0 {
+		// Return a success response with empty message ID
+		// WAHA sometimes returns 201 with empty body when message is sent successfully
+		return &types.SendMessageResponse{
+			Status: "sent",
+			Error:  "",
+		}, nil
+	}
+	
 	// Parse the actual WAHA response format
 	var wahaResult types.WAHAMessageResponse
 	if err := json.Unmarshal(bodyBytes, &wahaResult); err != nil {
-		return nil, fmt.Errorf("failed to decode WAHA response: %w", err)
+		// If JSON parsing fails but we got a success status code, treat as successful send
+		// Log the error but don't fail the operation since WAHA confirmed the message was sent
+		return &types.SendMessageResponse{
+			Status: "sent",
+			Error:  fmt.Sprintf("warning: could not parse response: %v", err),
+		}, nil
 	}
 
 	// Extract message ID from the WAHA response

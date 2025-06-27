@@ -578,6 +578,24 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			useSignature: true,
 		},
 		{
+			name: "status/broadcast message should be ignored",
+			payload: map[string]interface{}{
+				"event": "message",
+				"payload": map[string]interface{}{
+					"id":      "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
+					"from":    "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
+					"fromMe":  false,
+					"body":    "Status update",
+					"hasMedia": false,
+				},
+			},
+			setup: func() {
+				// No message service call should be made for status messages
+			},
+			wantStatus:   http.StatusOK,
+			useSignature: true,
+		},
+		{
 			name: "valid media message",
 			payload: map[string]interface{}{
 				"event": "message",

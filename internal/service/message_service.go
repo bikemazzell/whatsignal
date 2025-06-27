@@ -337,18 +337,11 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	return nil
 }
 
-// determineDestinationForSender finds which Signal destination should handle a message from a given sender
-// by checking message history to see which session has previously communicated with this sender
 func (s *messageService) determineDestinationForSender(ctx context.Context, sender string, availableDestinations []string) string {
-	// Check each destination to see if we have message history with this sender
-	for _, destination := range availableDestinations {
-		// Get the session for this destination
-		session, err := s.channelManager.GetWhatsAppSession(destination)
-		if err != nil {
-			s.logger.WithError(err).WithField("destination", destination).Warn("Failed to get session for destination")
-			continue
-		}
-		
+	// Get all WhatsApp sessions to check message history
+	sessions := s.channelManager.GetAllWhatsAppSessions()
+	
+	for _, session := range sessions {
 		// Check if we have any message history between this session and the sender
 		// We look for any message mapping where the Signal sender matches and the session matches
 		hasHistory, err := s.db.HasMessageHistoryBetween(ctx, session, sender)
@@ -361,12 +354,23 @@ func (s *messageService) determineDestinationForSender(ctx context.Context, send
 		}
 		
 		if hasHistory {
-			s.logger.WithFields(logrus.Fields{
-				"sender": SanitizePhoneNumber(sender),
-				"destination": SanitizePhoneNumber(destination),
-				"session": session,
-			}).Debug("Found matching destination based on message history")
-			return destination
+			destination, err := s.channelManager.GetSignalDestination(session)
+			if err != nil {
+				s.logger.WithError(err).WithField("session", session).Warn("Failed to get Signal destination for session")
+				continue
+			}
+			
+			// Verify this destination is in our available list
+			for _, availableDest := range availableDestinations {
+				if destination == availableDest {
+					s.logger.WithFields(logrus.Fields{
+						"sender": SanitizePhoneNumber(sender),
+						"destination": SanitizePhoneNumber(destination),
+						"session": session,
+					}).Debug("Found matching destination based on message history")
+					return destination
+				}
+			}
 		}
 	}
 	

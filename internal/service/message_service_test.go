@@ -855,7 +855,7 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 			},
 			setupHistory: func(db *mockDB) {
 				ctx := context.Background()
-				// Personal contact has history with personal session (first destination checked)
+				// Personal contact has history with personal session (first session checked)
 				db.On("HasMessageHistoryBetween", ctx, "personal", "+1111111111").Return(true, nil)
 				// Since we found history with personal, we don't check business for +1111111111
 				
@@ -975,11 +975,6 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 }
 
 func TestDetermineDestinationForSender(t *testing.T) {
-	bridge := new(mockBridge)
-	db := new(mockDB)
-	mediaCache := new(mockMediaCache)
-	signalClient := &mockSignalClient{}
-	
 	channels := []models.Channel{
 		{
 			WhatsAppSessionName:          "personal",
@@ -990,10 +985,6 @@ func TestDetermineDestinationForSender(t *testing.T) {
 			SignalDestinationPhoneNumber: "+2222222222",
 		},
 	}
-	
-	signalConfig := models.SignalConfig{}
-	channelManager, _ := NewChannelManager(channels)
-	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager).(*messageService)
 
 	tests := []struct {
 		name                   string
@@ -1042,6 +1033,16 @@ func TestDetermineDestinationForSender(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Create fresh mocks for each test case
+			bridge := new(mockBridge)
+			db := new(mockDB)
+			mediaCache := new(mockMediaCache)
+			signalClient := &mockSignalClient{}
+			
+			signalConfig := models.SignalConfig{}
+			channelManager, _ := NewChannelManager(channels)
+			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager).(*messageService)
+			
 			tt.setupHistory(db)
 
 			ctx := context.Background()

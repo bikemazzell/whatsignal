@@ -127,6 +127,7 @@ func (cs *ContactService) RefreshContact(ctx context.Context, phoneNumber string
 
 // SyncAllContacts fetches all contacts from WhatsApp and updates the cache
 func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
+	sessionName := cs.waClient.GetSessionName()
 	batchSize := constants.DefaultContactSyncBatchSize
 	offset := 0
 
@@ -146,12 +147,12 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 			dbContact.FromWAContact(&waContact)
 			
 			if err := cs.db.SaveContact(ctx, dbContact); err != nil {
-				log.Printf("Error saving contact %s to cache: %v", waContact.ID, err)
+				log.Printf("[%s] Error saving contact %s to cache: %v", sessionName, waContact.ID, err)
 				continue
 			}
 		}
 
-		log.Printf("Synced %d contacts (batch %d)", len(contacts), offset/batchSize+1)
+		log.Printf("[%s] Synced %d contacts (batch %d)", sessionName, len(contacts), offset/batchSize+1)
 
 		// If we got fewer than batch size, we're done
 		if len(contacts) < batchSize {

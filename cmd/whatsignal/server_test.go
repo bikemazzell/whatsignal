@@ -224,6 +224,10 @@ func (m *mockWAClient) DeleteMessage(ctx context.Context, chatID, messageID stri
 	return args.Error(0)
 }
 
+func (m *mockWAClient) GetSessionName() string {
+	return "test-session"
+}
+
 func (m *mockMessageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	args := m.Called(ctx, threadID)
 	if args.Get(0) == nil {

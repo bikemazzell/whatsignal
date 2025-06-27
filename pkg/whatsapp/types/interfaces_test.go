@@ -172,6 +172,10 @@ func (m *MockWAClient) DeleteMessage(ctx context.Context, chatID, messageID stri
 	return args.Error(0)
 }
 
+func (m *MockWAClient) GetSessionName() string {
+	return "test-session"
+}
+
 // MockSessionManager is a mock implementation of the SessionManager interface
 type MockSessionManager struct {
 	mock.Mock

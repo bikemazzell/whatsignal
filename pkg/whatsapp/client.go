@@ -45,6 +45,10 @@ func NewClient(config types.ClientConfig) types.WAClient {
 	return client
 }
 
+func (c *WhatsAppClient) GetSessionName() string {
+	return c.sessionName
+}
+
 func (c *WhatsAppClient) CreateSession(ctx context.Context) error {
 	_, err := c.sessionMgr.Create(ctx, c.sessionName)
 	return err

@@ -8,7 +8,8 @@ services:
     volumes:
       - signal_cli_data:/home/.local/share/signal-cli
     environment:
-      - MODE=json-rpc
+      - MODE=native
+      - AUTO_RECEIVE_SCHEDULE=0 */6 * * *
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/about"]
@@ -30,10 +31,11 @@ services:
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY:-your-api-key}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD-SHELL", "curl -f -H \"X-Api-Key: $$WHATSAPP_API_KEY\" http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
   # WhatSignal - main bridge application
   whatsignal:
@@ -46,8 +48,9 @@ services:
     ports:
       - "8082:8082"
     volumes:
-      - ./config.json:/app/config.json:ro
-      - whatsignal_data:/app/data
+      # Replace with the folder path to where your WhatSignal data will be stored
+      - /path/to/your/folder/config.json:/app/config.json:ro
+      - /path/to/your/folder/data:/app/data
     environment:
       # Load from .env file or use defaults
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
@@ -55,13 +58,10 @@ services:
       - WHATSIGNAL_ENABLE_ENCRYPTION=${WHATSIGNAL_ENABLE_ENCRYPTION:-true}
       - WHATSIGNAL_ENCRYPTION_SECRET=${WHATSIGNAL_ENCRYPTION_SECRET}
     depends_on:
-      signal-cli-rest-api:
-        condition: service_healthy
-      waha:
-        condition: service_healthy
+      - signal-cli-rest-api
+      - waha
     restart: unless-stopped
-    networks:
-      - default
+    entrypoint: ["/bin/sh", "-c", "sleep 10 && /app/whatsignal"]
 
 networks:
   default:

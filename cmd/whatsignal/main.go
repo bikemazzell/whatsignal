@@ -154,17 +154,35 @@ func run(ctx context.Context) error {
 
 	syncOnStartup := cfg.WhatsApp.ContactSyncOnStartup
 	if syncOnStartup {
-		logger.Info("Waiting for WhatsApp session to be ready...")
-		// Wait for session to be ready
-		sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
-		if err := waClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
-			logger.Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
-		} else {
-			logger.Info("WhatsApp session is ready. Syncing contacts...")
-			if err := contactService.SyncAllContacts(ctx); err != nil {
-				logger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
+		// Sync contacts for all configured sessions
+		for _, channel := range cfg.Channels {
+			sessionName := channel.WhatsAppSessionName
+			logger.WithField("session", sessionName).Info("Waiting for WhatsApp session to be ready...")
+			
+			// Create a client for this specific session
+			sessionClient := whatsapp.NewClient(types.ClientConfig{
+				BaseURL:      cfg.WhatsApp.APIBaseURL,
+				APIKey:       apiKey,
+				SessionName:  sessionName,
+				Timeout:      cfg.WhatsApp.Timeout,
+				RetryCount:   cfg.WhatsApp.RetryCount,
+			})
+			
+			// Wait for session to be ready
+			sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
+			if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
+				logger.WithField("session", sessionName).Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
+				continue
+			}
+			
+			logger.WithField("session", sessionName).Info("WhatsApp session is ready. Syncing contacts...")
+			
+			// Create a contact service for this session
+			sessionContactService := service.NewContactServiceWithConfig(db, sessionClient, cacheHours)
+			if err := sessionContactService.SyncAllContacts(ctx); err != nil {
+				logger.WithField("session", sessionName).Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
 			} else {
-				logger.Info("Contact sync completed successfully")
+				logger.WithField("session", sessionName).Info("Contact sync completed successfully")
 			}
 		}
 	} else {

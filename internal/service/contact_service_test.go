@@ -167,6 +167,11 @@ func (m *mockWAClient) DeleteMessage(ctx context.Context, chatID, messageID stri
 	return args.Error(0)
 }
 
+func (m *mockWAClient) GetSessionName() string {
+	args := m.Called()
+	return args.String(0)
+}
+
 func TestNewContactService(t *testing.T) {
 	mockDB := &mockContactDatabaseService{}
 	mockWA := &mockWAClient{}
@@ -469,6 +474,7 @@ func TestContactService_SyncAllContacts(t *testing.T) {
 			}
 		}
 
+		mockWA.On("GetSessionName").Return("test-session")
 		mockWA.On("GetAllContacts", ctx, 100, 0).Return(batch1, nil)
 		mockWA.On("GetAllContacts", ctx, 100, 100).Return(batch2, nil)
 
@@ -487,6 +493,7 @@ func TestContactService_SyncAllContacts(t *testing.T) {
 		mockWA := &mockWAClient{}
 		service := NewContactService(mockDB, mockWA)
 
+		mockWA.On("GetSessionName").Return("test-session")
 		mockWA.On("GetAllContacts", ctx, 100, 0).Return([]types.Contact(nil), errors.New("API error"))
 
 		err := service.SyncAllContacts(ctx)
@@ -501,6 +508,7 @@ func TestContactService_SyncAllContacts(t *testing.T) {
 		mockWA := &mockWAClient{}
 		service := NewContactService(mockDB, mockWA)
 
+		mockWA.On("GetSessionName").Return("test-session")
 		mockWA.On("GetAllContacts", ctx, 100, 0).Return([]types.Contact{}, nil)
 
 		err := service.SyncAllContacts(ctx)
@@ -527,6 +535,7 @@ func TestContactService_SyncAllContacts(t *testing.T) {
 			}
 		}
 
+		mockWA.On("GetSessionName").Return("test-session")
 		mockWA.On("GetAllContacts", cancelledCtx, 100, 0).Return(batch1, nil)
 		mockDB.On("SaveContact", cancelledCtx, mock.AnythingOfType("*models.Contact")).Return(nil).Times(100)
 
@@ -549,12 +558,74 @@ func TestContactService_SyncAllContacts(t *testing.T) {
 			},
 		}
 
+		mockWA.On("GetSessionName").Return("test-session")
 		mockWA.On("GetAllContacts", ctx, 100, 0).Return(batch1, nil)
 		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(errors.New("database error"))
 
 		err := service.SyncAllContacts(ctx)
 
 		// Should continue even with database errors and return no error
+		assert.NoError(t, err)
+		mockWA.AssertExpectations(t)
+		mockDB.AssertExpectations(t)
+	})
+}
+
+func TestContactService_SyncAllContacts_SessionLogging(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("logs include session name", func(t *testing.T) {
+		mockDB := &mockContactDatabaseService{}
+		mockWA := &mockWAClient{}
+		
+		// Set up mock to return a specific session name (called at the start of SyncAllContacts)
+		mockWA.On("GetSessionName").Return("business-session")
+		
+		service := NewContactService(mockDB, mockWA)
+
+		// Single batch of contacts
+		batch := []types.Contact{
+			{
+				ID:     "+1234567890@c.us",
+				Number: "+1234567890",
+				Name:   "Test Contact",
+			},
+		}
+
+		mockWA.On("GetAllContacts", ctx, 100, 0).Return(batch, nil)
+		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(nil)
+
+		err := service.SyncAllContacts(ctx)
+
+		assert.NoError(t, err)
+		mockWA.AssertExpectations(t)
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("handles save error with session name in logs", func(t *testing.T) {
+		mockDB := &mockContactDatabaseService{}
+		mockWA := &mockWAClient{}
+		
+		mockWA.On("GetSessionName").Return("personal-session")
+		
+		service := NewContactService(mockDB, mockWA)
+
+		batch := []types.Contact{
+			{
+				ID:     "+1234567890@c.us",
+				Number: "+1234567890",
+				Name:   "Test Contact",
+			},
+		}
+
+		mockWA.On("GetAllContacts", ctx, 100, 0).Return(batch, nil)
+		
+		// Mock database save error
+		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(errors.New("save error"))
+
+		err := service.SyncAllContacts(ctx)
+
+		// Should not return error even if individual contact save fails
 		assert.NoError(t, err)
 		mockWA.AssertExpectations(t)
 		mockDB.AssertExpectations(t)

@@ -170,6 +170,10 @@ func (m *mockWhatsAppClient) GetAllContacts(ctx context.Context, limit, offset i
 	return args.Get(0).([]types.Contact), args.Error(1)
 }
 
+func (m *mockWhatsAppClient) GetSessionName() string {
+	return "test-session"
+}
+
 // Mock Signal client
 type mockSignalClient struct {
 	mock.Mock

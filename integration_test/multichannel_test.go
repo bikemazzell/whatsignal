@@ -1,13 +1,16 @@
 package integration_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
+	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -288,4 +291,194 @@ func createWhatsAppPayload(session, id, from, body string) models.WhatsAppWebhoo
 			Timestamp: time.Now().Unix(),
 		},
 	}
+}
+
+// Mock WAClient for multi-session contact sync testing
+type mockMultiSessionWAClient struct {
+	mock.Mock
+	sessionName string
+}
+
+func (m *mockMultiSessionWAClient) GetSessionName() string {
+	return m.sessionName
+}
+
+func (m *mockMultiSessionWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([]types.Contact, error) {
+	args := m.Called(ctx, limit, offset)
+	return args.Get(0).([]types.Contact), args.Error(1)
+}
+
+func (m *mockMultiSessionWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
+}
+
+// Implement other required methods with minimal implementation
+func (m *mockMultiSessionWAClient) SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) DeleteMessage(ctx context.Context, chatID, messageID string) error {
+	return nil
+}
+func (m *mockMultiSessionWAClient) CreateSession(ctx context.Context) error {
+	return nil
+}
+func (m *mockMultiSessionWAClient) StartSession(ctx context.Context) error {
+	return nil
+}
+func (m *mockMultiSessionWAClient) StopSession(ctx context.Context) error {
+	return nil
+}
+func (m *mockMultiSessionWAClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) RestartSession(ctx context.Context) error {
+	return nil
+}
+func (m *mockMultiSessionWAClient) GetContact(ctx context.Context, contactID string) (*types.Contact, error) {
+	return nil, nil
+}
+
+// TestMultiSessionContactSync tests that contact sync works correctly across multiple sessions
+func TestMultiSessionContactSync(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("contact sync for multiple sessions", func(t *testing.T) {
+		// Create mock clients for different sessions
+		personalClient := &mockMultiSessionWAClient{sessionName: "personal"}
+		businessClient := &mockMultiSessionWAClient{sessionName: "business"}
+
+		// Mock contacts for personal session
+		personalContacts := []types.Contact{
+			{ID: "+1111111111@c.us", Number: "+1111111111", Name: "Personal Friend"},
+			{ID: "+2222222222@c.us", Number: "+2222222222", Name: "Family Member"},
+		}
+
+		// Mock contacts for business session
+		businessContacts := []types.Contact{
+			{ID: "+3333333333@c.us", Number: "+3333333333", Name: "Business Client"},
+			{ID: "+4444444444@c.us", Number: "+4444444444", Name: "Supplier"},
+		}
+
+		// Set up expectations for personal session
+		personalClient.On("GetAllContacts", ctx, 100, 0).Return(personalContacts, nil)
+
+		// Set up expectations for business session
+		businessClient.On("GetAllContacts", ctx, 100, 0).Return(businessContacts, nil)
+
+		// Create a mock database that accepts any contact
+		mockDB := &mockContactDatabaseService{}
+		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(nil)
+
+		// Test contact sync for personal session
+		personalContactService := service.NewContactService(mockDB, personalClient)
+		err := personalContactService.SyncAllContacts(ctx)
+		assert.NoError(t, err)
+
+		// Test contact sync for business session
+		businessContactService := service.NewContactService(mockDB, businessClient)
+		err = businessContactService.SyncAllContacts(ctx)
+		assert.NoError(t, err)
+
+		// Verify all expectations were met
+		personalClient.AssertExpectations(t)
+		businessClient.AssertExpectations(t)
+		mockDB.AssertExpectations(t)
+
+		// Verify that SaveContact was called for all contacts from both sessions
+		mockDB.AssertNumberOfCalls(t, "SaveContact", 4) // 2 personal + 2 business
+	})
+
+	t.Run("contact sync handles session failures independently", func(t *testing.T) {
+		// Create mock clients
+		workingClient := &mockMultiSessionWAClient{sessionName: "working"}
+
+		workingContacts := []types.Contact{
+			{ID: "+5555555555@c.us", Number: "+5555555555", Name: "Working Contact"},
+		}
+
+		// Working session succeeds
+		workingClient.On("GetAllContacts", ctx, 100, 0).Return(workingContacts, nil)
+
+		mockDB := &mockContactDatabaseService{}
+		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(nil)
+
+		// Test that working session succeeds
+		workingContactService := service.NewContactService(mockDB, workingClient)
+		err := workingContactService.SyncAllContacts(ctx)
+		assert.NoError(t, err)
+
+		workingClient.AssertExpectations(t)
+		mockDB.AssertExpectations(t)
+
+		// Only working session's contact should be saved
+		mockDB.AssertNumberOfCalls(t, "SaveContact", 1)
+	})
+}
+
+// Mock database service for testing
+type mockContactDatabaseService struct {
+	mock.Mock
+}
+
+func (m *mockContactDatabaseService) SaveContact(ctx context.Context, contact *models.Contact) error {
+	args := m.Called(ctx, contact)
+	return args.Error(0)
+}
+
+func (m *mockContactDatabaseService) GetContact(ctx context.Context, contactID string) (*models.Contact, error) {
+	args := m.Called(ctx, contactID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Contact), args.Error(1)
+}
+
+func (m *mockContactDatabaseService) GetContactByPhone(ctx context.Context, phoneNumber string) (*models.Contact, error) {
+	args := m.Called(ctx, phoneNumber)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Contact), args.Error(1)
+}
+
+func (m *mockContactDatabaseService) CleanupOldContacts(retentionDays int) error {
+	args := m.Called(retentionDays)
+	return args.Error(0)
 }

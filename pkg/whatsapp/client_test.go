@@ -256,6 +256,41 @@ func TestClient_SendText(t *testing.T) {
 	assert.Equal(t, "sent", resp.Status)
 }
 
+func TestClient_SendText_EmptyResponse(t *testing.T) {
+	// Test server that returns 201 with empty body (simulates WAHA behavior)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check API key
+		if apiKey := r.Header.Get("X-Api-Key"); apiKey != "test-api-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		if r.URL.Path == testAPIBase + testEndpointSendText {
+			// Return 201 with empty body (like WAHA sometimes does)
+			w.WriteHeader(http.StatusCreated)
+			// No body written
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-api-key",
+		SessionName: "test-session",
+		Timeout:     5 * time.Second,
+	})
+
+	ctx := context.Background()
+
+	// Test that empty response is handled gracefully
+	resp, err := client.SendText(ctx, "123456", "Hello, World!")
+	require.NoError(t, err)
+	assert.Equal(t, "sent", resp.Status)
+	assert.Equal(t, "", resp.MessageID) // Empty message ID is acceptable
+}
+
 func TestClient_SendImage(t *testing.T) {
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "test-image-*.jpg")
@@ -1309,6 +1344,7 @@ func TestWAHAResponseParsing(t *testing.T) {
 		responseBody        string
 		expectedMessageID   string
 		expectedParseError  bool
+		expectedWarning     bool
 	}{
 		{
 			name: "valid WAHA response with ID field",
@@ -1362,7 +1398,9 @@ func TestWAHAResponseParsing(t *testing.T) {
 			responseBody: `{
 				"invalid": json
 			}`,
-			expectedParseError: true,
+			expectedMessageID:    "",
+			expectedParseError:   false, // Changed: invalid JSON now returns success with warning
+			expectedWarning:      true,  // New field to check for warning message
 		},
 	}
 
@@ -1390,6 +1428,12 @@ func TestWAHAResponseParsing(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedMessageID, resp.MessageID)
 				assert.Equal(t, "sent", resp.Status)
+				
+				if tt.expectedWarning {
+					assert.Contains(t, resp.Error, "warning: could not parse response")
+				} else {
+					assert.Empty(t, resp.Error)
+				}
 			}
 		})
 	}

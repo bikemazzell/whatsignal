@@ -338,12 +338,28 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 }
 
 func (s *messageService) determineDestinationForSender(ctx context.Context, sender string, availableDestinations []string) string {
-	// Get all WhatsApp sessions to check message history
+	for _, destination := range availableDestinations {
+		if sender == destination {
+			session, err := s.channelManager.GetWhatsAppSession(destination)
+			if err != nil {
+				s.logger.WithError(err).WithField("destination", SanitizePhoneNumber(destination)).Warn("Failed to get WhatsApp session for destination")
+				continue
+			}
+			
+			s.logger.WithFields(logrus.Fields{
+				"sender": SanitizePhoneNumber(sender),
+				"destination": SanitizePhoneNumber(destination),
+				"session": session,
+			}).Debug("Signal sender matches configured destination, routing to corresponding session")
+			
+			return destination
+		}
+	}
+	
 	sessions := s.channelManager.GetAllWhatsAppSessions()
 	
 	for _, session := range sessions {
 		// Check if we have any message history between this session and the sender
-		// We look for any message mapping where the Signal sender matches and the session matches
 		hasHistory, err := s.db.HasMessageHistoryBetween(ctx, session, sender)
 		if err != nil {
 			s.logger.WithError(err).WithFields(logrus.Fields{

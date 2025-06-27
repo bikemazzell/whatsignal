@@ -310,6 +310,15 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		return nil
 	}
 
+	// Skip WhatsApp status/broadcast messages
+	if strings.Contains(payload.Payload.From, "status@broadcast") {
+		s.logger.WithFields(logrus.Fields{
+			"messageID": service.SanitizeMessageID(payload.Payload.ID),
+			"from":      payload.Payload.From,
+		}).Debug("Ignoring WhatsApp status/broadcast message")
+		return nil
+	}
+
 	// Enhanced input validation
 	if err := service.ValidateMessageID(payload.Payload.ID); err != nil {
 		return ValidationError{Message: fmt.Sprintf("invalid message ID: %v", err)}

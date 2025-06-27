@@ -154,11 +154,26 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		c.logger.WithFields(logrus.Fields{
-			"status": resp.StatusCode,
-			"body":   string(bodyBytes),
-		}).Error("Signal API returned error status")
-		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+		bodyStr := string(bodyBytes)
+		
+		// Check if this is a transient connection error that can be retried
+		isTransientError := strings.Contains(bodyStr, "Closed unexpectedly") || 
+			strings.Contains(bodyStr, "connection") || 
+			strings.Contains(bodyStr, "timeout")
+		
+		if isTransientError {
+			c.logger.WithFields(logrus.Fields{
+				"status": resp.StatusCode,
+				"error":  bodyStr,
+			}).Warn("Signal API connection issue (will retry)")
+		} else {
+			c.logger.WithFields(logrus.Fields{
+				"status": resp.StatusCode,
+				"body":   bodyStr,
+			}).Error("Signal API returned error status")
+		}
+		
+		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, bodyStr)
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)

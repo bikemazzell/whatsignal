@@ -1,25 +1,136 @@
 # WhatsApp-Signal Bridge TODO
 
+## Edge Case Testing
+
+### Completed Edge Case Tests
+- ✓ Encryption edge cases (very large data, binary data, concurrent access, tamper detection)
+- ✓ Database edge cases (concurrent operations, transaction rollback, SQL injection protection)
+- ✓ Rate limiting edge cases (burst traffic, sustained load, memory cleanup, race conditions)
+
+### Remaining Edge Cases to Test
+
+#### Network and API Edge Cases
+- Network partition handling during message transmission
+- API timeout scenarios (WhatsApp/Signal APIs becoming unresponsive)
+- Partial message delivery recovery
+- WebSocket connection stability under poor network conditions
+- Handling of malformed API responses
+- Recovery from temporary network failures
+- Connection pool exhaustion
+
+#### Message Processing Edge Cases
+- Message queue overflow scenarios
+- Very large message handling (>10MB)
+- Handling of malformed message formats
+- Unicode and emoji edge cases in different positions
+- Message ordering during high concurrency
+- Duplicate message detection and handling
+- Message loop prevention
+
+#### Resource Management Edge Cases
+- Memory leak detection under long-running operations
+- Disk space exhaustion during media downloads
+- CPU spike handling during encryption/decryption
+- File descriptor exhaustion
+- Database connection pool exhaustion
+- Goroutine leak detection
+
+#### Security Edge Cases
+- Timing attack resistance in authentication
+- Path traversal in media handling (partially tested)
+- XXE attacks in XML processing (if any)
+- SSRF prevention in URL handling
+- Resource exhaustion attacks (zip bombs, etc.)
+
+#### Error Recovery Edge Cases
+- Cascading failure prevention
+- Circuit breaker behavior under sustained failures
+- Graceful degradation when services are unavailable
+- Recovery from corrupted state
+- Handling of persistent retries
+- Dead letter queue management
+
+#### Performance Edge Cases
+- Behavior under extreme load (>10k messages/second)
+- Performance degradation curves
+- Latency spikes during garbage collection
+- Impact of large contact lists on sync
+- Batch processing optimization limits
+
+#### Configuration Edge Cases
+- Invalid configuration combinations
+- Configuration hot-reloading edge cases
+- Environment variable precedence issues
+- Missing required configuration with defaults
+- Configuration validation completeness
+
 
 
 ## Unit test code coverage improvements
 
--improve code coverage to at least 90% across all packages; currently they are at:
+### Current Coverage Status
+Packages below 95% coverage that need improvement:
 
-  - cmd/whatsignal: 75.9%
-  - pkg/signal: 82.1%
-  - internal/database: 77.4%
-  - pkg/whatsapp: 80.5%
-  - pkg/media: 82.6%
-  - internal/service: 85.7%
-  - internal/security: 95.8%
-  - internal/config: 96.2%
-  - internal/migrations: 100.0%
-  - internal/models: 100.0%
-  - pkg/signal/types: 100.0%
-  - pkg/whatsapp/types: 100.0%
+  - cmd/migrate: 0.0% → 95% (needs tests for migration command)
+  - cmd/whatsignal: 76.4% → 95% (18.6% gap)
+  - pkg/signal: 81.9% → 95% (13.1% gap)
+  - internal/database: Failed tests → 95% (needs fixing + more tests)
+  - pkg/whatsapp: 80.6% → 95% (14.4% gap)
+  - pkg/media: 82.6% → 95% (12.4% gap)
+  - internal/service: 85.8% → 95% (9.2% gap)
 
-  Total coverage: ~80%
+Already meeting 95%+ coverage:
+  - internal/security: 95.8% ✓
+  - internal/config: 96.2% ✓
+  - internal/migrations: 100.0% ✓
+  - internal/models: 100.0% ✓
+  - pkg/signal/types: 100.0% ✓
+  - pkg/whatsapp/types: 100.0% ✓
+
+### Specific Areas Needing Tests
+
+#### cmd/whatsignal (76.4% → 95%)
+- [ ] Error paths in main.go initialization
+- [ ] Server shutdown error handling
+- [ ] Rate limiter middleware edge cases
+- [ ] Webhook signature verification failures
+- [ ] Configuration validation error paths
+- [ ] Signal device initialization failures
+
+#### pkg/signal (81.9% → 95%)
+- [ ] RPC connection failures
+- [ ] Message parsing errors
+- [ ] Attachment upload/download failures
+- [ ] Retry mechanism edge cases
+- [ ] Context cancellation handling
+
+#### internal/database (Failed → 95%)
+- [ ] Fix failing tests first
+- [ ] Transaction rollback scenarios
+- [ ] Concurrent access patterns
+- [ ] Migration failure handling
+- [ ] Encryption/decryption errors
+
+#### pkg/whatsapp (80.6% → 95%)
+- [ ] API error responses
+- [ ] Session management failures
+- [ ] Media upload errors
+- [ ] Contact sync edge cases
+- [ ] Webhook parsing failures
+
+#### pkg/media (82.6% → 95%)
+- [ ] File system errors
+- [ ] Invalid media types
+- [ ] Size limit enforcement
+- [ ] Concurrent download handling
+- [ ] Cleanup failures
+
+#### internal/service (85.8% → 95%)
+- [ ] Bridge service error paths
+- [ ] Message routing failures
+- [ ] Session monitoring errors
+- [ ] Poller lifecycle edge cases
+- [ ] Contact service failures
 
 
 ## Group chat support

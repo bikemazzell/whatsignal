@@ -19,6 +19,11 @@ type encryptor struct {
 }
 
 func NewEncryptor() (*encryptor, error) {
+	// If encryption is disabled, return a nil encryptor
+	if !isEncryptionEnabled() {
+		return &encryptor{gcm: nil}, nil
+	}
+
 	key, err := deriveKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive encryption key: %w", err)
@@ -38,8 +43,8 @@ func NewEncryptor() (*encryptor, error) {
 }
 
 func (e *encryptor) Encrypt(plaintext string) (string, error) {
-	if plaintext == "" {
-		return "", nil
+	if plaintext == "" || e.gcm == nil {
+		return plaintext, nil
 	}
 
 	nonce := make([]byte, models.NonceSize)
@@ -54,8 +59,8 @@ func (e *encryptor) Encrypt(plaintext string) (string, error) {
 }
 
 func (e *encryptor) Decrypt(ciphertext string) (string, error) {
-	if ciphertext == "" {
-		return "", nil
+	if ciphertext == "" || e.gcm == nil {
+		return ciphertext, nil
 	}
 
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
@@ -98,8 +103,8 @@ func deriveKey() ([]byte, error) {
 // This is intentionally deterministic to enable encrypted database searches
 // #nosec G407 - Deterministic encryption is required for searchable encryption
 func (e *encryptor) EncryptForLookup(plaintext string) (string, error) {
-	if plaintext == "" {
-		return "", nil
+	if plaintext == "" || e.gcm == nil {
+		return plaintext, nil
 	}
 
 	// Create deterministic nonce from plaintext hash with application-specific salt

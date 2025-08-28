@@ -309,15 +309,30 @@ func TestCleanupOldRecords(t *testing.T) {
 	newTime := time.Now()
 
 	// Insert records directly using SQL to set created_at
-	_, err := db.db.ExecContext(ctx, `
+	// Must encrypt fields deterministically to match lookup behavior
+	encryptedChatOld, err := db.encryptor.EncryptForLookupIfEnabled("chat123")
+	require.NoError(t, err)
+	encryptedWAOld, err := db.encryptor.EncryptForLookupIfEnabled("msg123")
+	require.NoError(t, err)
+	encryptedSigOld, err := db.encryptor.EncryptForLookupIfEnabled("sig123")
+	require.NoError(t, err)
+
+	_, err = db.db.ExecContext(ctx, `
 		INSERT INTO message_mappings (
 			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			signal_timestamp, forwarded_at, delivery_status,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-2 days'), datetime('now', '-2 days'))`,
-		"chat123", "msg123", "sig123",
+		encryptedChatOld, encryptedWAOld, encryptedSigOld,
 		oldTime, oldTime, models.DeliveryStatusDelivered,
 	)
+	require.NoError(t, err)
+
+	encryptedChatNew, err := db.encryptor.EncryptForLookupIfEnabled("chat124")
+	require.NoError(t, err)
+	encryptedWANew, err := db.encryptor.EncryptForLookupIfEnabled("msg124")
+	require.NoError(t, err)
+	encryptedSigNew, err := db.encryptor.EncryptForLookupIfEnabled("sig124")
 	require.NoError(t, err)
 
 	_, err = db.db.ExecContext(ctx, `
@@ -326,7 +341,7 @@ func TestCleanupOldRecords(t *testing.T) {
 			signal_timestamp, forwarded_at, delivery_status,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		"chat124", "msg124", "sig124",
+		encryptedChatNew, encryptedWANew, encryptedSigNew,
 		newTime, newTime, models.DeliveryStatusDelivered,
 	)
 	require.NoError(t, err)
@@ -548,8 +563,7 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 }
 
 func TestEncryptorEdgeCases(t *testing.T) {
-	// Test with encryption disabled
-	os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+	// Always-on encryption
 	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
@@ -565,20 +579,8 @@ func TestEncryptorEdgeCases(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "", decrypted)
 
-	// Test EncryptIfEnabled and DecryptIfEnabled with encryption disabled
+	// Test EncryptIfEnabled and DecryptIfEnabled (always encrypt/decrypt)
 	result, err := encryptor.EncryptIfEnabled("test")
-	assert.NoError(t, err)
-	assert.Equal(t, "test", result)
-
-	result, err = encryptor.DecryptIfEnabled("test")
-	assert.NoError(t, err)
-	assert.Equal(t, "test", result)
-
-	// Test with encryption enabled
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-
-	result, err = encryptor.EncryptIfEnabled("test")
 	assert.NoError(t, err)
 	assert.NotEqual(t, "test", result)
 
@@ -797,11 +799,13 @@ func TestDatabase_CleanupOldContacts(t *testing.T) {
 	require.NoError(t, err)
 
 	// Manually update the cached_at for the old contact to simulate old data
+	encryptedOldContactID, err := db.encryptor.EncryptForLookupIfEnabled(oldContact.ContactID)
+	require.NoError(t, err)
 	_, err = db.db.ExecContext(ctx, `
-		UPDATE contacts 
-		SET cached_at = ? 
+		UPDATE contacts
+		SET cached_at = ?
 		WHERE contact_id = ?
-	`, oldTime.Format(time.RFC3339), oldContact.ContactID)
+	`, oldTime.Format(time.RFC3339), encryptedOldContactID)
 	require.NoError(t, err)
 
 	// Run cleanup with 30 day retention

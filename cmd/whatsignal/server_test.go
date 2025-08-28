@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
 	signaltypes "whatsignal/pkg/signal/types"
@@ -361,7 +362,7 @@ func TestVerifySignature(t *testing.T) {
 				req.Header.Set("X-Test-Signature", tt.signature)
 			}
 
-			body, err := verifySignature(req, tt.secretKey, "X-Test-Signature")
+			body, err := verifySignatureWithSkew(req, tt.secretKey, "X-Test-Signature", time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -729,11 +730,11 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				mac.Write(payload)
 				signature := hex.EncodeToString(mac.Sum(nil))
 				req.Header.Set(XWahaSignatureHeader, signature)
-				req.Header.Set("X-Webhook-Timestamp", "1234567890")
+				req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
 			} else {
 				// Create invalid signature
 				req.Header.Set(XWahaSignatureHeader, "invalidsignature")
-				req.Header.Set("X-Webhook-Timestamp", "1234567890")
+				req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
 			}
 
 			w := httptest.NewRecorder()
@@ -1176,7 +1177,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			mac.Write(payload)
 			signature := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set(XWahaSignatureHeader, signature)
-			req.Header.Set("X-Webhook-Timestamp", "1234567890")
+			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
 
 			w := httptest.NewRecorder()
 
@@ -1258,7 +1259,7 @@ func TestVerifySignature_BodyReadError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/test", &errorReader{})
 	req.Header.Set("X-Test-Signature", "sha256=test")
 
-	_, err := verifySignature(req, "secret", "X-Test-Signature")
+	_, err := verifySignatureWithSkew(req, "secret", "X-Test-Signature", 5*time.Minute)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read request body")
 }

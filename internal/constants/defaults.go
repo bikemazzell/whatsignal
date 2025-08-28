@@ -37,6 +37,7 @@ const (
 	DefaultServerWriteTimeoutSec      = 15
 	DefaultServerIdleTimeoutSec       = 60
 	DefaultSessionStatusTimeoutSec    = 5
+	DefaultWebhookMaxSkewSec          = 300 // 5 minutes for webhook timestamp skew
 )
 
 // Privacy settings

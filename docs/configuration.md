@@ -103,6 +103,12 @@ The routing is now session-aware: each WhatsApp session is mapped to a specific 
   - Messages older than this will be automatically deleted
   - Set to `0` to keep messages indefinitely
 
+## Server Configuration
+
+- `server.webhookMaxSkewSec`: Maximum allowed timestamp skew for authenticated webhooks
+  - Default: `300` seconds (5 minutes)
+  - Protects against replay attacks by rejecting stale or far-future webhooks
+
 ## Channels Configuration
 
 **Required**: WhatSignal now requires the `channels` array configuration for routing messages between WhatsApp sessions and Signal destinations.

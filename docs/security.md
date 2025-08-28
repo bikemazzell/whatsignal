@@ -8,13 +8,10 @@ WhatSignal implements multiple layers of security to protect your message data a
 WhatSignal supports field-level encryption for sensitive data stored in the SQLite database using AES-256-GCM encryption with PBKDF2 key derivation.
 
 ### Configuration
-Enable encryption by setting these environment variables:
+Encryption is always enabled. You must set this environment variable:
 
 ```bash
-# Enable encryption (required)
-WHATSIGNAL_ENABLE_ENCRYPTION=true
-
-# Custom encryption secret (recommended, minimum 32 characters)
+# Encryption secret (required, minimum 32 characters)
 WHATSIGNAL_ENCRYPTION_SECRET=your-very-secure-encryption-secret-change-this
 ```
 

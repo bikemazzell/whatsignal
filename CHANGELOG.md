@@ -5,6 +5,19 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 28-08-2025
+
+### Security
+- Added replay protection for WAHA webhooks with timestamp skew validation
+  - New server.webhookMaxSkewSec config (default 300 seconds)
+  - Backwards-compatible env override WHATSIGNAL_WEBHOOK_MAX_SKEW_SEC still honored
+- Hardened database encryption initialization
+  - If encryption disabled and no secret, DB operates in plaintext without error
+  - If encryption enabled but secret missing, startup errors as before
+
+### Documentation
+- Updated configuration guide with new server.webhookMaxSkewSec option
+
 ## [1.1.0] - 26-06-2025
 
 ### Security

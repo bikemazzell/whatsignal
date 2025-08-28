@@ -242,7 +242,12 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.logger.Debug("Processing WhatsApp webhook request")
 		
-		bodyBytes, err := verifySignature(r, s.cfg.WhatsApp.WebhookSecret, XWahaSignatureHeader)
+		maxSkewSec := s.cfg.Server.WebhookMaxSkewSec
+		if maxSkewSec <= 0 {
+			maxSkewSec = constants.DefaultWebhookMaxSkewSec
+		}
+		maxSkew := time.Duration(maxSkewSec) * time.Second
+		bodyBytes, err := verifySignatureWithSkew(r, s.cfg.WhatsApp.WebhookSecret, XWahaSignatureHeader, maxSkew)
 		if err != nil {
 			s.logger.WithError(err).Error("WhatsApp webhook signature verification failed")
 			http.Error(w, "Signature verification failed", http.StatusUnauthorized)

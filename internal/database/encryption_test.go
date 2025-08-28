@@ -131,24 +131,11 @@ func TestEncryptor_EncryptIfEnabled(t *testing.T) {
 
 	plaintext := "test message"
 
-	t.Run("encryption disabled", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-		defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-
-		result, err := encryptor.EncryptIfEnabled(plaintext)
-		require.NoError(t, err)
-		assert.Equal(t, plaintext, result)
-	})
-
-	t.Run("encryption enabled", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-		defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-
-		result, err := encryptor.EncryptIfEnabled(plaintext)
-		require.NoError(t, err)
-		assert.NotEqual(t, plaintext, result)
-		assert.NotEmpty(t, result)
-	})
+	// Always-on encryption
+	result, err := encryptor.EncryptIfEnabled(plaintext)
+	require.NoError(t, err)
+	assert.NotEqual(t, plaintext, result)
+	assert.NotEmpty(t, result)
 }
 
 func TestEncryptor_DecryptIfEnabled(t *testing.T) {
@@ -160,26 +147,12 @@ func TestEncryptor_DecryptIfEnabled(t *testing.T) {
 
 	plaintext := "test message"
 
-	t.Run("encryption disabled", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-		defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+	ciphertext, err := encryptor.Encrypt(plaintext)
+	require.NoError(t, err)
 
-		result, err := encryptor.DecryptIfEnabled(plaintext)
-		require.NoError(t, err)
-		assert.Equal(t, plaintext, result)
-	})
-
-	t.Run("encryption enabled", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-		defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-
-		ciphertext, err := encryptor.Encrypt(plaintext)
-		require.NoError(t, err)
-
-		result, err := encryptor.DecryptIfEnabled(ciphertext)
-		require.NoError(t, err)
-		assert.Equal(t, plaintext, result)
-	})
+	result, err := encryptor.DecryptIfEnabled(ciphertext)
+	require.NoError(t, err)
+	assert.Equal(t, plaintext, result)
 }
 
 func TestDeriveKey_WithCustomSecret(t *testing.T) {
@@ -234,43 +207,6 @@ func TestIsEncryptionEnabled(t *testing.T) {
 		}
 	}()
 
-	testCases := []struct {
-		name     string
-		envValue string
-		expected bool
-	}{
-		{
-			name:     "enabled",
-			envValue: "true",
-			expected: true,
-		},
-		{
-			name:     "disabled",
-			envValue: "false",
-			expected: false,
-		},
-		{
-			name:     "empty",
-			envValue: "",
-			expected: false,
-		},
-		{
-			name:     "invalid value",
-			envValue: "yes",
-			expected: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.envValue == "" {
-				os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-			} else {
-				os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", tc.envValue)
-			}
-
-			result := isEncryptionEnabled()
-			assert.Equal(t, tc.expected, result)
-		})
-	}
+	// Always-on encryption: no environment toggle
+	assert.True(t, true)
 }

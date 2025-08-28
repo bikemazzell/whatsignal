@@ -122,6 +122,10 @@ func validate(c *models.Config) error {
 	if c.WhatsApp.PollIntervalSec <= 0 {
 		c.WhatsApp.PollIntervalSec = constants.DefaultWhatsAppPollIntervalSec
 	}
+	// Default webhook skew if not provided
+	if c.Server.WebhookMaxSkewSec <= 0 {
+		c.Server.WebhookMaxSkewSec = constants.DefaultWebhookMaxSkewSec
+	}
 	return nil
 }
 

@@ -19,10 +19,10 @@ import (
 
 // TestDatabase_ConcurrentOperations tests concurrent database access
 func TestDatabase_ConcurrentOperations(t *testing.T) {
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "concurrent_test.db")
 
@@ -121,10 +121,10 @@ func makeConcurrentID(prefix string, id, j int) string {
 
 // TestDatabase_TransactionRollback tests transaction rollback behavior
 func TestDatabase_TransactionRollback(t *testing.T) {
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "transaction_test.db")
 
@@ -167,10 +167,10 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 		t.Skip("Skipping large dataset test in short mode")
 	}
 
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "large_test.db")
 
@@ -224,10 +224,10 @@ func makeID(prefix string, num int) string {
 
 // TestDatabase_SQLInjectionAttempts tests SQL injection protection
 func TestDatabase_SQLInjectionAttempts(t *testing.T) {
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "injection_test.db")
 
@@ -276,10 +276,10 @@ func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 
 // TestDatabase_FilePermissions tests database file permissions
 func TestDatabase_FilePermissions(t *testing.T) {
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "permissions_test.db")
 
@@ -312,10 +312,10 @@ func TestDatabase_CorruptedDatabase(t *testing.T) {
 
 // TestDatabase_VeryLongIDs tests handling of very long IDs
 func TestDatabase_VeryLongIDs(t *testing.T) {
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "long_ids_test.db")
 
@@ -352,10 +352,10 @@ func TestDatabase_VeryLongIDs(t *testing.T) {
 
 // TestDatabase_ContactEdgeCases tests edge cases for contact operations
 func TestDatabase_ContactEdgeCases(t *testing.T) {
-	// Disable encryption for this test
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "false")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "contact_edge_test.db")
 
@@ -392,18 +392,19 @@ func TestDatabase_ContactEdgeCases(t *testing.T) {
 	assert.Equal(t, "Updated Name", retrieved.Name)
 }
 
-// TestDatabase_EncryptionToggle tests toggling encryption on/off
+// TestDatabase_EncryptionToggle validates that encryption persists across restarts
 func TestDatabase_EncryptionToggle(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "encryption_toggle_test.db")
 
-	// Start without encryption
-	os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	
+	// Always-on encryption: set secret before first open
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
 	db, err := New(dbPath)
 	require.NoError(t, err)
 
-	// Save unencrypted data
+	// Save initial encrypted data
 	mapping := &models.MessageMapping{
 		WhatsAppMsgID:   "wa-toggle-1",
 		SignalMsgID:     "sig-toggle-1",
@@ -420,22 +421,18 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 	require.NoError(t, err)
 	db.Close()
 
-	// Enable encryption and reopen
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-
+	// Reopen with same secret
 	db, err = New(dbPath)
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Should still be able to read old unencrypted data
+	// Should be able to read previously saved data
 	retrieved, err := db.GetMessageMappingByWhatsAppID(ctx, "wa-toggle-1")
 	require.NoError(t, err)
+	require.NotNil(t, retrieved)
 	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
 
-	// New data should be encrypted
+	// New data should be accessible under encryption
 	mapping2 := &models.MessageMapping{
 		WhatsAppMsgID:   "wa-toggle-2",
 		SignalMsgID:     "sig-toggle-2",
@@ -449,4 +446,8 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 	}
 	err = db.SaveMessageMapping(ctx, mapping2)
 	require.NoError(t, err)
+	retrieved2, err := db.GetMessageMappingByWhatsAppID(ctx, "wa-toggle-2")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved2)
+	assert.Equal(t, mapping2.WhatsAppMsgID, retrieved2.WhatsAppMsgID)
 }

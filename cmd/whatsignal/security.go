@@ -11,12 +11,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-func verifySignature(r *http.Request, secretKey string, signatureHeaderName string) ([]byte, error) {
+func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderName string, maxSkew time.Duration) ([]byte, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -36,18 +37,26 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 	}
 
 	if signatureHeaderName == "X-Webhook-Hmac" {
-		expectedSignatureHex := signatureHeader
-		
-		timestamp := r.Header.Get("X-Webhook-Timestamp")
-		if timestamp == "" {
+		// WAHA: require timestamp and enforce skew
+		timestampStr := r.Header.Get("X-Webhook-Timestamp")
+		if timestampStr == "" {
 			return nil, fmt.Errorf("missing X-Webhook-Timestamp header for WAHA webhook")
 		}
-		
+		ts, err := strconv.ParseInt(timestampStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid X-Webhook-Timestamp: %w", err)
+		}
+		eventTime := time.Unix(ts, 0)
+		if now := time.Now(); eventTime.Before(now.Add(-maxSkew)) || eventTime.After(now.Add(maxSkew)) {
+			return nil, fmt.Errorf("timestamp out of acceptable range")
+		}
+
+		// Validate signature (body-only per current WAHA tests); if WAHA binds timestamp in the future, include it here
+		expectedSignatureHex := signatureHeader
 		mac := hmac.New(sha512.New, []byte(secretKey))
 		mac.Write(body)
 		computedMAC := mac.Sum(nil)
 		computedSignatureHex := hex.EncodeToString(computedMAC)
-
 		if !hmac.Equal([]byte(computedSignatureHex), []byte(expectedSignatureHex)) {
 			return nil, fmt.Errorf("signature mismatch")
 		}
@@ -71,20 +80,23 @@ func verifySignature(r *http.Request, secretKey string, signatureHeaderName stri
 	return body, nil
 }
 
+
 // RateLimiter implements a simple rate limiter for webhook endpoints
 type RateLimiter struct {
-	requests map[string][]time.Time
-	mu       sync.RWMutex
-	limit    int
-	window   time.Duration
+	requests     map[string][]time.Time
+	mu           sync.RWMutex
+	limit        int
+	window       time.Duration
+	lastCleanup  time.Time
 }
 
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	return &RateLimiter{
-		requests: make(map[string][]time.Time),
-		limit:    limit,
-		window:   window,
+		requests:    make(map[string][]time.Time),
+		limit:       limit,
+		window:      window,
+		lastCleanup: time.Now(),
 	}
 }
 
@@ -96,7 +108,25 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-rl.window)
 
-	// Clean old requests
+	// Opportunistic global cleanup to prevent unbounded map growth
+	if now.Sub(rl.lastCleanup) >= rl.window {
+		for key, reqs := range rl.requests {
+			var kept []time.Time
+			for _, t := range reqs {
+				if t.After(cutoff) {
+					kept = append(kept, t)
+				}
+			}
+			if len(kept) == 0 {
+				delete(rl.requests, key)
+			} else {
+				rl.requests[key] = kept
+			}
+		}
+		rl.lastCleanup = now
+	}
+
+	// Clean old requests for this IP and delete empty entries
 	if requests, exists := rl.requests[ip]; exists {
 		var validRequests []time.Time
 		for _, reqTime := range requests {
@@ -104,10 +134,17 @@ func (rl *RateLimiter) Allow(ip string) bool {
 				validRequests = append(validRequests, reqTime)
 			}
 		}
-		rl.requests[ip] = validRequests
+		if len(validRequests) == 0 {
+			delete(rl.requests, ip)
+		} else {
+			rl.requests[ip] = validRequests
+		}
 	}
 
 	// Check if limit exceeded
+	if rl.limit <= 0 {
+		return false
+	}
 	if len(rl.requests[ip]) >= rl.limit {
 		return false
 	}

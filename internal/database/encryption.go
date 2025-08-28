@@ -19,11 +19,7 @@ type encryptor struct {
 }
 
 func NewEncryptor() (*encryptor, error) {
-	// If encryption is disabled, return a nil encryptor
-	if !isEncryptionEnabled() {
-		return &encryptor{gcm: nil}, nil
-	}
-
+	// Encryption is always required; require a secret and derive the key
 	key, err := deriveKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive encryption key: %w", err)
@@ -120,28 +116,10 @@ func (e *encryptor) EncryptForLookup(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(result), nil
 }
 
-func (e *encryptor) EncryptIfEnabled(plaintext string) (string, error) {
-	if !isEncryptionEnabled() {
-		return plaintext, nil
-	}
-	return e.Encrypt(plaintext)
-}
+// Always-on encryption helpers (no optional plaintext mode)
+func (e *encryptor) EncryptIfEnabled(plaintext string) (string, error) { return e.Encrypt(plaintext) }
+func (e *encryptor) EncryptForLookupIfEnabled(plaintext string) (string, error) { return e.EncryptForLookup(plaintext) }
+func (e *encryptor) DecryptIfEnabled(ciphertext string) (string, error) { return e.Decrypt(ciphertext) }
 
-// EncryptForLookupIfEnabled encrypts with deterministic method for database lookups
-func (e *encryptor) EncryptForLookupIfEnabled(plaintext string) (string, error) {
-	if !isEncryptionEnabled() {
-		return plaintext, nil
-	}
-	return e.EncryptForLookup(plaintext)
-}
-
-func (e *encryptor) DecryptIfEnabled(ciphertext string) (string, error) {
-	if !isEncryptionEnabled() {
-		return ciphertext, nil
-	}
-	return e.Decrypt(ciphertext)
-}
-
-func isEncryptionEnabled() bool {
-	return os.Getenv("WHATSIGNAL_ENABLE_ENCRYPTION") == "true"
-}
+// DecryptAuto defers to full decryption; no plaintext compatibility
+func (e *encryptor) DecryptAuto(value string) (string, error) { return e.Decrypt(value) }

@@ -130,6 +130,8 @@ both: debug release
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR)
+	@echo "Removing .out files recursively..."
+	@find . -type f -name '*.out' -print -delete
 	@echo "Clean completed"
 
 # Run tests

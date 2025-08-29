@@ -13,7 +13,7 @@ import (
 // TestSendMessage_Coverage tests basic SendMessage functionality
 func TestSendMessage_Coverage(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Return the expected structure
@@ -24,7 +24,7 @@ func TestSendMessage_Coverage(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, "+1234567890", "test-device", tempDir, nil)
-	
+
 	resp, err := client.SendMessage(context.Background(), "+0987654321", "test", nil)
 	require.NoError(t, err)
 	assert.NotNil(t, resp)

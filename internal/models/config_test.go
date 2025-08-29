@@ -22,12 +22,12 @@ func TestConfig_Validation(t *testing.T) {
 			name: "valid config",
 			config: Config{
 				WhatsApp: WhatsAppConfig{
-					APIBaseURL:            "http://localhost:8080",
-					Timeout:               5 * time.Second,
-					RetryCount:            3,
-					WebhookSecret:         "secret",
-					ContactSyncOnStartup:  false,
-					ContactCacheHours:     24,
+					APIBaseURL:           "http://localhost:8080",
+					Timeout:              5 * time.Second,
+					RetryCount:           3,
+					WebhookSecret:        "secret",
+					ContactSyncOnStartup: false,
+					ContactCacheHours:    24,
 				},
 				Signal: SignalConfig{
 					RPCURL:                  "http://localhost:8081",

@@ -276,7 +276,6 @@ func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSi
 func (s *messageService) ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error {
 	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
-
 	return s.bridge.HandleSignalMessageWithDestination(ctx, rawSignalMsg, destination)
 }
 
@@ -288,7 +287,7 @@ func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string,
 }
 
 func (s *messageService) PollSignalMessages(ctx context.Context) error {
-	
+
 	pollTimeout := s.signalConfig.PollTimeoutSec
 	if pollTimeout <= 0 {
 		pollTimeout = s.signalConfig.PollIntervalSec
@@ -307,7 +306,7 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			s.logger.Error("No Signal destinations configured")
 			continue
 		}
-		
+
 		var destination string
 		if len(destinations) == 1 {
 			// If there's only one channel, use its destination
@@ -318,13 +317,13 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			destination = s.determineDestinationForSender(ctx, msg.Sender, destinations)
 			if destination == "" {
 				s.logger.WithFields(logrus.Fields{
-					"sender": SanitizePhoneNumber(msg.Sender),
+					"sender":    SanitizePhoneNumber(msg.Sender),
 					"messageID": SanitizeMessageID(msg.MessageID),
 				}).Warn("Could not determine destination for Signal sender, skipping message")
 				continue
 			}
 		}
-		
+
 		if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &msg, destination); err != nil {
 			if IsVerboseLogging(ctx) {
 				s.logger.WithError(err).WithField("messageID", msg.MessageID).Error("Failed to process Signal message from polling")
@@ -345,51 +344,51 @@ func (s *messageService) determineDestinationForSender(ctx context.Context, send
 				s.logger.WithError(err).WithField("destination", SanitizePhoneNumber(destination)).Warn("Failed to get WhatsApp session for destination")
 				continue
 			}
-			
+
 			s.logger.WithFields(logrus.Fields{
-				"sender": SanitizePhoneNumber(sender),
+				"sender":      SanitizePhoneNumber(sender),
 				"destination": SanitizePhoneNumber(destination),
-				"session": session,
+				"session":     session,
 			}).Debug("Signal sender matches configured destination, routing to corresponding session")
-			
+
 			return destination
 		}
 	}
-	
+
 	sessions := s.channelManager.GetAllWhatsAppSessions()
-	
+
 	for _, session := range sessions {
 		// Check if we have any message history between this session and the sender
 		hasHistory, err := s.db.HasMessageHistoryBetween(ctx, session, sender)
 		if err != nil {
 			s.logger.WithError(err).WithFields(logrus.Fields{
 				"session": session,
-				"sender": SanitizePhoneNumber(sender),
+				"sender":  SanitizePhoneNumber(sender),
 			}).Warn("Failed to check message history")
 			continue
 		}
-		
+
 		if hasHistory {
 			destination, err := s.channelManager.GetSignalDestination(session)
 			if err != nil {
 				s.logger.WithError(err).WithField("session", session).Warn("Failed to get Signal destination for session")
 				continue
 			}
-			
+
 			// Verify this destination is in our available list
 			for _, availableDest := range availableDestinations {
 				if destination == availableDest {
 					s.logger.WithFields(logrus.Fields{
-						"sender": SanitizePhoneNumber(sender),
+						"sender":      SanitizePhoneNumber(sender),
 						"destination": SanitizePhoneNumber(destination),
-						"session": session,
+						"session":     session,
 					}).Debug("Found matching destination based on message history")
 					return destination
 				}
 			}
 		}
 	}
-	
+
 	s.logger.WithField("sender", SanitizePhoneNumber(sender)).Debug("No message history found for sender")
 	return ""
 }

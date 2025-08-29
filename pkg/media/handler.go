@@ -23,9 +23,9 @@ type Handler interface {
 }
 
 type handler struct {
-	cacheDir   string
-	config     models.MediaConfig
-	httpClient *http.Client
+	cacheDir    string
+	config      models.MediaConfig
+	httpClient  *http.Client
 	wahaBaseURL string // For URL rewriting
 	wahaAPIKey  string // For WAHA authentication
 }
@@ -163,7 +163,6 @@ func (h *handler) validateMedia(ext string, size int64) error {
 			}
 		}
 	}
-
 
 	if maxSizeMB == 0 {
 		for _, allowedExt := range h.config.AllowedTypes.Document {
@@ -327,7 +326,6 @@ func (h *handler) rewriteMediaURL(mediaURL string) string {
 			return mediaURL // Return original if WAHA URL parsing fails
 		}
 
-
 		// Replace the host with the WAHA host
 		u.Scheme = wahaURL.Scheme
 		u.Host = wahaURL.Host
@@ -417,7 +415,6 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 			if strings.HasPrefix(contentTypeKey, "video/") && strings.Contains(contentType, strings.TrimPrefix(contentTypeKey, "video/")) {
 				return ext, nil
 			}
-
 
 		}
 		return constants.DefaultVideoExtension, nil

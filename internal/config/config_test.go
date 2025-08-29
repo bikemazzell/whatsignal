@@ -91,11 +91,11 @@ func TestLoadConfig(t *testing.T) {
 			name: "environment overrides",
 			path: validConfigPath,
 			setEnv: map[string]string{
-				"WHATSAPP_API_URL":        "https://wa.override.com",
+				"WHATSAPP_API_URL":                   "https://wa.override.com",
 				"WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET": "override_secret",
-				"SIGNAL_RPC_URL":          "https://signal.override.com",
-				"DB_PATH":                 "/override/path/to/db.sqlite",
-				"MEDIA_DIR":               "/override/path/to/cache",
+				"SIGNAL_RPC_URL":                     "https://signal.override.com",
+				"DB_PATH":                            "/override/path/to/db.sqlite",
+				"MEDIA_DIR":                          "/override/path/to/cache",
 			},
 			validate: func(t *testing.T, cfg interface{}) {
 				config := cfg.(*models.Config)

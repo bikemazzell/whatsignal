@@ -99,7 +99,7 @@ func (sm *SessionMonitor) checkAndRecoverSession(ctx context.Context) {
 	// Check if session is in a bad state
 	if sm.isSessionUnhealthy(status) {
 		sm.logger.WithField("status", status).Warn("Session is in unhealthy state, attempting restart")
-		
+
 		// Try to restart the session
 		if err := sm.restartSession(ctx); err != nil {
 			sm.logger.WithError(err).Error("Failed to restart session")
@@ -142,7 +142,7 @@ func (sm *SessionMonitor) restartSession(ctx context.Context) error {
 	// Use the WAHA restart endpoint
 	restartCtx, restartCancel := context.WithTimeout(ctx, time.Duration(constants.DefaultSessionRestartTimeoutSec)*time.Second)
 	defer restartCancel()
-	
+
 	if err := sm.waClient.RestartSession(restartCtx); err != nil {
 		return err
 	}
@@ -151,6 +151,6 @@ func (sm *SessionMonitor) restartSession(ctx context.Context) error {
 	waitTimeout := time.Duration(constants.DefaultSessionWaitTimeoutSec) * time.Second
 	waitCtx, waitCancel := context.WithTimeout(ctx, waitTimeout)
 	defer waitCancel()
-	
+
 	return sm.waClient.WaitForSessionReady(waitCtx, waitTimeout)
 }

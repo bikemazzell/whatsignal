@@ -155,12 +155,12 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		bodyStr := string(bodyBytes)
-		
+
 		// Check if this is a transient connection error that can be retried
-		isTransientError := strings.Contains(bodyStr, "Closed unexpectedly") || 
-			strings.Contains(bodyStr, "connection") || 
+		isTransientError := strings.Contains(bodyStr, "Closed unexpectedly") ||
+			strings.Contains(bodyStr, "connection") ||
 			strings.Contains(bodyStr, "timeout")
-		
+
 		if isTransientError {
 			c.logger.WithFields(logrus.Fields{
 				"status": resp.StatusCode,
@@ -172,7 +172,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 				"body":   bodyStr,
 			}).Error("Signal API returned error status")
 		}
-		
+
 		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, bodyStr)
 	}
 
@@ -180,20 +180,18 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	
-	
+
 	var messages []types.RestMessage
 	if err := json.Unmarshal(bodyBytes, &messages); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	
 
 	result := make([]types.SignalMessage, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Envelope.DataMessage == nil {
 			continue
 		}
-		
+
 		sigMsg := types.SignalMessage{
 			Timestamp:   msg.Envelope.Timestamp,
 			Sender:      msg.Envelope.Source,
@@ -201,7 +199,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			Message:     msg.Envelope.DataMessage.Message,
 			Attachments: c.extractAttachmentPaths(msg.Envelope.DataMessage.Attachments),
 		}
-		
+
 		// Handle remote deletion
 		if msg.Envelope.DataMessage.RemoteDelete != nil {
 			sigMsg.Deletion = &types.SignalDeletion{
@@ -236,7 +234,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 				sigMsg.Message = sigMsg.Reaction.Emoji // Store emoji as message for easy access
 			}
 		}
-		
+
 		result = append(result, sigMsg)
 	}
 
@@ -319,19 +317,19 @@ func (c *SignalClient) getDirectAttachmentPath(att types.RestMessageAttachment) 
 	// Try with file extension from filename or content type
 	ext := c.getFileExtension(att.ContentType, att.Filename)
 	filename := att.ID + ext
-	
+
 	if c.attachmentsDir != "" {
 		// First try with extension
 		pathWithExt := filepath.Join(c.attachmentsDir, filename)
 		if _, err := os.Stat(pathWithExt); err == nil {
 			return pathWithExt
 		}
-		
+
 		// Try without extension (original ID only)
 		pathWithoutExt := filepath.Join(c.attachmentsDir, att.ID)
 		return pathWithoutExt
 	}
-	
+
 	return att.ID
 }
 
@@ -346,7 +344,6 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 	// Create context with shorter timeout for download to avoid blocking polling
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 
 	// Download attachment data
 	data, err := c.DownloadAttachment(ctx, att.ID)
@@ -378,7 +375,6 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return "", fmt.Errorf("failed to save attachment: %w", err)
 	}
-
 
 	return filePath, nil
 }
@@ -445,7 +441,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID string) ([]byte, error) {
 	endpoint := fmt.Sprintf("%s/v1/attachments/%s", c.baseURL, url.QueryEscape(attachmentID))
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create attachment download request: %w", err)
@@ -520,7 +516,7 @@ func (c *SignalClient) detectContentType(filePath string) string {
 
 func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {
 	endpoint := fmt.Sprintf("%s/v1/attachments", c.baseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create list attachments request: %w", err)

@@ -49,12 +49,12 @@ const (
 
 // Time-related constants
 const (
-	DefaultSignalPollingTimeoutSec  = 30
-	DefaultWhatsAppPollIntervalSec  = 30
-	TypingDurationPerCharMs         = 50
-	MaxTypingDurationSec            = 3
-	CleanupSchedulerIntervalHours   = 24
-	DefaultContactCacheHours        = 24
+	DefaultSignalPollingTimeoutSec = 30
+	DefaultWhatsAppPollIntervalSec = 30
+	TypingDurationPerCharMs        = 50
+	MaxTypingDurationSec           = 3
+	CleanupSchedulerIntervalHours  = 24
+	DefaultContactCacheHours       = 24
 )
 
 // Numeric conversions
@@ -83,14 +83,14 @@ const (
 
 // File size and conversion constants
 const (
-	BytesPerMegabyte        = 1024 * 1024
+	BytesPerMegabyte          = 1024 * 1024
 	DefaultDownloadTimeoutSec = 30
 )
 
 // Validation and security constants
 const (
-	MaxMessageIDLength   = 256  // Maximum allowed message ID length
-	MaxSessionNameLength = 64   // Maximum allowed session name length
+	MaxMessageIDLength   = 256 // Maximum allowed message ID length
+	MaxSessionNameLength = 64  // Maximum allowed session name length
 )
 
 // Encryption constants

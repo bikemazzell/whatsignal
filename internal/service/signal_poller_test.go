@@ -15,10 +15,9 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-
 type mockMessageService struct {
 	mock.Mock
-	mu sync.Mutex
+	mu        sync.Mutex
 	pollCalls int
 }
 
@@ -269,7 +268,7 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 	logger := logrus.New()
 
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
-	
+
 	// First two calls fail, subsequent calls succeed
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("temporary failure")).Twice()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)

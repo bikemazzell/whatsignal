@@ -11,6 +11,6 @@ func TestGetSessionName_Coverage(t *testing.T) {
 	client := &WhatsAppClient{
 		sessionName: "test-session",
 	}
-	
+
 	assert.Equal(t, "test-session", client.GetSessionName())
 }

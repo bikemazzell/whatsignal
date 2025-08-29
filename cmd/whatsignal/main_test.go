@@ -449,16 +449,16 @@ func TestMultiSessionContactSync(t *testing.T) {
 	// Even though it will fail due to no actual WAHA server, we can verify
 	// the multi-session logic is triggered
 	err = run(ctx)
-	
+
 	// We expect either a context deadline exceeded, connection error, or port binding error
 	// The important thing is that it attempted to sync multiple sessions
 	if err != nil {
 		// Should contain some indication of multi-session processing or server startup issues
-		assert.True(t, 
-			strings.Contains(err.Error(), "context") || 
-			strings.Contains(err.Error(), "connection") ||
-			strings.Contains(err.Error(), "dial") ||
-			strings.Contains(err.Error(), "bind: address already in use"),
+		assert.True(t,
+			strings.Contains(err.Error(), "context") ||
+				strings.Contains(err.Error(), "connection") ||
+				strings.Contains(err.Error(), "dial") ||
+				strings.Contains(err.Error(), "bind: address already in use"),
 			"Expected context timeout, connection error, or port binding error, got: %v", err)
 	}
 }

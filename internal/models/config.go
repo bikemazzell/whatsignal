@@ -17,26 +17,26 @@ type Config struct {
 
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
-	APIBaseURL               string        `json:"api_base_url" mapstructure:"api_base_url"`
-	Timeout                  time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
-	RetryCount               int           `json:"retry_count" mapstructure:"retry_count"`
-	WebhookSecret            string        `json:"webhook_secret" mapstructure:"webhook_secret"`
-	PollIntervalSec          int           `json:"pollIntervalSec"`
-	ContactSyncOnStartup     bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
-	ContactCacheHours        int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
-	SessionHealthCheckSec    int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
-	SessionAutoRestart       bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
+	APIBaseURL            string        `json:"api_base_url" mapstructure:"api_base_url"`
+	Timeout               time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
+	RetryCount            int           `json:"retry_count" mapstructure:"retry_count"`
+	WebhookSecret         string        `json:"webhook_secret" mapstructure:"webhook_secret"`
+	PollIntervalSec       int           `json:"pollIntervalSec"`
+	ContactSyncOnStartup  bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
+	ContactCacheHours     int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
+	SessionHealthCheckSec int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
+	SessionAutoRestart    bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
 }
 
 // SignalConfig holds Signal related configurations
 type SignalConfig struct {
-	RPCURL                   string `json:"rpc_url" mapstructure:"rpc_url"`
-	IntermediaryPhoneNumber  string `json:"intermediaryPhoneNumber" mapstructure:"intermediaryPhoneNumber"`   // Signal-CLI service number
-	DeviceName               string `json:"device_name" mapstructure:"device_name"`
-	PollIntervalSec          int    `json:"pollIntervalSec" mapstructure:"pollIntervalSec"`
-	PollTimeoutSec           int    `json:"pollTimeoutSec" mapstructure:"pollTimeoutSec"`
-	PollingEnabled           bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`
-	AttachmentsDir           string `json:"attachmentsDir" mapstructure:"attachmentsDir"`
+	RPCURL                  string `json:"rpc_url" mapstructure:"rpc_url"`
+	IntermediaryPhoneNumber string `json:"intermediaryPhoneNumber" mapstructure:"intermediaryPhoneNumber"` // Signal-CLI service number
+	DeviceName              string `json:"device_name" mapstructure:"device_name"`
+	PollIntervalSec         int    `json:"pollIntervalSec" mapstructure:"pollIntervalSec"`
+	PollTimeoutSec          int    `json:"pollTimeoutSec" mapstructure:"pollTimeoutSec"`
+	PollingEnabled          bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`
+	AttachmentsDir          string `json:"attachmentsDir" mapstructure:"attachmentsDir"`
 }
 
 // DatabaseConfig holds database related configurations
@@ -76,17 +76,17 @@ type RetryConfig struct {
 
 // ServerConfig holds server related configurations
 type ServerConfig struct {
-	ReadTimeoutSec        int  `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
-	WriteTimeoutSec       int  `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
-	IdleTimeoutSec        int  `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
-	WebhookMaxSkewSec     int  `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
-	WebhookMaxBytes       int  `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
+	ReadTimeoutSec    int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
+	WriteTimeoutSec   int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
+	IdleTimeoutSec    int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
+	WebhookMaxSkewSec int `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
+	WebhookMaxBytes   int `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
 }
 
 // Channel represents a WhatsApp-Signal channel pairing
 type Channel struct {
-	WhatsAppSessionName           string `json:"whatsappSessionName" mapstructure:"whatsappSessionName"`
-	SignalDestinationPhoneNumber  string `json:"signalDestinationPhoneNumber" mapstructure:"signalDestinationPhoneNumber"`
+	WhatsAppSessionName          string `json:"whatsappSessionName" mapstructure:"whatsappSessionName"`
+	SignalDestinationPhoneNumber string `json:"signalDestinationPhoneNumber" mapstructure:"signalDestinationPhoneNumber"`
 }
 
 type ConfigError struct {

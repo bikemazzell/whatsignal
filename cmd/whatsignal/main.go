@@ -36,7 +36,7 @@ var (
 
 func main() {
 	flag.Parse()
-	
+
 	if *version {
 		fmt.Printf("WhatSignal %s\nBuild Time: %s\nGit Commit: %s\n", Version, BuildTime, GitCommit)
 		os.Exit(0)
@@ -53,11 +53,11 @@ func main() {
 func run(ctx context.Context) error {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
-	
+
 	logger.WithFields(logrus.Fields{
-		"version":   Version,
-		"build":     BuildTime,
-		"commit":    GitCommit,
+		"version": Version,
+		"build":   BuildTime,
+		"commit":  GitCommit,
 	}).Info("Starting WhatSignal")
 
 	cfg, err := config.LoadConfig(*configPath)
@@ -124,11 +124,11 @@ func run(ctx context.Context) error {
 	defaultSessionName := cfg.Channels[0].WhatsAppSessionName
 
 	waClient := whatsapp.NewClient(types.ClientConfig{
-		BaseURL:      cfg.WhatsApp.APIBaseURL,
-		APIKey:       apiKey,
-		SessionName:  defaultSessionName,
-		Timeout:      cfg.WhatsApp.Timeout,
-		RetryCount:   cfg.WhatsApp.RetryCount,
+		BaseURL:     cfg.WhatsApp.APIBaseURL,
+		APIKey:      apiKey,
+		SessionName: defaultSessionName,
+		Timeout:     cfg.WhatsApp.Timeout,
+		RetryCount:  cfg.WhatsApp.RetryCount,
 	})
 
 	sigClient := signalapi.NewClientWithLogger(
@@ -156,25 +156,25 @@ func run(ctx context.Context) error {
 		for _, channel := range cfg.Channels {
 			sessionName := channel.WhatsAppSessionName
 			logger.WithField("session", sessionName).Info("Waiting for WhatsApp session to be ready...")
-			
+
 			// Create a client for this specific session
 			sessionClient := whatsapp.NewClient(types.ClientConfig{
-				BaseURL:      cfg.WhatsApp.APIBaseURL,
-				APIKey:       apiKey,
-				SessionName:  sessionName,
-				Timeout:      cfg.WhatsApp.Timeout,
-				RetryCount:   cfg.WhatsApp.RetryCount,
+				BaseURL:     cfg.WhatsApp.APIBaseURL,
+				APIKey:      apiKey,
+				SessionName: sessionName,
+				Timeout:     cfg.WhatsApp.Timeout,
+				RetryCount:  cfg.WhatsApp.RetryCount,
 			})
-			
+
 			// Wait for session to be ready
 			sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
 			if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
 				logger.WithField("session", sessionName).Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
 				continue
 			}
-			
+
 			logger.WithField("session", sessionName).Info("WhatsApp session is ready. Syncing contacts...")
-			
+
 			// Create a contact service for this session
 			sessionContactService := service.NewContactServiceWithConfig(db, sessionClient, cacheHours)
 			if err := sessionContactService.SyncAllContacts(ctx); err != nil {

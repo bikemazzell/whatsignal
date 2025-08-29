@@ -50,10 +50,10 @@ func TestMultiChannelMessageRouting(t *testing.T) {
 	// Test scenarios
 	t.Run("WhatsApp to Signal routing", func(t *testing.T) {
 		testCases := []struct {
-			name                    string
-			sessionName             string
-			expectedDestination     string
-			shouldSucceed           bool
+			name                string
+			sessionName         string
+			expectedDestination string
+			shouldSucceed       bool
 		}{
 			{
 				name:                "Personal session routes to personal Signal",
@@ -89,10 +89,10 @@ func TestMultiChannelMessageRouting(t *testing.T) {
 
 	t.Run("Signal to WhatsApp routing", func(t *testing.T) {
 		testCases := []struct {
-			name                string
-			signalDestination   string
-			expectedSession     string
-			shouldSucceed       bool
+			name              string
+			signalDestination string
+			expectedSession   string
+			shouldSucceed     bool
 		}{
 			{
 				name:              "Personal Signal routes to personal session",
@@ -159,12 +159,12 @@ func TestWebhookIntegrationMultiChannel(t *testing.T) {
 			{
 				name:        "Personal session message",
 				sessionName: "personal",
-				payload: createWhatsAppPayload("personal", "wa-personal-1", "1111111111@c.us", "Personal message"),
+				payload:     createWhatsAppPayload("personal", "wa-personal-1", "1111111111@c.us", "Personal message"),
 			},
 			{
 				name:        "Business session message",
 				sessionName: "business",
-				payload: createWhatsAppPayload("business", "wa-business-1", "2222222222@c.us", "Business message"),
+				payload:     createWhatsAppPayload("business", "wa-business-1", "2222222222@c.us", "Business message"),
 			},
 		}
 

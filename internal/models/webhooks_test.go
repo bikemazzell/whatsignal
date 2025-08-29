@@ -50,4 +50,3 @@ func TestWhatsAppWebhookPayload_JSONMarshaling(t *testing.T) {
 	assert.Equal(t, "message", unmarshaled.Event)
 	assert.Equal(t, "msg123", unmarshaled.Payload.ID)
 }
-

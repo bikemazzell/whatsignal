@@ -165,7 +165,7 @@ func TestWebhookEvent_Marshal(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, event.Event, unmarshaled.Event)
-	
+
 	// Verify payload can be unmarshaled back to original structure
 	var decodedPayload map[string]interface{}
 	err = json.Unmarshal(unmarshaled.Payload, &decodedPayload)

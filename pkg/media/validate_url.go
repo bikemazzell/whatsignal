@@ -50,4 +50,3 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 	}
 	return nil
 }
-

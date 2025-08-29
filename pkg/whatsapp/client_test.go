@@ -270,7 +270,7 @@ func TestClient_SendText_EmptyResponse(t *testing.T) {
 			return
 		}
 
-		if r.URL.Path == testAPIBase + testEndpointSendText {
+		if r.URL.Path == testAPIBase+testEndpointSendText {
 			// Return 201 with empty body (like WAHA sometimes does)
 			w.WriteHeader(http.StatusCreated)
 			// No body written
@@ -539,8 +539,8 @@ func TestClient_SendVideo(t *testing.T) {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 				return
 			}
-			
-		case testAPIBase+testEndpointSendFile:
+
+		case testAPIBase + testEndpointSendFile:
 			// Video will be sent as file due to lack of video support
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
@@ -579,7 +579,7 @@ func TestClient_SendVideo(t *testing.T) {
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
-			
+
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -853,7 +853,7 @@ func TestDeleteMessage(t *testing.T) {
 				assert.Equal(t, "DELETE", r.Method)
 				expectedPath := fmt.Sprintf("/api/default/chats/%s/messages/%s", tt.chatID, tt.messageID)
 				assert.Equal(t, expectedPath, r.URL.Path)
-				
+
 				// Verify API key header
 				assert.Equal(t, "test-api-key", r.Header.Get("X-Api-Key"))
 
@@ -904,22 +904,22 @@ func TestClient_RestartSession(t *testing.T) {
 
 func TestClient_WaitForSessionReady(t *testing.T) {
 	tests := []struct {
-		name        string
-		maxWaitTime time.Duration
+		name          string
+		maxWaitTime   time.Duration
 		sessionStatus string
-		expectError bool
+		expectError   bool
 	}{
 		{
-			name:        "session ready quickly",
-			maxWaitTime: 5 * time.Second,
+			name:          "session ready quickly",
+			maxWaitTime:   5 * time.Second,
 			sessionStatus: "WORKING",
-			expectError: false,
+			expectError:   false,
 		},
 		{
-			name:        "timeout waiting for session",
-			maxWaitTime: 100 * time.Millisecond,
+			name:          "timeout waiting for session",
+			maxWaitTime:   100 * time.Millisecond,
 			sessionStatus: "starting",
-			expectError: true,
+			expectError:   true,
 		},
 	}
 
@@ -1008,7 +1008,7 @@ func TestClient_DeleteMessage(t *testing.T) {
 		},
 		{
 			name:           "deletion with 204 status",
-			chatID:         "123456789@c.us", 
+			chatID:         "123456789@c.us",
 			messageID:      "true_123456789@c.us_EFGH5678",
 			expectedStatus: http.StatusNoContent,
 		},
@@ -1037,16 +1037,16 @@ func TestClient_DeleteMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodDelete, r.Method)
-				
+
 				if tt.expectedStatus != 0 {
 					expectedURL := fmt.Sprintf("/api/test-session/chats/%s/messages/%s", tt.chatID, tt.messageID)
 					assert.Equal(t, expectedURL, r.URL.Path)
-					
+
 					if tt.messageID == "true_123456789@c.us_ERROR" {
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
-					
+
 					w.WriteHeader(tt.expectedStatus)
 				}
 			}))
@@ -1135,7 +1135,7 @@ func TestClient_ServerVersionDetection(t *testing.T) {
 
 			ctx := context.Background()
 			version, err := client.getServerVersion(ctx)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -1147,7 +1147,7 @@ func TestClient_ServerVersionDetection(t *testing.T) {
 			// Test video support detection
 			supportsVideo := client.checkVideoSupport(ctx)
 			assert.Equal(t, tt.expectSupport, supportsVideo)
-			
+
 			// Verify caching works
 			cachedSupport := client.checkVideoSupport(ctx)
 			assert.Equal(t, supportsVideo, cachedSupport)
@@ -1160,16 +1160,16 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "test-video-*.mp4")
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
-	
+
 	_, err = tmpFile.Write([]byte("test video data"))
 	require.NoError(t, err)
 	tmpFile.Close()
 
 	tests := []struct {
-		name             string
-		serverVersion    types.ServerVersion
-		expectVideoCall  bool  // true if we expect /sendVideo, false if we expect /sendFile
-		expectEndpoint   string
+		name            string
+		serverVersion   types.ServerVersion
+		expectVideoCall bool // true if we expect /sendVideo, false if we expect /sendFile
+		expectEndpoint  string
 	}{
 		{
 			name: "WAHA Plus - sends as video",
@@ -1198,7 +1198,7 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var actualEndpoint string
-			
+
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/server/version":
@@ -1207,26 +1207,26 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 						http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 						return
 					}
-					
+
 				case testAPIBase + testEndpointSendVideo, testAPIBase + testEndpointSendFile:
 					actualEndpoint = r.URL.Path
-					
+
 					// Verify request payload
 					var payload map[string]interface{}
 					err := json.NewDecoder(r.Body).Decode(&payload)
 					require.NoError(t, err)
-					
+
 					// Check common fields
 					assert.Equal(t, "123456", payload["chatId"])
 					assert.Equal(t, "test-session", payload["session"])
 					assert.Equal(t, "Test video", payload["caption"])
-					
+
 					// Check video-specific fields only for video endpoint
-					if r.URL.Path == testAPIBase + testEndpointSendVideo {
+					if r.URL.Path == testAPIBase+testEndpointSendVideo {
 						assert.Equal(t, false, payload["convert"])
 						assert.Equal(t, false, payload["asNote"])
 					}
-					
+
 					// Send success response
 					resp := types.WAHAMessageResponse{
 						ID: &struct {
@@ -1242,9 +1242,9 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 						},
 					}
 					if err := json.NewEncoder(w).Encode(resp); err != nil {
-				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-			}
-					
+						http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+					}
+
 				default:
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -1259,11 +1259,11 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 
 			ctx := context.Background()
 			resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
-			
+
 			assert.NoError(t, err)
 			assert.Equal(t, "msg123", resp.MessageID)
 			assert.Equal(t, "sent", resp.Status)
-			
+
 			// Verify the correct endpoint was called
 			assert.Equal(t, tt.expectEndpoint, actualEndpoint)
 		})
@@ -1272,7 +1272,7 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 
 func TestClient_VideoSupportCaching(t *testing.T) {
 	callCount := 0
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/server/version" {
 			callCount++
@@ -1296,17 +1296,17 @@ func TestClient_VideoSupportCaching(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	
+
 	// First call should fetch from server
 	support1 := client.checkVideoSupport(ctx)
 	assert.True(t, support1)
 	assert.Equal(t, 1, callCount)
-	
+
 	// Second call should use cache
 	support2 := client.checkVideoSupport(ctx)
 	assert.True(t, support2)
 	assert.Equal(t, 1, callCount) // No additional calls
-	
+
 	// Third call should still use cache
 	support3 := client.checkVideoSupport(ctx)
 	assert.True(t, support3)
@@ -1357,10 +1357,10 @@ func TestClient_ServerVersionError(t *testing.T) {
 
 			ctx := context.Background()
 			support := client.checkVideoSupport(ctx)
-			
+
 			// Should default to no video support on error
 			assert.Equal(t, tt.expectSupport, support)
-			
+
 			// Should be cached even on error
 			assert.NotNil(t, client.supportsVideo)
 			assert.Equal(t, tt.expectSupport, *client.supportsVideo)
@@ -1370,11 +1370,11 @@ func TestClient_ServerVersionError(t *testing.T) {
 
 func TestWAHAResponseParsing(t *testing.T) {
 	tests := []struct {
-		name                string
-		responseBody        string
-		expectedMessageID   string
-		expectedParseError  bool
-		expectedWarning     bool
+		name               string
+		responseBody       string
+		expectedMessageID  string
+		expectedParseError bool
+		expectedWarning    bool
 	}{
 		{
 			name: "valid WAHA response with ID field",
@@ -1428,9 +1428,9 @@ func TestWAHAResponseParsing(t *testing.T) {
 			responseBody: `{
 				"invalid": json
 			}`,
-			expectedMessageID:    "",
-			expectedParseError:   false, // Changed: invalid JSON now returns success with warning
-			expectedWarning:      true,  // New field to check for warning message
+			expectedMessageID:  "",
+			expectedParseError: false, // Changed: invalid JSON now returns success with warning
+			expectedWarning:    true,  // New field to check for warning message
 		},
 	}
 
@@ -1460,7 +1460,7 @@ func TestWAHAResponseParsing(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedMessageID, resp.MessageID)
 				assert.Equal(t, "sent", resp.Status)
-				
+
 				if tt.expectedWarning {
 					assert.Contains(t, resp.Error, "warning: could not parse response")
 				} else {

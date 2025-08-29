@@ -42,9 +42,9 @@ func NewClient(config types.ClientConfig) types.WAClient {
 		baseURL:     config.BaseURL,
 		apiKey:      config.APIKey,
 		sessionName: config.SessionName,
-		client:     &http.Client{Timeout: config.Timeout},
+		client:      &http.Client{Timeout: config.Timeout},
 		sessionMgr:  NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
-		logger:     logrus.New(),
+		logger:      logrus.New(),
 	}
 	return client
 }
@@ -169,7 +169,7 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 			var sessions []map[string]interface{}
 			if err := json.NewDecoder(resp.Body).Decode(&sessions); err == nil {
 				_ = resp.Body.Close()
-				
+
 				// Find our session
 				for _, session := range sessions {
 					if name, ok := session["name"].(string); ok && name == c.sessionName {
@@ -179,8 +179,8 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 							}
 							// Log current status for debugging
 							if c.logger != nil {
-							c.logger.WithFields(logrus.Fields{"session": c.sessionName, "status": status}).Debug("Session status; waiting")
-						}
+								c.logger.WithFields(logrus.Fields{"session": c.sessionName, "status": status}).Debug("Session status; waiting")
+							}
 						}
 						break
 					}
@@ -207,8 +207,6 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 	return fmt.Errorf("timeout waiting for session to be ready after %v", maxWaitTime)
 }
 
-
-
 func (c *WhatsAppClient) sendSeenWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := map[string]interface{}{
 		"chatId":  chatID,
@@ -218,8 +216,6 @@ func (c *WhatsAppClient) sendSeenWithSession(ctx context.Context, chatID, sessio
 	return err
 }
 
-
-
 func (c *WhatsAppClient) startTypingWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := map[string]interface{}{
 		"chatId":  chatID,
@@ -228,8 +224,6 @@ func (c *WhatsAppClient) startTypingWithSession(ctx context.Context, chatID, ses
 	_, err := c.sendRequest(ctx, types.APIBase+types.EndpointStartTyping, payload)
 	return err
 }
-
-
 
 func (c *WhatsAppClient) stopTypingWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := map[string]interface{}{
@@ -307,7 +301,7 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
-	
+
 	const maxRecommendedSize = 50 * 1024 * 1024 // 50MB
 	if fileInfo.Size() > maxRecommendedSize {
 		if c.logger != nil {
@@ -440,10 +434,10 @@ func (c *WhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID st
 	if messageID == "" {
 		return fmt.Errorf("messageID cannot be empty")
 	}
-	
+
 	// Build the URL according to WAHA API: DELETE /api/{session}/chats/{chatId}/messages/{messageId}
 	url := fmt.Sprintf("%s/api/%s/chats/%s/messages/%s", c.baseURL, c.sessionName, chatID, messageID)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
@@ -533,7 +527,6 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -555,16 +548,16 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		// Error details logged in structured error message below
-		
+
 		// Try to parse error response
 		var errorResult types.WAHAErrorResponse
 		if err := json.Unmarshal(bodyBytes, &errorResult); err == nil && errorResult.Error != "" {
 			return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errorResult.Error)
 		}
-		
+
 		// Fallback to raw response body if no structured error
 		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
@@ -578,7 +571,7 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 			Error:  "",
 		}, nil
 	}
-	
+
 	// Parse the actual WAHA response format
 	var wahaResult types.WAHAMessageResponse
 	if err := json.Unmarshal(bodyBytes, &wahaResult); err != nil {
@@ -597,7 +590,7 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	} else if wahaResult.Data != nil && wahaResult.Data.ID != nil && wahaResult.Data.ID.Serialized != "" {
 		messageID = wahaResult.Data.ID.Serialized
 	}
-	
+
 	// Convert to our standard response format
 	result := &types.SendMessageResponse{
 		MessageID: messageID,
@@ -649,7 +642,7 @@ func (c *WhatsAppClient) GetContact(ctx context.Context, contactID string) (*typ
 func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) ([]types.Contact, error) {
 	// Build the URL with query parameters (session as query param)
 	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointContactsAll)
-	url := fmt.Sprintf("%s%s?session=%s&limit=%d&offset=%d&sortBy=name&sortOrder=asc", 
+	url := fmt.Sprintf("%s%s?session=%s&limit=%d&offset=%d&sortBy=name&sortOrder=asc",
 		c.baseURL, endpoint, c.sessionName, limit, offset)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -689,7 +682,7 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 // getServerVersion retrieves the WAHA server version info
 func (c *WhatsAppClient) getServerVersion(ctx context.Context) (*types.ServerVersion, error) {
 	url := fmt.Sprintf("%s/api/server/version", c.baseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

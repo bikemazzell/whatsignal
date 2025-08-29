@@ -30,19 +30,19 @@ func TestDatabase_ConcurrentOperations(t *testing.T) {
 	db, err := sql.Open("sqlite3", dbPath+"?mode=wal")
 	require.NoError(t, err)
 	defer db.Close()
-	
+
 	// Set pragmas for better concurrent performance
 	_, err = db.Exec("PRAGMA journal_mode=WAL")
 	require.NoError(t, err)
 	_, err = db.Exec("PRAGMA busy_timeout=5000")
 	require.NoError(t, err)
-	
+
 	// Initialize schema
 	schema, err := migrations.GetInitialSchema()
 	require.NoError(t, err)
 	_, err = db.Exec(schema)
 	require.NoError(t, err)
-	
+
 	// Create database wrapper with proper encryptor
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestDatabase_ConcurrentOperations(t *testing.T) {
 	lockErrors := 0
 	for err := range errors {
 		errorCount++
-		if err != nil && (strings.Contains(err.Error(), "database is locked") || 
+		if err != nil && (strings.Contains(err.Error(), "database is locked") ||
 			strings.Contains(err.Error(), "database table is locked")) {
 			lockErrors++
 		} else {
@@ -152,7 +152,7 @@ func TestDatabase_TransactionRollback(t *testing.T) {
 
 	// Force close and reopen to test persistence
 	db.Close()
-	
+
 	db, err = New(dbPath)
 	require.NoError(t, err)
 	defer db.Close()
@@ -265,7 +265,7 @@ func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 
 		// Try to retrieve - should work normally
 		_, _ = db.GetMessageMappingByWhatsAppID(ctx, attempt)
-		
+
 		// Try update - should work normally
 		_ = db.UpdateDeliveryStatusByWhatsAppID(ctx, attempt, "delivered")
 	}
@@ -292,7 +292,7 @@ func TestDatabase_FilePermissions(t *testing.T) {
 	// Check file permissions
 	info, err := os.Stat(dbPath)
 	require.NoError(t, err)
-	
+
 	// Should be readable and writable by owner only (0600)
 	mode := info.Mode()
 	assert.Equal(t, os.FileMode(0600), mode.Perm(), "Database file should have 0600 permissions")

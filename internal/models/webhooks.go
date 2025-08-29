@@ -58,4 +58,3 @@ type WhatsAppWebhookPayload struct {
 		Browser string `json:"browser"`
 	} `json:"environment"`
 }
-

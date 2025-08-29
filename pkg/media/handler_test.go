@@ -206,7 +206,7 @@ func TestProcessMediaSizeLimits(t *testing.T) {
 	config := getTestMediaConfig()
 	maxImageSize := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte
 	maxVideoSize := int64(config.MaxSizeMB.Video) * constants.BytesPerMegabyte
-	maxGifSize := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte  // GIF is treated as an image
+	maxGifSize := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte // GIF is treated as an image
 
 	tests := []struct {
 		name      string
@@ -498,9 +498,9 @@ func TestProcessMediaFromURLErrors(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name           string
-		setupServer    func() *httptest.Server
-		expectedError  string
+		name          string
+		setupServer   func() *httptest.Server
+		expectedError string
 	}{
 		{
 			name: "404 not found",
@@ -639,13 +639,13 @@ func TestGetFileExtensionFromResponse(t *testing.T) {
 func TestProcessMediaFromURLTimeout(t *testing.T) {
 	// Create a custom config with very short timeout
 	config := getTestMediaConfig()
-	
+
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	cacheDir := filepath.Join(tmpDir, "cache")
-	
+
 	// Create handler with custom HTTP client with short timeout
 	handler := &handler{
 		cacheDir:    cacheDir,
@@ -654,7 +654,7 @@ func TestProcessMediaFromURLTimeout(t *testing.T) {
 		wahaBaseURL: "",
 		wahaAPIKey:  "",
 	}
-	
+
 	// Ensure cache directory exists
 	err = os.MkdirAll(cacheDir, 0755)
 	require.NoError(t, err)
@@ -1349,11 +1349,11 @@ func TestProcessMediaWithoutExtension(t *testing.T) {
 	// Create a test file without extension that contains audio data
 	// This simulates Signal's audio recordings that don't have file extensions
 	sourcePath := filepath.Join(tmpDir, "audio_recording")
-	
+
 	// Create a fake OGG file header (simple test)
 	oggHeader := []byte("OggS") // Simplified OGG header
 	testContent := append(oggHeader, []byte("fake audio data")...)
-	
+
 	err := os.WriteFile(sourcePath, testContent, 0644)
 	require.NoError(t, err)
 
@@ -1362,7 +1362,7 @@ func TestProcessMediaWithoutExtension(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, cachedPath)
 	assert.FileExists(t, cachedPath)
-	
+
 	// The cached file should have .ogg extension (from signature detection)
 	assert.Contains(t, cachedPath, ".ogg")
 }
@@ -1372,10 +1372,10 @@ func TestDetectFileTypeFromContent(t *testing.T) {
 	defer cleanup()
 
 	tests := []struct {
-		name             string
-		content          []byte
-		expectedExt      string
-		shouldHaveExt    bool
+		name          string
+		content       []byte
+		expectedExt   string
+		shouldHaveExt bool
 	}{
 		{
 			name:          "OGG file signature",

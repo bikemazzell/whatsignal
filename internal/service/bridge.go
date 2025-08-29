@@ -129,7 +129,6 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 	if err != nil {
 		return fmt.Errorf("failed to send signal message: %w", err)
 	}
-	
 
 	mapping := &models.MessageMapping{
 		WhatsAppChatID:  chatID,
@@ -192,39 +191,39 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 
 	if msg.QuotedMessage == nil {
 		// No quoted message - find the latest message that was sent to the Signal user (auto-reply to last sender)
-		
+
 		// Use session-aware lookup
 		mapping, err = b.db.GetLatestMessageMappingBySession(ctx, sessionName)
 		if err != nil {
 			b.logger.WithFields(logrus.Fields{
 				"signalSender": msg.Sender,
-				"sessionName": sessionName,
-				"error": err,
+				"sessionName":  sessionName,
+				"error":        err,
 			}).Error("Failed to get latest message mapping for auto-reply")
 			return fmt.Errorf("failed to get latest message mapping for auto-reply: %w", err)
 		}
-		
+
 		if mapping == nil {
 			// No previous messages found - this is a new conversation
 			return b.handleNewSignalThread(ctx, msg)
 		}
-		
+
 	} else {
 		// Has quoted message - use existing logic
 		b.logger.WithFields(logrus.Fields{
 			"quotedMessageID": msg.QuotedMessage.ID,
 		}).Debug("Looking up message mapping for quoted message")
-		
+
 		mapping, err = b.db.GetMessageMapping(ctx, msg.QuotedMessage.ID)
 		if err != nil {
 			b.logger.WithFields(logrus.Fields{
 				"quotedMessageID": msg.QuotedMessage.ID,
-				"error": err,
+				"error":           err,
 			}).Error("Failed to get message mapping for quoted message")
 			return fmt.Errorf("failed to get message mapping for quoted message: %w", err)
 		}
 	}
-	
+
 	if mapping != nil {
 		if msg.QuotedMessage != nil {
 			b.logger.WithFields(logrus.Fields{
@@ -249,11 +248,11 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			parts := strings.SplitN(msg.QuotedMessage.Text, ": ", 2)
 			if len(parts) == 2 {
 				senderInfo := parts[0]
-				
+
 				b.logger.Debug("Attempting fallback extraction from quoted text")
-				
+
 				senderInfo = strings.TrimPrefix(senderInfo, "📱 ")
-				
+
 				var phoneNumber string
 				if len(senderInfo) >= constants.MinPhoneNumberLength && strings.ContainsAny(senderInfo, "0123456789") {
 					for _, char := range senderInfo {
@@ -271,26 +270,22 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 				}
 			}
 		}
-		
+
 		if mapping == nil {
 			b.logger.WithField("quotedMessageID", msg.QuotedMessage.ID).Error("No mapping found for quoted message")
 			return fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
 		}
 	}
-	
-	whatsappChatID := mapping.WhatsAppChatID
 
+	whatsappChatID := mapping.WhatsAppChatID
 
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
 		return fmt.Errorf("failed to process attachments: %w", err)
 	}
 
-
 	var resp *types.SendMessageResponse
 	var sendErr error
-
-
 
 	switch {
 	case len(attachments) > 0 && b.isImageAttachment(attachments[0]):
@@ -329,7 +324,7 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			}).Debug("Sending text to WhatsApp")
 			resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
 		} else {
-			
+
 			b.logger.WithFields(logrus.Fields{
 				"messageID": msg.MessageID,
 			}).Warn("Skipping empty message with no attachments")
@@ -354,7 +349,6 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		DeliveryStatus:  models.DeliveryStatusSent,
 		SessionName:     sessionName,
 	}
-	
 
 	if len(attachments) > 0 {
 		newMapping.MediaPath = &attachments[0]
@@ -549,11 +543,11 @@ func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.Sign
 
 func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
 	b.logger.WithFields(logrus.Fields{
-		"messageID": msg.MessageID,
-		"sender":    msg.Sender,
-		"reaction":  msg.Reaction.Emoji,
+		"messageID":       msg.MessageID,
+		"sender":          msg.Sender,
+		"reaction":        msg.Reaction.Emoji,
 		"targetTimestamp": msg.Reaction.TargetTimestamp,
-		"isRemove": msg.Reaction.IsRemove,
+		"isRemove":        msg.Reaction.IsRemove,
 	}).Debug("Processing Signal reaction")
 
 	// Find the original message mapping by Signal timestamp
@@ -576,7 +570,6 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 		reaction = ""
 	}
 
-
 	resp, err := b.waClient.SendReactionWithSession(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID, reaction, sessionName)
 	if err != nil {
 		b.logger.WithError(err).Error("Failed to send reaction to WhatsApp")
@@ -585,8 +578,8 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 
 	b.logger.WithFields(logrus.Fields{
 		"whatsappMsgID": SanitizeWhatsAppMessageID(mapping.WhatsAppMsgID),
-		"reaction": reaction,
-		"response": resp,
+		"reaction":      reaction,
+		"response":      resp,
 	}).Info("Successfully forwarded reaction to WhatsApp")
 
 	return nil
@@ -599,10 +592,10 @@ func (b *bridge) handleSignalDeletion(ctx context.Context, msg *signaltypes.Sign
 
 func (b *bridge) handleSignalDeletionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
 	b.logger.WithFields(logrus.Fields{
-		"messageID":        msg.MessageID,
-		"sender":           msg.Sender,
-		"targetMessageID":  msg.Deletion.TargetMessageID,
-		"targetTimestamp":  msg.Deletion.TargetTimestamp,
+		"messageID":       msg.MessageID,
+		"sender":          msg.Sender,
+		"targetMessageID": msg.Deletion.TargetMessageID,
+		"targetTimestamp": msg.Deletion.TargetTimestamp,
 	}).Debug("Processing Signal message deletion")
 
 	// Use the target message ID or timestamp to find the message to delete
@@ -633,7 +626,7 @@ func (b *bridge) SendSignalNotificationForSession(ctx context.Context, sessionNa
 	b.logger.WithFields(logrus.Fields{
 		"sessionName": sessionName,
 		"destination": dest,
-		"message": message,
+		"message":     message,
 	}).Debug("Sent Signal notification for session")
 
 	return nil

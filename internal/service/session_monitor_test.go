@@ -24,10 +24,10 @@ func TestNewSessionMonitor(t *testing.T) {
 
 func TestSessionMonitor_Start(t *testing.T) {
 	tests := []struct {
-		name           string
-		sessionStatus  types.SessionStatus
-		expectRestart  bool
-		setup          func(*mockWhatsAppClient)
+		name          string
+		sessionStatus types.SessionStatus
+		expectRestart bool
+		setup         func(*mockWhatsAppClient)
 	}{
 		{
 			name:          "session working - no restart needed",
@@ -72,7 +72,7 @@ func TestSessionMonitor_Start(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			whatsappClient := &mockWhatsAppClient{}
 			logger := logrus.New()
-			logger.SetLevel(logrus.ErrorLevel) // Reduce log noise in tests
+			logger.SetLevel(logrus.ErrorLevel)      // Reduce log noise in tests
 			checkInterval := 100 * time.Millisecond // Short interval for testing
 
 			if tt.setup != nil {

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	XWahaSignatureHeader   = "X-Webhook-Hmac"
+	XWahaSignatureHeader = "X-Webhook-Hmac"
 )
 
 // ValidationError represents a validation error that should return HTTP 400
@@ -33,11 +33,10 @@ func (e ValidationError) Error() string {
 	return e.Message
 }
 
-
 type Server struct {
-	router         *mux.Router
-	logger         *logrus.Logger
-	msgService     service.MessageService
+	router     *mux.Router
+	logger     *logrus.Logger
+	msgService service.MessageService
 
 	serverMu       sync.RWMutex
 	server         *http.Server
@@ -46,7 +45,6 @@ type Server struct {
 	channelManager *service.ChannelManager
 	rateLimiter    *RateLimiter
 }
-
 
 func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient, channelManager *service.ChannelManager) *Server {
 	s := &Server{
@@ -76,7 +74,6 @@ func (s *Server) setupRoutes() {
 
 }
 
-
 func (s *Server) Start() error {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -88,12 +85,12 @@ func (s *Server) Start() error {
 	if readTimeout <= 0 {
 		readTimeout = time.Duration(constants.DefaultServerReadTimeoutSec) * time.Second
 	}
-	
+
 	writeTimeout := time.Duration(s.cfg.Server.WriteTimeoutSec) * time.Second
 	if writeTimeout <= 0 {
 		writeTimeout = time.Duration(constants.DefaultServerWriteTimeoutSec) * time.Second
 	}
-	
+
 	idleTimeout := time.Duration(s.cfg.Server.IdleTimeoutSec) * time.Second
 	if idleTimeout <= 0 {
 		idleTimeout = time.Duration(constants.DefaultServerIdleTimeoutSec) * time.Second
@@ -114,13 +111,13 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-s.serverMu.RLock()
-server := s.server
-s.serverMu.RUnlock()
-if server == nil {
-	return nil
-}
-return server.Shutdown(ctx)
+	s.serverMu.RLock()
+	server := s.server
+	s.serverMu.RUnlock()
+	if server == nil {
+		return nil
+	}
+	return server.Shutdown(ctx)
 }
 
 // securityMiddleware applies security measures to webhook endpoints
@@ -181,7 +178,7 @@ func (s *Server) handleHealth() http.HandlerFunc {
 				"commit": GitCommit,
 			},
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(health); err != nil {
@@ -201,7 +198,7 @@ func (s *Server) handleSessionStatus() http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			if err := json.NewEncoder(w).Encode(map[string]interface{}{
-				"error": "Failed to get session status",
+				"error":   "Failed to get session status",
 				"details": err.Error(),
 			}); err != nil {
 				s.logger.WithError(err).Error("Failed to write error response")
@@ -218,7 +215,7 @@ func (s *Server) handleSessionStatus() http.HandlerFunc {
 
 		// Add config info
 		sessionStatus["config"] = map[string]interface{}{
-			"auto_restart_enabled": s.cfg.WhatsApp.SessionAutoRestart,
+			"auto_restart_enabled":      s.cfg.WhatsApp.SessionAutoRestart,
 			"health_check_interval_sec": s.cfg.WhatsApp.SessionHealthCheckSec,
 		}
 
@@ -233,7 +230,7 @@ func (s *Server) handleSessionStatus() http.HandlerFunc {
 func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.logger.Debug("Processing WhatsApp webhook request")
-		
+
 		maxSkewSec := s.cfg.Server.WebhookMaxSkewSec
 		if maxSkewSec <= 0 {
 			maxSkewSec = constants.DefaultWebhookMaxSkewSec
@@ -336,7 +333,7 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 	}
 
 	chatID := payload.Payload.From
-	
+
 	// Use session from webhook payload
 	sessionName := payload.Session
 	if sessionName == "" {
@@ -429,7 +426,7 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 		"signalMessageId":   mapping.ID,
 		"emoji":             payload.Payload.Reaction.Text,
 	}).Info("Successfully forwarded WhatsApp reaction to Signal")
-	
+
 	return nil
 }
 
@@ -452,9 +449,9 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	}
 
 	s.logger.WithFields(logrus.Fields{
-		"from":             service.SanitizePhoneNumber(payload.Payload.From),
-		"editedMessageId":  service.SanitizeWhatsAppMessageID(*payload.Payload.EditedMessageID),
-		"newBody":          service.SanitizeContent(payload.Payload.Body),
+		"from":            service.SanitizePhoneNumber(payload.Payload.From),
+		"editedMessageId": service.SanitizeWhatsAppMessageID(*payload.Payload.EditedMessageID),
+		"newBody":         service.SanitizeContent(payload.Payload.Body),
 	}).Info("Processing WhatsApp message edit")
 
 	// Find the original message mapping
@@ -471,7 +468,7 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 
 	// For now, send an edit notification to Signal as a new message
 	editNotification := fmt.Sprintf("✏️ Message edited: %s", payload.Payload.Body)
-	
+
 	// Send to Signal using message service
 	// Send edit notification to the appropriate Signal destination
 	editSessionName := mapping.SessionName
@@ -575,6 +572,3 @@ func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *mode
 
 	return nil
 }
-
-
-

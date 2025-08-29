@@ -68,7 +68,7 @@ func TestValidateFilePath(t *testing.T) {
 
 func TestValidateFilePathWithBase(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Create a subdirectory
 	subDir := filepath.Join(tmpDir, "subdir")
 	err := os.MkdirAll(subDir, 0755)

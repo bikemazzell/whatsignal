@@ -52,46 +52,46 @@ var (
 // ContentTypeToExtension maps partial content type matches to file extensions
 var ContentTypeToExtension = map[string]string{
 	// Audio content type mappings
-	"audio/ogg":    "ogg",
-	"audio/mpeg":   "mp3",
-	"audio/mp3":    "mp3",
-	"audio/aac":    "aac",
-	"audio/m4a":    "m4a",
-	"audio/mp4":    "m4a",
-	
+	"audio/ogg":  "ogg",
+	"audio/mpeg": "mp3",
+	"audio/mp3":  "mp3",
+	"audio/aac":  "aac",
+	"audio/m4a":  "m4a",
+	"audio/mp4":  "m4a",
+
 	// Image content type mappings
-	"image/jpeg":   "jpg",
-	"image/jpg":    "jpg",
-	"image/png":    "png",
-	"image/gif":    "gif",
-	"image/webp":   "webp",
-	
+	"image/jpeg": "jpg",
+	"image/jpg":  "jpg",
+	"image/png":  "png",
+	"image/gif":  "gif",
+	"image/webp": "webp",
+
 	// Video content type mappings
-	"video/mp4":    "mp4",
-	"video/mov":    "mov",
+	"video/mp4":       "mp4",
+	"video/mov":       "mov",
 	"video/quicktime": "mov",
-	"video/avi":    "avi",
+	"video/avi":       "avi",
 	"video/x-msvideo": "avi",
 }
 
 // FileSignatures maps file format signatures to extensions
 var FileSignatures = map[string]string{
-	"OggS":         "ogg",    // OGG file signature
-	"ID3":          "mp3",    // MP3 ID3v2 tag
-	"GIF87a":       "gif",    // GIF87a signature
-	"GIF89a":       "gif",    // GIF89a signature
-	"RIFF":         "webp",   // WebP/RIFF container (needs additional check)
-	"%PDF":         "pdf",    // PDF signature
-	"\x89PNG\r\n\x1a\n": "png", // PNG signature
+	"OggS":              "ogg",  // OGG file signature
+	"ID3":               "mp3",  // MP3 ID3v2 tag
+	"GIF87a":            "gif",  // GIF87a signature
+	"GIF89a":            "gif",  // GIF89a signature
+	"RIFF":              "webp", // WebP/RIFF container (needs additional check)
+	"%PDF":              "pdf",  // PDF signature
+	"\x89PNG\r\n\x1a\n": "png",  // PNG signature
 }
 
 // MimeTypeToExtension maps MIME types to their primary file extensions
 var MimeTypeToExtension = map[string]string{
 	// Image formats
-	"image/jpeg": ".jpg",
-	"image/png":  ".png",
-	"image/gif":  ".gif",
-	"image/webp": ".webp",
+	"image/jpeg":    ".jpg",
+	"image/png":     ".png",
+	"image/gif":     ".gif",
+	"image/webp":    ".webp",
 	"image/svg+xml": ".svg",
 
 	// Video formats
@@ -104,7 +104,7 @@ var MimeTypeToExtension = map[string]string{
 	"application/pdf":    ".pdf",
 	"application/msword": ".doc",
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-	"text/plain": ".txt",
+	"text/plain":      ".txt",
 	"application/rtf": ".rtf",
 
 	// Audio formats

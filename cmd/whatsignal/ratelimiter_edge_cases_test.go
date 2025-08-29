@@ -84,7 +84,7 @@ func TestRateLimiter_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			ip := fmt.Sprintf("192.168.1.%d", id%10) // 10 different IPs
-			
+
 			for j := 0; j < requestsPerGoroutine; j++ {
 				if rl.Allow(ip) {
 					allowed.Add(1)
@@ -97,7 +97,7 @@ func TestRateLimiter_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-	
+
 	t.Logf("Allowed: %d, Denied: %d", allowed.Load(), denied.Load())
 	// Should have both allowed and denied requests
 	assert.Greater(t, int(allowed.Load()), 0, "Should have some allowed requests")
@@ -135,7 +135,7 @@ func TestRateLimiter_CleanupOldEntries(t *testing.T) {
 			allowedCount++
 		}
 	}
-	
+
 	// All should be allowed since old entries expired
 	assert.Equal(t, 100, allowedCount, "All requests should be allowed after cleanup")
 }
@@ -151,13 +151,13 @@ func TestRateLimiter_EdgeCaseTimestamps(t *testing.T) {
 	assert.True(t, rl.Allow(ip))
 	time.Sleep(15 * time.Millisecond) // Reduced sleep
 	assert.True(t, rl.Allow(ip))
-	
+
 	// Should be at limit
 	assert.False(t, rl.Allow(ip))
-	
+
 	// Wait for first request to expire
 	time.Sleep(25 * time.Millisecond) // Reduced sleep
-	
+
 	// Should allow one more
 	assert.True(t, rl.Allow(ip))
 	assert.False(t, rl.Allow(ip))
@@ -166,7 +166,7 @@ func TestRateLimiter_EdgeCaseTimestamps(t *testing.T) {
 // TestRateLimiter_ZeroLimit tests behavior with zero limit
 func TestRateLimiter_ZeroLimit(t *testing.T) {
 	rl := NewRateLimiter(0, 1*time.Second)
-	
+
 	// Should block all requests
 	assert.False(t, rl.Allow("127.0.0.1"))
 	assert.False(t, rl.Allow("192.168.1.1"))
@@ -175,7 +175,7 @@ func TestRateLimiter_ZeroLimit(t *testing.T) {
 // TestRateLimiter_NegativeLimit tests behavior with negative limit
 func TestRateLimiter_NegativeLimit(t *testing.T) {
 	rl := NewRateLimiter(-1, 1*time.Second)
-	
+
 	// Should block all requests (treated as 0)
 	assert.False(t, rl.Allow("127.0.0.1"))
 }
@@ -183,7 +183,7 @@ func TestRateLimiter_NegativeLimit(t *testing.T) {
 // TestRateLimiter_VeryShortWindow tests with very short time windows
 func TestRateLimiter_VeryShortWindow(t *testing.T) {
 	rl := NewRateLimiter(1000, 1*time.Nanosecond)
-	
+
 	// With such a short window, all requests should be allowed
 	// as they expire immediately
 	for i := 0; i < 10; i++ {
@@ -195,12 +195,12 @@ func TestRateLimiter_VeryShortWindow(t *testing.T) {
 func TestRateLimiter_VeryLongWindow(t *testing.T) {
 	rl := NewRateLimiter(2, 24*time.Hour)
 	ip := "192.168.1.1"
-	
+
 	// Should enforce the limit strictly
 	assert.True(t, rl.Allow(ip))
 	assert.True(t, rl.Allow(ip))
 	assert.False(t, rl.Allow(ip))
-	
+
 	// Even after some time, should still be limited
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, rl.Allow(ip))
@@ -209,7 +209,7 @@ func TestRateLimiter_VeryLongWindow(t *testing.T) {
 // TestRateLimiter_IPNormalization tests IP address normalization
 func TestRateLimiter_IPNormalization(t *testing.T) {
 	rl := NewRateLimiter(1, 100*time.Millisecond)
-	
+
 	// These should be treated as the same IP
 	ips := []string{
 		"192.168.1.1",
@@ -217,10 +217,10 @@ func TestRateLimiter_IPNormalization(t *testing.T) {
 		"192.168.1.1:8080",
 		"192.168.1.1:12345",
 	}
-	
+
 	// First IP uses the limit
 	assert.True(t, rl.Allow(ips[0]))
-	
+
 	// All others should be denied (same IP)
 	for i := 1; i < len(ips); i++ {
 		// Extract IP part for Allow method
@@ -234,16 +234,16 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping memory growth test in short mode")
 	}
-	
+
 	rl := NewRateLimiter(10, 100*time.Millisecond)
-	
+
 	// Add many unique IPs
 	const numIPs = 10000
 	for i := 0; i < numIPs; i++ {
-		ip := fmt.Sprintf("%d.%d.%d.%d", 
+		ip := fmt.Sprintf("%d.%d.%d.%d",
 			(i>>24)&0xFF, (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
 		rl.Allow(ip)
-		
+
 		if i%1000 == 0 {
 			// Check memory periodically
 			rl.mu.RLock()
@@ -252,18 +252,18 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 			t.Logf("After %d IPs, map size: %d", i, mapSize)
 		}
 	}
-	
+
 	// Wait for entries to expire
 	time.Sleep(110 * time.Millisecond)
-	
+
 	// Trigger cleanup
 	rl.Allow("1.1.1.1")
-	
+
 	// Check final size
 	rl.mu.RLock()
 	finalSize := len(rl.requests)
 	rl.mu.RUnlock()
-	
+
 	// Should have cleaned up at least some old entries (be more lenient)
 	assert.Less(t, finalSize, numIPs, "Should clean up at least some expired entries")
 }
@@ -271,7 +271,7 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 // TestRateLimiter_RaceCondition tests for race conditions
 func TestRateLimiter_RaceCondition(t *testing.T) {
 	rl := NewRateLimiter(100, 100*time.Millisecond)
-	
+
 	// Run with -race flag to detect races
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -284,6 +284,6 @@ func TestRateLimiter_RaceCondition(t *testing.T) {
 			}
 		}(i)
 	}
-	
+
 	wg.Wait()
 }

@@ -147,7 +147,6 @@ func (m *mockWhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTim
 	return args.Error(0)
 }
 
-
 func (m *mockWhatsAppClient) SendSeen(ctx context.Context, chatID string) error {
 	args := m.Called(ctx, chatID)
 	return args.Error(0)
@@ -390,4 +389,3 @@ func (m *mockContactService) SyncAllContacts(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
 }
-

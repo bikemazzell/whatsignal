@@ -148,7 +148,6 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 	return nil
 }
 
-
 func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
 	waHash, err := d.encryptor.LookupHash(whatsappID)
 	if err != nil {
@@ -633,7 +632,7 @@ func (d *Database) GetContactByPhone(ctx context.Context, phoneNumber string) (*
 	if !strings.HasSuffix(contactID, "@c.us") {
 		contactID = phoneNumber + "@c.us"
 	}
-	
+
 	return d.GetContact(ctx, contactID)
 }
 
@@ -658,14 +657,14 @@ func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, si
 	// We need to check both directions:
 	// 1. Messages from WhatsApp (this session) that were forwarded to Signal (signal_msg_id exists)
 	// 2. Messages from Signal (this sender) that were forwarded to WhatsApp (this session)
-	
+
 	// For Signal messages, the sender is stored in the whatsapp_chat_id field (as phone@c.us)
 	// We need to convert the Signal sender to WhatsApp chat ID format
 	whatsappChatID := signalSender
 	if !strings.HasSuffix(whatsappChatID, "@c.us") {
 		whatsappChatID = signalSender + "@c.us"
 	}
-	
+
 	chatHash, err := d.encryptor.LookupHash(whatsappChatID)
 	if err != nil {
 		return false, fmt.Errorf("failed to compute chat ID hash: %w", err)
@@ -682,6 +681,6 @@ func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, si
 	if err != nil {
 		return false, fmt.Errorf("failed to check message history: %w", err)
 	}
-	
+
 	return count > 0, nil
 }

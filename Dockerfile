@@ -1,11 +1,10 @@
 # Pin Go Alpine image with digest for security
 FROM golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052 AS builder
 
-# Install build dependencies with no-cache and verification
+# Install build dependencies (avoid strict pins to support Alpine updates)
 RUN apk add --no-cache --update \
-    gcc~=13.2 \
-    musl-dev~=1.2 \
-    sqlite-dev~=3.45
+    build-base \
+    sqlite-dev
 
 WORKDIR /app
 

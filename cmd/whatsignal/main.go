@@ -214,8 +214,8 @@ func run(ctx context.Context) error {
 		logger.WithField("interval", checkInterval).Info("Session health monitor started")
 	}
 
-	ctxWithVerbose := context.WithValue(ctx, "verbose", *verbose)
-	
+	ctxWithVerbose := context.WithValue(ctx, service.VerboseContextKey, *verbose)
+
 	signalPoller := service.NewSignalPoller(sigClient, messageService, cfg.Signal, models.RetryConfig{
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,

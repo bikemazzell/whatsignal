@@ -507,10 +507,21 @@ func TestContactSyncDisabled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
+	// Ensure server binds to an ephemeral port to avoid conflicts
+	oldPort := os.Getenv("PORT")
+	require.NoError(t, os.Setenv("PORT", "0"))
+	defer func() {
+		if oldPort == "" {
+			os.Unsetenv("PORT")
+		} else {
+			os.Setenv("PORT", oldPort)
+		}
+	}()
+
 	err = run(ctx)
-	// Should fail with server start error (port already in use or context timeout)
-	// but not with contact sync errors since it's disabled
-	assert.Error(t, err)
+	// Graceful shutdown on context timeout should not be treated as an error
+	// Contact sync is disabled, so startup should complete and exit cleanly
+	assert.NoError(t, err)
 }
 
 func cleanupTestEnv(t *testing.T) {

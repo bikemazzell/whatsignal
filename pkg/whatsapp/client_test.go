@@ -530,12 +530,15 @@ func TestClient_SendVideo(t *testing.T) {
 		case "/api/server/version":
 			// Return version without video support (simulating WAHA Core)
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(types.ServerVersion{
+			if err := json.NewEncoder(w).Encode(types.ServerVersion{
 				Version: "2024.2.3",
 				Engine:  "WEBJS",
 				Tier:    "CORE",
 				Browser: "",
-			})
+			}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 			
 		case testAPIBase+testEndpointSendFile:
 			// Video will be sent as file due to lack of video support
@@ -746,6 +749,7 @@ func TestSendReaction(t *testing.T) {
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
 		}
 	}))
 	defer server.Close()
@@ -767,14 +771,20 @@ func TestSendReaction(t *testing.T) {
 	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		var payload types.ReactionRequest
-		json.NewDecoder(r.Body).Decode(&payload)
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Failed to decode payload", http.StatusBadRequest)
+			return
+		}
 		assert.Equal(t, "", payload.Reaction) // Empty string removes reaction
 
 		resp := types.SendMessageResponse{
 			MessageID: "reaction124",
 			Status:    "sent",
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 	}))
 	defer server2.Close()
 
@@ -850,7 +860,9 @@ func TestDeleteMessage(t *testing.T) {
 				w.WriteHeader(tt.responseStatus)
 				if tt.responseBody != "" {
 					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(tt.responseBody))
+					if _, err := w.Write([]byte(tt.responseBody)); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -1106,7 +1118,10 @@ func TestClient_ServerVersionDetection(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/server/version" {
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(tt.serverResponse)
+					if err := json.NewEncoder(w).Encode(tt.serverResponse); err != nil {
+						http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+						return
+					}
 				} else {
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -1188,7 +1203,10 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 				switch r.URL.Path {
 				case "/api/server/version":
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(tt.serverVersion)
+					if err := json.NewEncoder(w).Encode(tt.serverVersion); err != nil {
+						http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+						return
+					}
 					
 				case testAPIBase + testEndpointSendVideo, testAPIBase + testEndpointSendFile:
 					actualEndpoint = r.URL.Path
@@ -1223,7 +1241,9 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 							Serialized: "msg123",
 						},
 					}
-					json.NewEncoder(w).Encode(resp)
+					if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 					
 				default:
 					w.WriteHeader(http.StatusNotFound)
@@ -1257,12 +1277,15 @@ func TestClient_VideoSupportCaching(t *testing.T) {
 		if r.URL.Path == "/api/server/version" {
 			callCount++
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(types.ServerVersion{
+			if err := json.NewEncoder(w).Encode(types.ServerVersion{
 				Version: "2024.2.3",
 				Engine:  "NOWEB",
 				Tier:    "PLUS",
 				Browser: "/usr/bin/google-chrome-stable",
-			})
+			}); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		}
 	}))
 	defer server.Close()
@@ -1306,7 +1329,9 @@ func TestClient_ServerVersionError(t *testing.T) {
 		{
 			name: "server returns invalid JSON",
 			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
-				w.Write([]byte("invalid json"))
+				if _, err := w.Write([]byte("invalid json")); err != nil {
+					panic(err)
+				}
 			},
 			expectSupport: false,
 		},
@@ -1413,7 +1438,9 @@ func TestWAHAResponseParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(tt.responseBody))
+				if _, err := w.Write([]byte(tt.responseBody)); err != nil {
+					panic(err)
+				}
 			}))
 			defer server.Close()
 

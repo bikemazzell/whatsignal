@@ -31,9 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed rate limiter test timing issues
 - **Coverage**: All database tests now pass; working toward 95% coverage target
 
+### Fixed
+- Eliminated data race between Server.Start and Server.Shutdown by guarding server pointer with RWMutex; test suite now passes with -race and CI build-and-test gate is green
+
 ### Documentation
 - **Security Guide**: Added comprehensive Docker security documentation (docs/docker-security.md)
 - **Deployment**: Created security-hardened docker-compose.security.yml with best practices
+- **Build Toolchain**: Upgraded Go toolchain to 1.24.6 in go.mod, CI, and Dockerfile to address stdlib advisory GO-2025-3849 and keep scanners green
 
 ## [1.1.2] - 28-08-2025
 

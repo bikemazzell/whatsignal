@@ -59,7 +59,10 @@ func TestWhatsAppClient_WAHA_API_Format(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(response)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+					return
+				}
 			}))
 			defer server.Close()
 
@@ -132,7 +135,10 @@ func TestWhatsAppClient_StatusCodeHandling(t *testing.T) {
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				json.NewEncoder(w).Encode(response)
+				if err := json.NewEncoder(w).Encode(response); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+					return
+				}
 			}))
 			defer server.Close()
 
@@ -170,7 +176,10 @@ func TestWhatsAppClient_SessionInPayload(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 	}))
 	defer server.Close()
 
@@ -213,10 +222,15 @@ func TestWhatsAppClient_OptionalEndpoints(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(response)
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		case "/api/sendSeen", "/api/startTyping", "/api/stopTyping":
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
+			if _, err := w.Write([]byte("Not Found")); err != nil {
+		panic(err)
+	}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

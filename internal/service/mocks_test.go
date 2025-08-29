@@ -244,40 +244,6 @@ func (h *mockMediaHandler) CleanupOldFiles(maxAgeSeconds int64) error {
 }
 
 // Mock channel manager
-type mockChannelManager struct {
-	mock.Mock
-}
-
-func (m *mockChannelManager) GetSignalDestination(sessionName string) (string, error) {
-	args := m.Called(sessionName)
-	return args.String(0), args.Error(1)
-}
-
-func (m *mockChannelManager) GetWhatsAppSession(destination string) (string, error) {
-	args := m.Called(destination)
-	return args.String(0), args.Error(1)
-}
-
-
-func (m *mockChannelManager) GetAllWhatsAppSessions() []string {
-	args := m.Called()
-	return args.Get(0).([]string)
-}
-
-func (m *mockChannelManager) IsValidSession(sessionName string) bool {
-	args := m.Called(sessionName)
-	return args.Bool(0)
-}
-
-func (m *mockChannelManager) IsValidDestination(destination string) bool {
-	args := m.Called(destination)
-	return args.Bool(0)
-}
-
-func (m *mockChannelManager) GetChannelCount() int {
-	args := m.Called()
-	return args.Int(0)
-}
 
 // Mock database service
 type mockDatabaseService struct {

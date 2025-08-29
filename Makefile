@@ -360,7 +360,24 @@ check-tools:
 dev-setup: deps tidy fmt vet test
 
 .PHONY: pre-commit
-pre-commit: fmt vet lint test
+pre-commit:
+	@echo "Pre-commit: formatting, re-staging, vet, lint, test..."
+	@$(MAKE) fmt
+	@if ! git diff --quiet; then \
+		echo "Formatting applied; re-staging files..."; \
+		git add -A; \
+	fi
+	@$(MAKE) vet
+	@$(MAKE) lint
+	@$(MAKE) test
+
+.PHONY: hooks-install
+hooks-install:
+	@echo "Installing git hooks..."
+	@mkdir -p .githooks
+	@chmod +x .githooks/pre-commit || true
+	@git config core.hooksPath .githooks
+	@echo "Git hooks installed (core.hooksPath=.githooks)"
 
 # Show build information
 .PHONY: info

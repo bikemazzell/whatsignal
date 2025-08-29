@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Stash unstaged changes to avoid partial staging issues
+git stash -q --keep-index --include-untracked || true
+STASHED=0
+if git rev-parse -q --verify refs/stash >/dev/null 2>&1; then
+  STASHED=1
+fi
+
+cleanup() {
+  if [ "$STASHED" -eq 1 ]; then
+    git stash pop -q || true
+  fi
+}
+trap cleanup EXIT
+
+# Run pre-commit tasks
+make pre-commit
+

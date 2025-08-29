@@ -154,7 +154,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-		// Content-Type validation for POST requests
+		// Content-Type validation and size limit for POST requests
 		if r.Method == http.MethodPost {
 			contentType := r.Header.Get("Content-Type")
 			if !strings.Contains(contentType, "application/json") {
@@ -165,6 +165,12 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 				return
 			}
+			// Enforce max request size
+			maxBytes := s.cfg.Server.WebhookMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = constants.DefaultWebhookMaxBytes
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
 		}
 
 		// Log security-relevant information
@@ -249,6 +255,11 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 		maxSkew := time.Duration(maxSkewSec) * time.Second
 		bodyBytes, err := verifySignatureWithSkew(r, s.cfg.WhatsApp.WebhookSecret, XWahaSignatureHeader, maxSkew)
 		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "body too large") {
+				s.logger.WithError(err).Warn("Webhook request body too large")
+				http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+				return
+			}
 			s.logger.WithError(err).Error("WhatsApp webhook signature verification failed")
 			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
 			return
@@ -257,7 +268,8 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 		var payload models.WhatsAppWebhookPayload
 		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&payload); err != nil {
 			s.logger.WithError(err).Error("Failed to decode webhook payload after signature verification")
-			s.logger.Debugf("Raw webhook body: %s", string(bodyBytes))
+			// Do not log raw body to avoid leaking PII; log size instead
+			s.logger.WithField("body_len", len(bodyBytes)).Debug("Invalid webhook JSON payload")
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}

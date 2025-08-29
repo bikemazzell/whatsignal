@@ -43,11 +43,13 @@ func TestDatabase_ConcurrentOperations(t *testing.T) {
 	_, err = db.Exec(schema)
 	require.NoError(t, err)
 	
-	// Create database wrapper
-	database := &Database{db: db, encryptor: &encryptor{gcm: nil}}
+	// Create database wrapper with proper encryptor
+	encryptor, err := NewEncryptor()
+	require.NoError(t, err)
+	database := &Database{db: db, encryptor: encryptor}
 
-	const numGoroutines = 10 // Reduced for SQLite
-	const numOperations = 5  // Reduced for SQLite
+	const numGoroutines = 10
+	const numOperations = 5
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines*numOperations*3)
 

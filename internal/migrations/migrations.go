@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS message_mappings (
     media_path TEXT,
     session_name TEXT NOT NULL DEFAULT 'default',
     media_type TEXT,
+    chat_id_hash TEXT,
+    whatsapp_msg_id_hash TEXT,
+    signal_msg_id_hash TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -67,6 +70,9 @@ CREATE INDEX IF NOT EXISTS idx_signal_msg_id ON message_mappings(signal_msg_id);
 CREATE INDEX IF NOT EXISTS idx_chat_time ON message_mappings(whatsapp_chat_id, forwarded_at);
 CREATE INDEX IF NOT EXISTS idx_session_name ON message_mappings(session_name);
 CREATE INDEX IF NOT EXISTS idx_session_chat ON message_mappings(session_name, whatsapp_chat_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id_hash ON message_mappings(whatsapp_msg_id_hash);
+CREATE INDEX IF NOT EXISTS idx_signal_msg_id_hash ON message_mappings(signal_msg_id_hash);
+CREATE INDEX IF NOT EXISTS idx_chat_id_hash ON message_mappings(chat_id_hash);
 
 CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at
 AFTER UPDATE ON message_mappings

@@ -6,8 +6,9 @@ const (
 		INSERT INTO message_mappings (
 			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			signal_timestamp, forwarded_at, delivery_status, media_path,
-			session_name, media_type
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	SelectMessageMappingByWhatsAppIDQuery = `
@@ -15,7 +16,7 @@ const (
 			   signal_timestamp, forwarded_at, delivery_status, media_path,
 			   created_at, updated_at
 		FROM message_mappings
-		WHERE whatsapp_msg_id = ?
+		WHERE whatsapp_msg_id_hash = ?
 	`
 
 	SelectMessageMappingBySignalIDQuery = `
@@ -23,28 +24,28 @@ const (
 			   signal_timestamp, forwarded_at, delivery_status, media_path,
 			   created_at, updated_at
 		FROM message_mappings
-		WHERE signal_msg_id = ?
+		WHERE signal_msg_id_hash = ?
 	`
 
 	UpdateDeliveryStatusByWhatsAppIDQuery = `
 		UPDATE message_mappings
 		SET delivery_status = ?
-		WHERE whatsapp_msg_id = ?
+		WHERE whatsapp_msg_id_hash = ?
 	`
 
 	UpdateDeliveryStatusBySignalIDQuery = `
 		UPDATE message_mappings
 		SET delivery_status = ?
-		WHERE signal_msg_id = ?
+		WHERE signal_msg_id_hash = ?
 	`
 
 	SelectLatestMessageMappingByWhatsAppChatIDQuery = `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
 		       forwarded_at, delivery_status, media_path,
 		       created_at, updated_at
-		FROM message_mappings 
-		WHERE whatsapp_chat_id = ? 
-		ORDER BY forwarded_at DESC 
+		FROM message_mappings
+		WHERE chat_id_hash = ?
+		ORDER BY forwarded_at DESC
 		LIMIT 1
 	`
 

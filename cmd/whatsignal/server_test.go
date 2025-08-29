@@ -376,6 +376,62 @@ func TestVerifySignature(t *testing.T) {
 	}
 }
 
+func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
+	secretKey := "test-secret"
+	payload := []byte("{\"event\":\"message.any\"}")
+
+	// Helper to compute WAHA signature (sha512 of body)
+	computeSig := func(b []byte) string {
+		mac := hmac.New(sha512.New, []byte(secretKey))
+		mac.Write(b)
+		return hex.EncodeToString(mac.Sum(nil))
+	}
+
+	t.Run("missing timestamp header", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing X-Webhook-Timestamp")
+		assert.Nil(t, body)
+	})
+
+	t.Run("timestamp too old", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+		old := time.Now().Add(-(time.Duration(constants.DefaultWebhookMaxSkewSec)+10)*time.Second).Unix()
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", old))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "timestamp out of acceptable range")
+		assert.Nil(t, body)
+	})
+
+	t.Run("timestamp in future too far", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+		future := time.Now().Add((time.Duration(constants.DefaultWebhookMaxSkewSec)+10)*time.Second).Unix()
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", future))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "timestamp out of acceptable range")
+		assert.Nil(t, body)
+	})
+
+	t.Run("valid WAHA signature and timestamp", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
+		assert.NoError(t, err)
+		assert.Equal(t, payload, body)
+	})
+}
+
 func TestSetupWebhookHandlers(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
@@ -1076,7 +1132,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:     "default",
 						DeliveryStatus:  models.DeliveryStatusSent,
 					}, nil).Once()
-				
+
 				// Mock sending reaction notification to Signal
 				msgService.On("SendSignalNotification", mock.Anything, "default", "👍 Reacted with 👍").Return(nil).Once()
 			},
@@ -1106,7 +1162,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:     "default",
 						DeliveryStatus:  models.DeliveryStatusSent,
 					}, nil).Once()
-				
+
 				// Mock sending edit notification to Signal
 				msgService.On("SendSignalNotification", mock.Anything, "default", "✏️ Message edited: This is the edited message").Return(nil).Once()
 			},
@@ -1135,7 +1191,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:     "default",
 						DeliveryStatus:  models.DeliveryStatusSent,
 					}, nil).Once()
-				
+
 				// Mock updating delivery status
 				msgService.On("UpdateDeliveryStatus", mock.Anything, "msg_ack_123", "read").
 					Return(nil).Once()
@@ -1171,7 +1227,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
-			
+
 			// Create valid signature
 			mac := hmac.New(sha512.New, []byte("test-secret"))
 			mac.Write(payload)
@@ -1404,7 +1460,7 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 			// Add timestamp header (required for WAHA webhooks)
 			timestamp := fmt.Sprintf("%d", time.Now().Unix())
 			req.Header.Set("X-Webhook-Timestamp", timestamp)
-			
+
 			// Add signature for authentication (using SHA512 for WAHA)
 			mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
 			mac.Write(body)
@@ -1435,4 +1491,49 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 			}
 		})
 	}
+}
+
+
+func TestWhatsAppWebhook_InvalidJSON_NoRawBodyLogged(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.DebugLevel)
+
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+		Channels: []models.Channel{{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		}},
+	}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+
+	// Craft invalid JSON payload that contains a sensitive token
+	payload := []byte("{\"event\":\"message\",\"payload\":{\"id\":\"msg\",\"from\":\"+10000000000\",\"fromMe\":false,\"body\":\"supersecret-token") // missing closing quotes/braces
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// Add timestamp header (required for WAHA webhooks)
+	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+	// Add valid WAHA signature (SHA-512)
+	mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
+	mac.Write(payload)
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.Header.Set(XWahaSignatureHeader, signature)
+
+	recorder := httptest.NewRecorder()
+	server.router.ServeHTTP(recorder, req)
+
+	resp := recorder.Result()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	// Ensure raw sensitive token is not present in logs
+	logOutput := buf.String()
+	assert.NotContains(t, logOutput, "supersecret-token")
 }

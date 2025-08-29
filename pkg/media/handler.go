@@ -62,6 +62,10 @@ func (h *handler) processMediaFromURL(mediaURL string) (string, error) {
 	// Rewrite localhost URLs to use the correct WAHA host
 	rewrittenURL := h.rewriteMediaURL(mediaURL)
 
+	if err := h.validateDownloadURL(rewrittenURL); err != nil {
+		return "", err
+	}
+
 	// Download the file from URL
 	tempPath, ext, err := h.downloadFromURL(rewrittenURL)
 	if err != nil {
@@ -224,6 +228,11 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(constants.DefaultDownloadTimeoutSec)*time.Second)
 	defer cancel()
 
+	// Safety: validate again at download time
+	if err := h.validateDownloadURL(mediaURL); err != nil {
+		return "", "", err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", mediaURL, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create request: %w", err)
@@ -318,6 +327,7 @@ func (h *handler) rewriteMediaURL(mediaURL string) string {
 			return mediaURL // Return original if WAHA URL parsing fails
 		}
 
+
 		// Replace the host with the WAHA host
 		u.Scheme = wahaURL.Scheme
 		u.Host = wahaURL.Host
@@ -377,12 +387,12 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 
 	// Detect MIME type from content
 	contentType := http.DetectContentType(buffer[:n])
-	
+
 	// Try direct mapping first
 	if ext, ok := constants.ContentTypeToExtension[contentType]; ok {
 		return ext, nil
 	}
-	
+
 	// Fallback to partial matching for complex content types
 	switch {
 	case strings.HasPrefix(contentType, "audio/"):
@@ -407,6 +417,8 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 			if strings.HasPrefix(contentTypeKey, "video/") && strings.Contains(contentType, strings.TrimPrefix(contentTypeKey, "video/")) {
 				return ext, nil
 			}
+
+
 		}
 		return constants.DefaultVideoExtension, nil
 	default:
@@ -436,7 +448,7 @@ func (h *handler) detectByFileSignature(data []byte) string {
 	}
 
 	// Special binary signatures that can't be easily stored as strings
-	
+
 	// Check for MP3 frame sync (binary pattern)
 	if len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0 {
 		return "mp3"

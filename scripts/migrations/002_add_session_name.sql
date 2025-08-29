@@ -3,7 +3,7 @@
 -- Created: 2025-06-25
 
 -- Add session_name column to message_mappings table
-ALTER TABLE message_mappings ADD COLUMN session_name TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE message_mappings ADD COLUMN session_name TEXT NOT NULL;
 
 -- Add media_type column while we're at it (from the model)
 ALTER TABLE message_mappings ADD COLUMN media_type TEXT;

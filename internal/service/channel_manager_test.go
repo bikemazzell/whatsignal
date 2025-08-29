@@ -9,40 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestChannelManager_GetDefaultSessionName(t *testing.T) {
-	tests := []struct {
-		name     string
-		channels []models.Channel
-		expected string
-	}{
-		{
-			name: "single channel",
-			channels: []models.Channel{
-				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+1111111111"},
-			},
-			expected: "personal",
-		},
-		{
-			name: "multiple channels - returns first",
-			channels: []models.Channel{
-				{WhatsAppSessionName: "business", SignalDestinationPhoneNumber: "+1111111111"},
-				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+2222222222"},
-				{WhatsAppSessionName: "family", SignalDestinationPhoneNumber: "+3333333333"},
-			},
-			expected: "business",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cm, err := NewChannelManager(tt.channels)
-			require.NoError(t, err)
-
-			result := cm.GetDefaultSessionName()
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
 
 func TestChannelManager_GetAllWhatsAppSessions(t *testing.T) {
 	tests := []struct {
@@ -237,7 +203,7 @@ func TestChannelManager_ConcurrentAccess(t *testing.T) {
 			defer func() { done <- true }()
 
 			// Test various methods concurrently
-			_ = cm.GetDefaultSessionName()
+			// default session removed
 			_ = cm.GetAllWhatsAppSessions()
 			_ = cm.IsValidSession("business")
 			_ = cm.IsValidDestination("+1111111111")
@@ -255,7 +221,7 @@ func TestChannelManager_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Verify the manager is still working correctly
-	assert.Equal(t, "business", cm.GetDefaultSessionName())
+	assert.Equal(t, 2, cm.GetChannelCount())
 	assert.Equal(t, 2, cm.GetChannelCount())
 	assert.True(t, cm.IsValidSession("personal"))
 	assert.True(t, cm.IsValidDestination("+2222222222"))

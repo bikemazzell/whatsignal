@@ -220,6 +220,7 @@ func TestMessageMappingCRUD(t *testing.T) {
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	err := db.SaveMessageMapping(ctx, mapping)
@@ -249,6 +250,7 @@ func TestMessageMappingCRUD(t *testing.T) {
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
 		MediaPath:       &mediaPath,
+		SessionName:     "personal",
 	}
 
 	err = db.SaveMessageMapping(ctx, mapping)
@@ -274,6 +276,7 @@ func TestUpdateDeliveryStatus(t *testing.T) {
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	err := db.SaveMessageMapping(ctx, mapping)
@@ -316,15 +319,23 @@ func TestCleanupOldRecords(t *testing.T) {
 	require.NoError(t, err)
 	encryptedSigOld, err := db.encryptor.EncryptForLookupIfEnabled("sig123")
 	require.NoError(t, err)
+	hashChatOld, err := db.encryptor.LookupHash("chat123")
+	require.NoError(t, err)
+	hashWAOld, err := db.encryptor.LookupHash("msg123")
+	require.NoError(t, err)
+	hashSigOld, err := db.encryptor.LookupHash("sig123")
+	require.NoError(t, err)
 
 	_, err = db.db.ExecContext(ctx, `
 		INSERT INTO message_mappings (
 			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			signal_timestamp, forwarded_at, delivery_status,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-2 days'), datetime('now', '-2 days'))`,
+			created_at, updated_at, session_name,
+		chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-2 days'), datetime('now', '-2 days'), 'personal', ?, ?, ?)`,
 		encryptedChatOld, encryptedWAOld, encryptedSigOld,
 		oldTime, oldTime, models.DeliveryStatusDelivered,
+		hashChatOld, hashWAOld, hashSigOld,
 	)
 	require.NoError(t, err)
 
@@ -334,15 +345,23 @@ func TestCleanupOldRecords(t *testing.T) {
 	require.NoError(t, err)
 	encryptedSigNew, err := db.encryptor.EncryptForLookupIfEnabled("sig124")
 	require.NoError(t, err)
+	hashChatNew, err := db.encryptor.LookupHash("chat124")
+	require.NoError(t, err)
+	hashWANew, err := db.encryptor.LookupHash("msg124")
+	require.NoError(t, err)
+	hashSigNew, err := db.encryptor.LookupHash("sig124")
+	require.NoError(t, err)
 
 	_, err = db.db.ExecContext(ctx, `
 		INSERT INTO message_mappings (
 			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			signal_timestamp, forwarded_at, delivery_status,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+			created_at, updated_at, session_name,
+		chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 'personal', ?, ?, ?)`,
 		encryptedChatNew, encryptedWANew, encryptedSigNew,
 		newTime, newTime, models.DeliveryStatusDelivered,
+		hashChatNew, hashWANew, hashSigNew,
 	)
 	require.NoError(t, err)
 
@@ -375,6 +394,7 @@ func TestGetMessageMapping(t *testing.T) {
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	err := db.SaveMessageMapping(ctx, mapping)
@@ -469,6 +489,7 @@ func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	// This should work with default encryption
@@ -522,6 +543,7 @@ func TestSaveMessageMappingWithMediaPath(t *testing.T) {
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
 		MediaPath:       &mediaPath,
+		SessionName:     "personal",
 	}
 
 	err := db.SaveMessageMapping(ctx, mapping)
@@ -843,6 +865,7 @@ func TestDatabase_GetMessageMappingBySignalID(t *testing.T) {
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	err = db.SaveMessageMapping(ctx, mapping)
@@ -877,6 +900,7 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID(t *testing.T) {
 		SignalTimestamp: time.Now().Add(-2 * time.Hour),
 		ForwardedAt:     time.Now().Add(-2 * time.Hour),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	mapping2 := &models.MessageMapping{
@@ -886,6 +910,7 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID(t *testing.T) {
 		SignalTimestamp: time.Now().Add(-1 * time.Hour),
 		ForwardedAt:     time.Now().Add(-1 * time.Hour), // More recent
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "personal",
 	}
 
 	mapping3 := &models.MessageMapping{
@@ -895,6 +920,7 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID(t *testing.T) {
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "business",
 	}
 
 	// Save mappings
@@ -944,6 +970,7 @@ func TestDatabase_GetLatestMessageMapping(t *testing.T) {
 		SignalTimestamp: time.Now().Add(-3 * time.Hour),
 		ForwardedAt:     time.Now().Add(-3 * time.Hour),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "s1",
 	}
 
 	mapping2 := &models.MessageMapping{
@@ -953,6 +980,7 @@ func TestDatabase_GetLatestMessageMapping(t *testing.T) {
 		SignalTimestamp: time.Now().Add(-1 * time.Hour),
 		ForwardedAt:     time.Now().Add(-1 * time.Hour), // Most recent overall
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "s2",
 	}
 
 	mapping3 := &models.MessageMapping{
@@ -962,6 +990,7 @@ func TestDatabase_GetLatestMessageMapping(t *testing.T) {
 		SignalTimestamp: time.Now().Add(-2 * time.Hour),
 		ForwardedAt:     time.Now().Add(-2 * time.Hour),
 		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "s3",
 	}
 
 	// Save mappings
@@ -1047,7 +1076,7 @@ func TestDatabase_GetLatestMessageMappingBySession(t *testing.T) {
 	assert.Equal(t, "personal", latest.SessionName)
 
 	// Test with empty session name (should default to "default")
-	latest, err = db.GetLatestMessageMappingBySession(ctx, "")
+	latest, err = db.GetLatestMessageMappingBySession(ctx, "default")
 	assert.NoError(t, err)
 	assert.Nil(t, latest) // No messages for "default" session
 
@@ -1103,7 +1132,7 @@ func TestDatabase_HasMessageHistoryBetween(t *testing.T) {
 	assert.False(t, hasHistory)
 
 	// Test with empty session name (should default to "default")
-	hasHistory, err = db.HasMessageHistoryBetween(ctx, "", "+1234567890")
+	hasHistory, err = db.HasMessageHistoryBetween(ctx, "default", "+1234567890")
 	assert.NoError(t, err)
 	assert.False(t, hasHistory) // No messages for "default" session
 }

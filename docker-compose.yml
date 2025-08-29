@@ -1,35 +1,58 @@
+version: '3.8'
+
 services:
   # Signal CLI REST API - handles Signal messaging
+  # Note: change /mnt/data/ to your desired storage folder
   signal-cli-rest-api:
     image: bbernhard/signal-cli-rest-api:latest
     container_name: signal-cli-rest-api
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
-      - signal_cli_data:/home/.local/share/signal-cli
+      - /mnt/data/signal-cli-waha:/home/.local/share/signal-cli
+      - /mnt/data/signal-waha/cache:/var/cache
+      - /mnt/data/signal-waha/tmp:/tmp
+      - signal_attachments:/var/lib/signal-cli-rest-api/attachments:rw
     environment:
       - MODE=native
       - AUTO_RECEIVE_SCHEDULE=0 */6 * * *
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/about"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
   # WAHA - WhatsApp HTTP API
+  # Note: change /mnt/data/ to your desired storage folder
   waha:
     image: devlikeapro/whatsapp-http-api:latest
     container_name: waha
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "3000:3000"
     volumes:
-      - waha_data:/app/data
+      - /mnt/data/waha/sessions:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
     environment:
       - WHATSAPP_HOOK_URL=http://whatsignal:8082/webhook/whatsapp
-      - WHATSAPP_HOOK_EVENTS=message
+      - WHATSAPP_HOOK_EVENTS=message,message.reaction,message.edited
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY:-your-api-key}
-    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f -H \"X-Api-Key: $$WHATSAPP_API_KEY\" http://localhost:3000/health || exit 1"]
       interval: 30s
@@ -38,19 +61,26 @@ services:
       start_period: 10s
 
   # WhatSignal - main bridge application
+  # Note: change /mnt/data/ to your desired storage folder
   whatsignal:
     image: ghcr.io/bikemazzell/whatsignal:latest
-    # Uncomment the following lines for local development:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     container_name: whatsignal
+    restart: unless-stopped
+    read_only: true
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "8082:8082"
+      - "8083:8082"
     volumes:
-      # Replace with the folder path to where your WhatSignal data will be stored
-      - /path/to/your/folder/config.json:/app/config.json:ro
-      - /path/to/your/folder/data:/app/data
+      # Replace with the folder path to where your WhatSignal configuration will be stored
+      - /mnt/data/whatsignal/config.json:/app/config.json:ro
+      - /mnt/data/whatsignal/data:/app/data
+      - /mnt/data/waha/tmp:/tmp
+      - /mnt/data/waha/cache:/var/cache
+      - signal_attachments:/app/signal-attachments:rw
     environment:
       # Load from .env file or use defaults
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
@@ -58,16 +88,50 @@ services:
       - WHATSIGNAL_ENABLE_ENCRYPTION=${WHATSIGNAL_ENABLE_ENCRYPTION:-true}
       - WHATSIGNAL_ENCRYPTION_SECRET=${WHATSIGNAL_ENCRYPTION_SECRET}
     depends_on:
-      - signal-cli-rest-api
-      - waha
-    restart: unless-stopped
-    entrypoint: ["/bin/sh", "-c", "sleep 10 && /app/whatsignal"]
+      waha:
+        condition: service_healthy
+      signal-cli-rest-api:
+        condition: service_healthy
 
-networks:
-  default:
-    driver: bridge
-
+# Named volumes for data persistence
 volumes:
   signal_cli_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/signal-cli
+  signal_attachments:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/signal-attachments
   waha_data:
-  whatsignal_data: 
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/waha
+  whatsignal_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/whatsignal
+  whatsignal_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/media-cache
+  whatsignal_attachments:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/signal-attachments
+
+
+
+

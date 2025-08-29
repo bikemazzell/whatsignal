@@ -902,7 +902,7 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 			description: "Messages from unknown senders should be skipped",
 		},
 		{
-			name: "single channel polling (legacy behavior)", 
+			name: "single channel polling (single-channel mode)",
 			messages: []signaltypes.SignalMessage{
 				{
 					MessageID: "sig4",
@@ -933,7 +933,7 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 
 			// Setup channels based on test case
 			var channels []models.Channel
-			if tt.name == "single channel polling (legacy behavior)" {
+			if tt.name == "single channel polling (single-channel mode)" {
 				channels = []models.Channel{
 					{
 						WhatsAppSessionName:          "default",

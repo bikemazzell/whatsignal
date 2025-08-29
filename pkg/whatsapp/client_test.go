@@ -16,6 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	// Disable typing delays in tests to prevent timeouts
+	os.Setenv("WHATSIGNAL_TEST_MODE", "true")
+}
+
 // Define constants in the test file for clarity if they are used in switch cases
 // or directly in assertions. This mirrors the constants in client.go.
 const (

@@ -14,6 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	// Disable typing delays in tests to prevent timeouts
+	os.Setenv("WHATSIGNAL_TEST_MODE", "true")
+}
+
 func TestMain(t *testing.T) {
 	// Set up test environment
 	setupTestEnv(t)

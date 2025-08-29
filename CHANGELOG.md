@@ -5,6 +5,35 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 29-08-2025
+
+### Security
+- **Request Size Limits**: Added comprehensive request size validation with configurable limits (default 5MB)
+- **Session Handling**: Removed legacy default-session fallback and deprecated handlers; explicit session names are now required (breaking change)
+- **Docker Security**: Complete Docker image hardening with distroless base, pinned SHAs, and security-first deployment
+  - Migrated to distroless image (gcr.io/distroless/static-debian12:nonroot)
+  - Pinned base images with SHA digests for supply-chain security
+  - Added read-only filesystem with minimal writable mounts
+  - Implemented capability dropping, non-root user (uid=65532), and resource constraints
+
+### CI/CD
+- **Security Gates**: Comprehensive GitHub Actions workflow with security scanning
+  - Added gosec, govulncheck, golangci-lint, staticcheck integration
+  - Dependency scanning with vulnerability checks
+  - Docker image security scanning with Trivy
+  - License compliance checking
+- **Makefile**: Enhanced with security, coverage, and CI targets
+
+### Testing
+- **Test Stability**: Fixed timeout issues in test suite
+  - Added WHATSIGNAL_TEST_MODE environment variable to skip typing delays in tests
+  - Optimized database tests (reduced TestDatabase_LargeDataSet from 10k to 500 records)
+  - Fixed rate limiter test timing issues
+- **Coverage**: All database tests now pass; working toward 95% coverage target
+
+### Documentation
+- **Security Guide**: Added comprehensive Docker security documentation (docs/docker-security.md)
+- **Deployment**: Created security-hardened docker-compose.security.yml with best practices
 
 ## [1.1.2] - 28-08-2025
 

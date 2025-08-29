@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS message_mappings (
     forwarded_at DATETIME NOT NULL,
     delivery_status TEXT NOT NULL,
     media_path TEXT,
-    session_name TEXT NOT NULL DEFAULT 'default',
+    session_name TEXT NOT NULL,
     media_type TEXT,
     chat_id_hash TEXT,
     whatsapp_msg_id_hash TEXT,

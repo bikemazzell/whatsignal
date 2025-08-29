@@ -76,11 +76,11 @@ type RetryConfig struct {
 
 // ServerConfig holds server related configurations
 type ServerConfig struct {
-	ReadTimeoutSec     int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
-	WriteTimeoutSec    int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
-	IdleTimeoutSec     int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
-	WebhookMaxSkewSec  int `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
-	WebhookMaxBytes    int `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
+	ReadTimeoutSec        int  `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
+	WriteTimeoutSec       int  `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
+	IdleTimeoutSec        int  `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
+	WebhookMaxSkewSec     int  `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
+	WebhookMaxBytes       int  `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
 }
 
 // Channel represents a WhatsApp-Signal channel pairing

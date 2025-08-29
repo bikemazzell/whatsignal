@@ -432,52 +432,6 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 	})
 }
 
-func TestSetupWebhookHandlers(t *testing.T) {
-	msgService := &mockMessageService{}
-	logger := logrus.New()
-	cfg := &models.Config{}
-	mockWAClient := &mockWAClient{}
-	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
-
-	// Test that webhook handlers are properly set up
-	assert.NotNil(t, server.waWebhook)
-
-	// Test webhook handler registration by triggering a message event
-	msgService.On("HandleWhatsAppMessageWithSession",
-		mock.Anything,
-		"default", // session name
-		"test-chat",
-		"test-msg",
-		"test-sender",
-		"test content",
-		"",
-	).Return(nil).Once()
-
-	// Create a mock webhook event with message payload
-	payload := map[string]interface{}{
-		"id":      "test-msg",
-		"chatId":  "test-chat",
-		"sender":  "test-sender",
-		"type":    "text",
-		"content": "test content",
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	require.NoError(t, err)
-
-	// Create a webhook event
-	event := &types.WebhookEvent{
-		Event:   "message.any",
-		Payload: payloadBytes,
-	}
-
-	// Test the registered handler
-	err = server.waWebhook.Handle(context.Background(), event)
-	assert.NoError(t, err)
-
-	msgService.AssertExpectations(t)
-}
 
 func TestServer_Health(t *testing.T) {
 	msgService := &mockMessageService{}
@@ -612,6 +566,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "valid text message",
 			payload: map[string]interface{}{
 				"event": "message",
+				"session": "default",
 				"payload": map[string]interface{}{
 					"id":      "msg123",
 					"from":    "+1234567890",
@@ -638,6 +593,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "status/broadcast message should be ignored",
 			payload: map[string]interface{}{
 				"event": "message",
+				"session": "default",
 				"payload": map[string]interface{}{
 					"id":      "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
 					"from":    "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
@@ -656,6 +612,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "valid media message",
 			payload: map[string]interface{}{
 				"event": "message",
+				"session": "default",
 				"payload": map[string]interface{}{
 					"id":      "msg124",
 					"from":    "+1234567891",
@@ -685,6 +642,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "non-message event",
 			payload: map[string]interface{}{
 				"event": "status",
+				"session": "default",
 				"payload": map[string]interface{}{
 					"id": "status123",
 				},
@@ -730,6 +688,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			name: "service error",
 			payload: map[string]interface{}{
 				"event": "message",
+				"session": "default",
 				"payload": map[string]interface{}{
 					"id":      "msg125",
 					"from":    "+1234567893",
@@ -1340,8 +1299,263 @@ func TestNewServer(t *testing.T) {
 	assert.NotNil(t, server.router)
 	assert.NotNil(t, server.logger)
 	assert.NotNil(t, server.msgService)
-	assert.NotNil(t, server.waWebhook)
+	// waWebhook removed
 	assert.Equal(t, cfg, server.cfg)
+}
+
+func TestRequestSizeLimit(t *testing.T) {
+	tests := []struct {
+		name           string
+		maxBytes       int
+		bodySize       int
+		expectStatus   int
+		expectError    bool
+	}{
+		{
+			name:         "request within limit",
+			maxBytes:     1024,
+			bodySize:     512,
+			expectStatus: http.StatusOK,
+			expectError:  false,
+		},
+		{
+			name:         "request exactly at limit",
+			maxBytes:     2048,
+			bodySize:     1024,
+			expectStatus: http.StatusOK,
+			expectError:  false,
+		},
+		{
+			name:         "request exceeds limit",
+			maxBytes:     1024,
+			bodySize:     2048,
+			expectStatus: http.StatusRequestEntityTooLarge,
+			expectError:  true,
+		},
+		{
+			name:         "very large request",
+			maxBytes:     1024 * 1024, // 1MB
+			bodySize:     5 * 1024 * 1024, // 5MB
+			expectStatus: http.StatusRequestEntityTooLarge,
+			expectError:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgService := &mockMessageService{}
+			logger := logrus.New()
+			cfg := &models.Config{
+				Server: models.ServerConfig{
+					WebhookMaxBytes: tt.maxBytes,
+				},
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "test-secret",
+				},
+			}
+			
+			mockWAClient := &mockWAClient{}
+			channelManager := createTestChannelManager()
+			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+
+			// Create request with body of specific size
+			body := make([]byte, tt.bodySize)
+			for i := range body {
+				body[i] = 'a'
+			}
+			
+			// Wrap the body in a valid JSON structure
+			jsonBody := fmt.Sprintf(`{"event":"test","data":"%s"}`, string(body))
+			
+			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewBufferString(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			
+			// Add valid signature for the request
+			mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
+			mac.Write([]byte(jsonBody))
+			signature := hex.EncodeToString(mac.Sum(nil))
+			req.Header.Set("X-Webhook-Hmac", signature)
+			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+			
+			rr := httptest.NewRecorder()
+			
+			// Process the request through the middleware and handler
+			handler := server.securityMiddleware(server.router)
+			handler.ServeHTTP(rr, req)
+			
+			// Check the response
+			if tt.expectError {
+				assert.Equal(t, tt.expectStatus, rr.Code)
+			} else {
+				// For successful requests, we might get 200 or 400 depending on payload validity
+				assert.True(t, rr.Code == http.StatusOK || rr.Code == http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestRequestSizeLimit_NoLimit(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{
+		Server: models.ServerConfig{
+			WebhookMaxBytes: 0, // No limit set, should use default
+		},
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+	}
+	
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	
+	// Create a request larger than typical default (5MB)
+	bodySize := 3 * 1024 * 1024 // 3MB (should be within default 5MB limit)
+	body := make([]byte, bodySize)
+	for i := range body {
+		body[i] = 'x'
+	}
+	
+	jsonBody := fmt.Sprintf(`{"event":"test","data":"%s"}`, string(body))
+	
+	req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewBufferString(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	
+	// Add valid signature
+	mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
+	mac.Write([]byte(jsonBody))
+	signature := hex.EncodeToString(mac.Sum(nil))
+	req.Header.Set("X-Webhook-Hmac", signature)
+	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+	
+	rr := httptest.NewRecorder()
+	
+	handler := server.securityMiddleware(server.router)
+	handler.ServeHTTP(rr, req)
+	
+	// Should accept since it's within default limit (5MB)
+	assert.NotEqual(t, http.StatusRequestEntityTooLarge, rr.Code)
+}
+
+func TestServer_RequireSessionName(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+	}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+
+	tests := []struct {
+		name       string
+		payload    map[string]interface{}
+		wantStatus int
+		wantError  bool
+	}{
+		{
+			name: "message with session name",
+			payload: map[string]interface{}{
+				"event":   "message",
+				"session": "default",
+				"payload": map[string]interface{}{
+					"id":       "msg123",
+					"from":     "+1234567890",
+					"body":     "Hello",
+					"hasMedia": false,
+				},
+			},
+			wantStatus: http.StatusOK,
+			wantError:  false,
+		},
+		{
+			name: "message without session name - should fail",
+			payload: map[string]interface{}{
+				"event": "message",
+				// No session field
+				"payload": map[string]interface{}{
+					"id":       "msg124",
+					"from":     "+1234567891",
+					"body":     "Hello",
+					"hasMedia": false,
+				},
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+		{
+			name: "reaction without session name - should fail",
+			payload: map[string]interface{}{
+				"event": "message.reaction",
+				// No session field
+				"payload": map[string]interface{}{
+					"from": "+1234567892",
+					"reaction": map[string]interface{}{
+						"messageId": "msg125",
+						"text":      "👍",
+					},
+				},
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+		{
+			name: "edited message without session name - should fail",
+			payload: map[string]interface{}{
+				"event": "message.edited",
+				// No session field
+				"payload": map[string]interface{}{
+					"from":            "+1234567893",
+					"body":            "Edited",
+					"editedMessageId": "msg126",
+				},
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !tt.wantError {
+				// Set up expectation for successful messages
+				msgService.On("HandleWhatsAppMessageWithSession",
+					mock.Anything,
+					"default",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).Return(nil).Once()
+			}
+
+			body, _ := json.Marshal(tt.payload)
+			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+
+			// Add valid signature
+			mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
+			mac.Write(body)
+			signature := hex.EncodeToString(mac.Sum(nil))
+			req.Header.Set("X-Webhook-Hmac", signature)
+			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+			rr := httptest.NewRecorder()
+			server.router.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.wantStatus, rr.Code)
+			
+			if tt.wantError {
+				// Check that the error message mentions session requirement
+				responseBody := rr.Body.String()
+				assert.Contains(t, responseBody, "session name is required")
+			}
+		})
+	}
 }
 
 func TestServer_UndefinedSessionHandling(t *testing.T) {

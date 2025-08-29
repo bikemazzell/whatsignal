@@ -55,11 +55,15 @@ help:
 	@echo "Development targets:"
 	@echo "  test       - Run tests"
 	@echo "  test-race  - Run tests with race detection"
+	@echo "  coverage   - Run tests with coverage report"
 	@echo "  lint       - Run linter (requires golangci-lint)"
 	@echo "  fmt        - Format code"
 	@echo "  vet        - Run go vet"
+	@echo "  security   - Run security scans (gosec, govulncheck)"
 	@echo "  deps       - Download dependencies"
 	@echo "  tidy       - Tidy go modules"
+	@echo "  install-tools - Install development and CI tools"
+	@echo "  ci         - Run all CI checks (fmt, vet, lint, security, test-race, coverage)"
 	@echo ""
 	@echo "Run targets:"
 	@echo "  run        - Run debug version"
@@ -146,11 +150,22 @@ test-race:
 	@echo "Running tests with race detection..."
 	CGO_ENABLED=$(CGO_ENABLED) go test -race -v ./...
 
+# Run tests with coverage
+.PHONY: coverage
+coverage:
+	@echo "Running tests with coverage..."
+	@CGO_ENABLED=$(CGO_ENABLED) go test -coverprofile=coverage.out -covermode=atomic ./...
+	@echo "Coverage report:"
+	@go tool cover -func=coverage.out
+	@echo "To view HTML coverage report, run: go tool cover -html=coverage.out"
+
 # Run linter (requires golangci-lint)
 .PHONY: lint
 lint:
 	@echo "Running linter..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
+	@if [ -x "$$(go env GOPATH)/bin/golangci-lint" ]; then \
+		$$(go env GOPATH)/bin/golangci-lint run; \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
 	else \
 		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
@@ -168,6 +183,43 @@ fmt:
 vet:
 	@echo "Running go vet..."
 	@go vet ./...
+
+# Security scans
+.PHONY: security
+security:
+	@echo "Running security scans..."
+	@echo "Running gosec..."
+	@if [ -x "$$(go env GOPATH)/bin/gosec" ]; then \
+		$$(go env GOPATH)/bin/gosec -quiet ./...; \
+	elif command -v gosec >/dev/null 2>&1; then \
+		gosec -quiet ./...; \
+	else \
+		echo "gosec not installed. Install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"; \
+		exit 1; \
+	fi
+	@echo "Running govulncheck..."
+	@if [ -x "$$(go env GOPATH)/bin/govulncheck" ]; then \
+		$$(go env GOPATH)/bin/govulncheck ./...; \
+	elif command -v govulncheck >/dev/null 2>&1; then \
+		govulncheck ./...; \
+	else \
+		echo "govulncheck not installed. Install with: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
+		exit 1; \
+	fi
+
+# Install CI/CD tools
+.PHONY: install-tools
+install-tools:
+	@echo "Installing development and CI tools..."
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install honnef.co/go/tools/cmd/staticcheck@latest
+	@go install github.com/securego/gosec/v2/cmd/gosec@latest
+	@go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Run all CI checks
+.PHONY: ci
+ci: fmt vet lint security test-race coverage
+	@echo "All CI checks passed!"
 
 # Download dependencies
 .PHONY: deps

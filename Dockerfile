@@ -1,6 +1,9 @@
 # Pin Go Alpine image with digest for security
 FROM golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052 AS builder
 
+# Ensure Go can auto-install the required toolchain from go.mod (go1.23.x)
+ENV GOTOOLCHAIN=auto
+
 # Install build dependencies (avoid strict pins to support Alpine updates)
 RUN apk add --no-cache --update \
     build-base \
@@ -58,7 +61,7 @@ ENTRYPOINT ["/app/whatsignal"]
 
 # Document required volumes for data persistence
 # These should be mounted as volumes in production:
-# - /app/data (database and persistent storage) 
+# - /app/data (database and persistent storage)
 # - /app/media-cache (media file cache)
 # - /app/signal-attachments (signal attachment storage)
 #
@@ -73,4 +76,4 @@ ENTRYPOINT ["/app/whatsignal"]
 #   --cap-drop ALL \
 #   --security-opt no-new-privileges=true \
 #   -p 8082:8082 \
-#   whatsignal:latest 
+#   whatsignal:latest

@@ -471,7 +471,9 @@ func TestProcessMediaFromURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.WriteHeader(http.StatusOK)
-		w.Write(testContent)
+		if _, err := w.Write(testContent); err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
@@ -526,7 +528,9 @@ func TestProcessMediaFromURLErrors(t *testing.T) {
 					w.WriteHeader(http.StatusOK)
 					// Write more than 5MB to trigger size limit
 					data := make([]byte, 6*constants.BytesPerMegabyte)
-					w.Write(data)
+					if _, err := w.Write(data); err != nil {
+						panic(err)
+					}
 				}))
 			},
 			expectedError: "image too large",
@@ -557,7 +561,9 @@ func TestProcessMediaFromURLWithLargeFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.WriteHeader(http.StatusOK)
-		w.Write(largeContent)
+		if _, err := w.Write(largeContent); err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
@@ -695,7 +701,9 @@ func TestProcessMediaMixedTypes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.WriteHeader(http.StatusOK)
-		w.Write(urlContent)
+		if _, err := w.Write(urlContent); err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
@@ -759,7 +767,9 @@ func TestDownloadFromURLContentTypes(t *testing.T) {
 					w.Header().Set("Content-Type", tt.contentType)
 				}
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("test content"))
+				if _, err := w.Write([]byte("test content")); err != nil {
+					panic(err)
+				}
 			}))
 			defer server.Close()
 
@@ -871,7 +881,9 @@ func TestProcessMediaFromURLWithAPIKey(t *testing.T) {
 		receivedHeaders = r.Header.Clone()
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.WriteHeader(http.StatusOK)
-		w.Write(testContent)
+		if _, err := w.Write(testContent); err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
@@ -908,7 +920,9 @@ func TestProcessMediaFromURLWithoutAPIKey(t *testing.T) {
 		receivedHeaders = r.Header.Clone()
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.WriteHeader(http.StatusOK)
-		w.Write(testContent)
+		if _, err := w.Write(testContent); err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
@@ -1136,7 +1150,9 @@ func TestDownloadFromURLEdgeCases(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "image/jpeg")
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte("fake jpeg content"))
+					if _, err := w.Write([]byte("fake jpeg content")); err != nil {
+						panic(err)
+					}
 				}))
 			},
 			expectError: false,
@@ -1146,7 +1162,9 @@ func TestDownloadFromURLEdgeCases(t *testing.T) {
 			setupServer: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte("fake content"))
+					if _, err := w.Write([]byte("fake content")); err != nil {
+						panic(err)
+					}
 				}))
 			},
 			expectError: false,

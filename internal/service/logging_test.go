@@ -29,7 +29,7 @@ func TestIsVerboseLogging(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.WithValue(context.Background(), "verbose", tt.verbose)
+			ctx := context.WithValue(context.Background(), VerboseContextKey, tt.verbose)
 			result := IsVerboseLogging(ctx)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -210,7 +210,7 @@ func TestLogWithContext(t *testing.T) {
 	logger.SetLevel(logrus.InfoLevel)
 	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
 
-	ctx := context.WithValue(context.Background(), "verbose", true)
+	ctx := context.WithValue(context.Background(), VerboseContextKey, true)
 	
 	entry := LogWithContext(ctx, logger)
 	entry.Info("test message")
@@ -228,7 +228,7 @@ func TestLogMessageProcessing(t *testing.T) {
 	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
 
 	// Test verbose logging
-	ctx := context.WithValue(context.Background(), "verbose", true)
+	ctx := context.WithValue(context.Background(), VerboseContextKey, true)
 	
 	LogMessageProcessing(ctx, logger, "text", "chat123", "msg123456789", "+1234567890", "Hello world")
 	
@@ -262,7 +262,7 @@ func TestLogSignalPolling(t *testing.T) {
 	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
 
 	// Test with messages found - verbose logging
-	ctx := context.WithValue(context.Background(), "verbose", true)
+	ctx := context.WithValue(context.Background(), VerboseContextKey, true)
 	
 	LogSignalPolling(ctx, logger, 5)
 	

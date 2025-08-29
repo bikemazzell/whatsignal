@@ -207,9 +207,7 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 	return fmt.Errorf("timeout waiting for session to be ready after %v", maxWaitTime)
 }
 
-func (c *WhatsAppClient) sendSeen(ctx context.Context, chatID string) error {
-	return c.sendSeenWithSession(ctx, chatID, c.sessionName)
-}
+
 
 func (c *WhatsAppClient) sendSeenWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := map[string]interface{}{
@@ -220,9 +218,7 @@ func (c *WhatsAppClient) sendSeenWithSession(ctx context.Context, chatID, sessio
 	return err
 }
 
-func (c *WhatsAppClient) startTyping(ctx context.Context, chatID string) error {
-	return c.startTypingWithSession(ctx, chatID, c.sessionName)
-}
+
 
 func (c *WhatsAppClient) startTypingWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := map[string]interface{}{
@@ -233,9 +229,7 @@ func (c *WhatsAppClient) startTypingWithSession(ctx context.Context, chatID, ses
 	return err
 }
 
-func (c *WhatsAppClient) stopTyping(ctx context.Context, chatID string) error {
-	return c.stopTypingWithSession(ctx, chatID, c.sessionName)
-}
+
 
 func (c *WhatsAppClient) stopTypingWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := map[string]interface{}{
@@ -253,11 +247,15 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, sessionName string) (*types.SendMessageResponse, error) {
 	// Try to send seen status and typing indicators (optional)
 	if err := c.sendSeenWithSession(ctx, chatID, sessionName); err != nil {
-		// Continue if this fails - it's optional
+		if c.logger != nil {
+			c.logger.WithError(err).Debug("optional: sendSeen failed")
+		}
 	}
 
 	if err := c.startTypingWithSession(ctx, chatID, sessionName); err != nil {
-		// Continue if this fails - it's optional
+		if c.logger != nil {
+			c.logger.WithError(err).Debug("optional: startTyping failed")
+		}
 	}
 
 	// Skip typing delay in test mode
@@ -280,7 +278,9 @@ func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, 
 	}
 
 	if err := c.stopTypingWithSession(ctx, chatID, sessionName); err != nil {
-		// Continue if this fails - it's optional
+		if c.logger != nil {
+			c.logger.WithError(err).Debug("optional: stopTyping failed")
+		}
 	}
 
 	payload := map[string]interface{}{

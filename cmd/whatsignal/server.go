@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
@@ -38,6 +39,7 @@ type Server struct {
 	logger         *logrus.Logger
 	msgService     service.MessageService
 
+	serverMu       sync.RWMutex
 	server         *http.Server
 	cfg            *models.Config
 	waClient       types.WAClient
@@ -97,6 +99,7 @@ func (s *Server) Start() error {
 		idleTimeout = time.Duration(constants.DefaultServerIdleTimeoutSec) * time.Second
 	}
 
+	s.serverMu.Lock()
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%s", port),
 		Handler:      s.router,
@@ -104,16 +107,20 @@ func (s *Server) Start() error {
 		WriteTimeout: writeTimeout,
 		IdleTimeout:  idleTimeout,
 	}
+	s.serverMu.Unlock()
 
 	s.logger.Infof("Starting server on port %s", port)
 	return s.server.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s.server == nil {
-		return nil
-	}
-	return s.server.Shutdown(ctx)
+s.serverMu.RLock()
+server := s.server
+s.serverMu.RUnlock()
+if server == nil {
+	return nil
+}
+return server.Shutdown(ctx)
 }
 
 // securityMiddleware applies security measures to webhook endpoints

@@ -10,9 +10,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ContextKey is a package-local type to prevent context key collisions
+// See staticcheck SA1029 guidance
+type ContextKey string
+
+// VerboseContextKey is the strongly-typed context key for verbose logging flag
+const VerboseContextKey ContextKey = "verbose"
+
 // IsVerboseLogging checks if verbose logging is enabled from context
 func IsVerboseLogging(ctx context.Context) bool {
-	if verbose, ok := ctx.Value("verbose").(bool); ok {
+	if verbose, ok := ctx.Value(VerboseContextKey).(bool); ok {
 		return verbose
 	}
 	return false

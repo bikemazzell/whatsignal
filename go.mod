@@ -1,8 +1,8 @@
 module whatsignal
 
-go 1.23.0
+go 1.24.0
 
-toolchain go1.23.3
+toolchain go1.24.6
 
 require (
 	github.com/gorilla/mux v1.8.1

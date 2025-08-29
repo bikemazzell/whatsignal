@@ -1,5 +1,5 @@
 # Pin Go Alpine image with digest for security
-FROM golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052 AS builder
+FROM golang:1.24.6-alpine@sha256:c8c5f95d64aa79b6547f3b626eb84b16a7ce18a139e3e9ca19a8c078b85ba80d AS builder
 
 # Ensure Go can auto-install the required toolchain from go.mod (go1.23.x)
 ENV GOTOOLCHAIN=auto

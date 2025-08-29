@@ -355,9 +355,14 @@ func TestSendMessage(t *testing.T) {
 			serverStatus: http.StatusOK,
 			setupServer: func(server *httptest.Server) string {
 				// Create test attachment file
-				tmpDir, _ := os.MkdirTemp("", "signal-test")
+				tmpDir, err := os.MkdirTemp("", "signal-test")
+				if err != nil {
+					panic(err)
+				}
 				testFile := filepath.Join(tmpDir, "test.jpg")
-				os.WriteFile(testFile, []byte("fake image data"), 0644)
+				if err := os.WriteFile(testFile, []byte("fake image data"), 0o644); err != nil {
+					panic(err)
+				}
 				return testFile
 			},
 		},
@@ -392,7 +397,9 @@ func TestSendMessage(t *testing.T) {
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
-					w.Write([]byte(tt.serverResponse))
+					if _, err := w.Write([]byte(tt.serverResponse)); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -539,7 +546,9 @@ func TestReceiveMessages(t *testing.T) {
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
-					w.Write([]byte(tt.serverResponse))
+					if _, err := w.Write([]byte(tt.serverResponse)); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -623,7 +632,9 @@ func TestInitializeDevice(t *testing.T) {
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
-					w.Write([]byte(tt.serverResponse))
+					if _, err := w.Write([]byte(tt.serverResponse)); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -685,7 +696,9 @@ func TestDownloadAttachment(t *testing.T) {
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != nil {
-					w.Write(tt.serverResponse)
+					if _, err := w.Write(tt.serverResponse); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -760,7 +773,9 @@ func TestListAttachments(t *testing.T) {
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != "" {
-					w.Write([]byte(tt.serverResponse))
+					if _, err := w.Write([]byte(tt.serverResponse)); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -828,7 +843,9 @@ func TestDownloadAndSaveAttachment(t *testing.T) {
 
 				w.WriteHeader(tt.serverStatus)
 				if tt.serverResponse != nil {
-					w.Write(tt.serverResponse)
+					if _, err := w.Write(tt.serverResponse); err != nil {
+						panic(err)
+					}
 				}
 			}))
 			defer server.Close()
@@ -1180,7 +1197,9 @@ func TestReceiveMessages_RemoteDeleteHandling(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(tt.responseBody))
+				if _, err := w.Write([]byte(tt.responseBody)); err != nil {
+					panic(err)
+				}
 			}))
 			defer server.Close()
 

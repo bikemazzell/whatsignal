@@ -125,7 +125,7 @@ func TestNewClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewClient(tt.baseURL, tt.phoneNumber, tt.deviceName, tt.attachmentsDir, nil)
-			
+
 			signalClient, ok := client.(*SignalClient)
 			assert.True(t, ok, "Client should be of type *SignalClient")
 			assert.Equal(t, tt.expectedURL, signalClient.baseURL)
@@ -375,13 +375,13 @@ func TestSendMessage(t *testing.T) {
 			expectedError: "signal API error",
 		},
 		{
-			name:          "invalid JSON response",
-			recipient:     "+1234567890",
-			message:       "Hello",
-			attachments:   nil,
+			name:           "invalid JSON response",
+			recipient:      "+1234567890",
+			message:        "Hello",
+			attachments:    nil,
 			serverResponse: "invalid json",
-			serverStatus:  http.StatusOK,
-			expectedError: "failed to decode response",
+			serverStatus:   http.StatusOK,
+			expectedError:  "failed to decode response",
 		},
 	}
 
@@ -572,7 +572,7 @@ func TestReceiveMessages(t *testing.T) {
 					msg := messages[0]
 					assert.Equal(t, "+1234567890", msg.Sender)
 					assert.NotZero(t, msg.Timestamp)
-					
+
 					// Check for reaction-specific assertions
 					if tt.name == "successful receive with reaction" {
 						assert.NotNil(t, msg.Reaction)
@@ -1205,7 +1205,7 @@ func TestReceiveMessages_RemoteDeleteHandling(t *testing.T) {
 
 			logger := logrus.New()
 			logger.SetLevel(logrus.ErrorLevel) // Suppress debug output during tests
-			
+
 			client := NewClientWithLogger(server.URL, "+1234567890", "test", "/tmp", &http.Client{}, logger)
 
 			ctx := context.Background()

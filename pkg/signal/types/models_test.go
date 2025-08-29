@@ -72,7 +72,7 @@ func TestFlexibleInt64_UnmarshalJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var f FlexibleInt64
 			err := json.Unmarshal([]byte(tt.input), &f)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -150,9 +150,9 @@ func TestSendMessageRequest(t *testing.T) {
 		{
 			name: "message with attachments",
 			request: SendMessageRequest{
-				Message:    "Check this out!",
-				Number:     "+1234567890",
-				Recipients: []string{"+0987654321"},
+				Message:           "Check this out!",
+				Number:            "+1234567890",
+				Recipients:        []string{"+0987654321"},
 				Base64Attachments: []string{"base64data"},
 			},
 		},
@@ -217,8 +217,6 @@ func TestSendMessageResponse(t *testing.T) {
 		})
 	}
 }
-
-
 
 func TestSignalMessage(t *testing.T) {
 	tests := []struct {
@@ -308,8 +306,6 @@ func TestSignalMessage(t *testing.T) {
 		})
 	}
 }
-
-
 
 func TestSignalMessageValidation(t *testing.T) {
 	tests := []struct {

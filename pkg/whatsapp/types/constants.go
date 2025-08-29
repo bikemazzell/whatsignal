@@ -20,7 +20,7 @@ const (
 	EndpointSendVoice   = "/sendVoice"
 	EndpointSendVideo   = "/sendVideo"
 	EndpointReaction    = "/reaction"
-	
+
 	// Contact endpoints
 	EndpointContactsAll = "/contacts/all"
 	EndpointContacts    = "/contacts"

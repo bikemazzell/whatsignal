@@ -47,7 +47,6 @@ func NewEncryptor() (*encryptor, error) {
 	return &encryptor{gcm: gcm, hmacKey: hmacKey}, nil
 }
 
-
 func deriveHMACKey() ([]byte, error) {
 	secret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
 	if secret == "" {
@@ -152,7 +151,9 @@ func (e *encryptor) EncryptForLookup(plaintext string) (string, error) {
 
 // Always-on encryption helpers (no optional plaintext mode)
 func (e *encryptor) EncryptIfEnabled(plaintext string) (string, error) { return e.Encrypt(plaintext) }
-func (e *encryptor) EncryptForLookupIfEnabled(plaintext string) (string, error) { return e.EncryptForLookup(plaintext) }
+func (e *encryptor) EncryptForLookupIfEnabled(plaintext string) (string, error) {
+	return e.EncryptForLookup(plaintext)
+}
 func (e *encryptor) DecryptIfEnabled(ciphertext string) (string, error) { return e.Decrypt(ciphertext) }
 
 // DecryptAuto defers to full decryption; no plaintext compatibility

@@ -30,10 +30,10 @@ func SanitizePhoneNumber(phone string) string {
 	if phone == "" {
 		return ""
 	}
-	
+
 	// Remove @c.us suffix if present
 	cleaned := strings.TrimSuffix(phone, "@c.us")
-	
+
 	// For privacy, show only last N digits
 	if len(cleaned) > constants.DefaultPhoneMaskLength {
 		return "***" + cleaned[len(cleaned)-constants.DefaultPhoneMaskLength:]
@@ -46,7 +46,7 @@ func SanitizeMessageID(msgID string) string {
 	if msgID == "" {
 		return ""
 	}
-	
+
 	// Show only first N characters
 	if len(msgID) > constants.DefaultMessageIDLength {
 		return msgID[:constants.DefaultMessageIDLength] + "..."
@@ -60,7 +60,7 @@ func SanitizeWhatsAppMessageID(msgID string) string {
 	if msgID == "" {
 		return ""
 	}
-	
+
 	// Split by underscore to get parts
 	parts := strings.Split(msgID, "_")
 	if len(parts) >= 3 {
@@ -74,7 +74,7 @@ func SanitizeWhatsAppMessageID(msgID string) string {
 			return parts[0] + "_" + sanitizedPhone + domain + "_" + SanitizeMessageID(parts[2])
 		}
 	}
-	
+
 	// Fallback to regular message ID sanitization
 	return SanitizeMessageID(msgID)
 }
@@ -178,9 +178,9 @@ func ValidateSessionName(sessionName string) error {
 	// Allow only alphanumeric characters, hyphens, and underscores
 	for _, char := range sessionName {
 		if !((char >= 'a' && char <= 'z') ||
-			 (char >= 'A' && char <= 'Z') ||
-			 (char >= '0' && char <= '9') ||
-			 char == '-' || char == '_') {
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '-' || char == '_') {
 			return fmt.Errorf("session name must contain only alphanumeric characters, hyphens, and underscores")
 		}
 	}

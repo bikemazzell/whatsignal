@@ -34,7 +34,7 @@ func TestIsVerboseLogging(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-	
+
 	// Test with no verbose value in context
 	t.Run("no verbose in context", func(t *testing.T) {
 		ctx := context.Background()
@@ -211,7 +211,7 @@ func TestLogWithContext(t *testing.T) {
 	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
 
 	ctx := context.WithValue(context.Background(), VerboseContextKey, true)
-	
+
 	entry := LogWithContext(ctx, logger)
 	entry.Info("test message")
 
@@ -229,9 +229,9 @@ func TestLogMessageProcessing(t *testing.T) {
 
 	// Test verbose logging
 	ctx := context.WithValue(context.Background(), VerboseContextKey, true)
-	
+
 	LogMessageProcessing(ctx, logger, "text", "chat123", "msg123456789", "+1234567890", "Hello world")
-	
+
 	output := buf.String()
 	assert.Contains(t, output, "Processing message")
 	assert.Contains(t, output, "type=text")
@@ -243,13 +243,13 @@ func TestLogMessageProcessing(t *testing.T) {
 	// Test non-verbose logging
 	buf.Reset()
 	ctx = context.Background()
-	
+
 	LogMessageProcessing(ctx, logger, "text", "chat123", "msg123456789", "+1234567890", "Hello world")
-	
+
 	output = buf.String()
 	assert.Contains(t, output, "Processing message")
 	assert.Contains(t, output, "type=text")
-	assert.Contains(t, output, "***")  // Should contain sanitized phone numbers
+	assert.Contains(t, output, "***") // Should contain sanitized phone numbers
 	assert.Contains(t, output, "msgID=msg12345...")
 	assert.NotContains(t, output, "content=")
 }
@@ -263,9 +263,9 @@ func TestLogSignalPolling(t *testing.T) {
 
 	// Test with messages found - verbose logging
 	ctx := context.WithValue(context.Background(), VerboseContextKey, true)
-	
+
 	LogSignalPolling(ctx, logger, 5)
-	
+
 	output := buf.String()
 	assert.Contains(t, output, "Found new Signal messages")
 	assert.Contains(t, output, "count=5")
@@ -273,9 +273,9 @@ func TestLogSignalPolling(t *testing.T) {
 	// Test with messages found - non-verbose logging
 	buf.Reset()
 	ctx = context.Background()
-	
+
 	LogSignalPolling(ctx, logger, 3)
-	
+
 	output = buf.String()
 	assert.Contains(t, output, "Found new Signal messages")
 	assert.NotContains(t, output, "count=")
@@ -283,9 +283,9 @@ func TestLogSignalPolling(t *testing.T) {
 	// Test with no messages found
 	buf.Reset()
 	logger.SetLevel(logrus.DebugLevel)
-	
+
 	LogSignalPolling(ctx, logger, 0)
-	
+
 	output = buf.String()
 	assert.Contains(t, output, "No new Signal messages found")
 }

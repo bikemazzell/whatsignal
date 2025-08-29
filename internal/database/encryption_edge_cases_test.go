@@ -23,10 +23,10 @@ func TestEncryptor_VeryLargeData(t *testing.T) {
 
 	// Test with 10MB of data
 	largeData := strings.Repeat("A", 10*1024*1024)
-	
+
 	ciphertext, err := encryptor.Encrypt(largeData)
 	require.NoError(t, err)
-	
+
 	decrypted, err := encryptor.Decrypt(ciphertext)
 	require.NoError(t, err)
 	assert.Equal(t, largeData, decrypted)
@@ -47,10 +47,10 @@ func TestEncryptor_BinaryData(t *testing.T) {
 
 	// Convert to string for encryption
 	plaintext := string(binaryData)
-	
+
 	ciphertext, err := encryptor.Encrypt(plaintext)
 	require.NoError(t, err)
-	
+
 	decrypted, err := encryptor.Decrypt(ciphertext)
 	require.NoError(t, err)
 	assert.Equal(t, plaintext, decrypted)
@@ -77,21 +77,21 @@ func TestEncryptor_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numOperations; j++ {
 				plaintext := strings.Repeat("test", id+j+1)
-				
+
 				// Encrypt
 				ciphertext, err := encryptor.Encrypt(plaintext)
 				if err != nil {
 					errors <- err
 					continue
 				}
-				
+
 				// Decrypt
 				decrypted, err := encryptor.Decrypt(ciphertext)
 				if err != nil {
 					errors <- err
 					continue
 				}
-				
+
 				if decrypted != plaintext {
 					errors <- assert.AnError
 				}
@@ -128,7 +128,7 @@ func TestEncryptor_EncryptForLookupConsistency(t *testing.T) {
 	require.NoError(t, err)
 
 	plaintext := "test@example.com"
-	
+
 	// Encrypt multiple times
 	results := make([]string, 10)
 	for i := 0; i < 10; i++ {
@@ -192,14 +192,14 @@ func TestEncryptor_ModifiedCiphertext(t *testing.T) {
 	// Decode, modify, and re-encode
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
 	require.NoError(t, err)
-	
+
 	// Flip a bit in the ciphertext (after the nonce)
 	if len(data) > models.NonceSize {
 		data[models.NonceSize] ^= 0x01
 	}
-	
+
 	modifiedCiphertext := base64.StdEncoding.EncodeToString(data)
-	
+
 	// Decryption should fail due to authentication
 	_, err = encryptor.Decrypt(modifiedCiphertext)
 	require.Error(t, err)
@@ -215,10 +215,10 @@ func TestEncryptor_NullBytes(t *testing.T) {
 
 	// Test with null bytes
 	plaintext := "before\x00middle\x00after"
-	
+
 	ciphertext, err := encryptor.Encrypt(plaintext)
 	require.NoError(t, err)
-	
+
 	decrypted, err := encryptor.Decrypt(ciphertext)
 	require.NoError(t, err)
 	assert.Equal(t, plaintext, decrypted)

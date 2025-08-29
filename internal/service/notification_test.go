@@ -43,7 +43,7 @@ func TestSendSignalNotification(t *testing.T) {
 			bridge := new(mockBridge)
 			db := new(mockDB)
 			mediaCache := new(mockMediaCache)
-			
+
 			if tt.setupMocks != nil {
 				tt.setupMocks(bridge)
 			}
@@ -77,20 +77,20 @@ func TestGetMessageMappingByWhatsAppID(t *testing.T) {
 			whatsappID: "wa-12345",
 			setupMocks: func(db *mockDB) {
 				mapping := &models.MessageMapping{
-					WhatsAppMsgID:   "wa-12345",
-					SignalMsgID:     "sig-67890",
-					WhatsAppChatID:  "chat123",
-					SessionName:     "default",
-					DeliveryStatus:  models.DeliveryStatusSent,
+					WhatsAppMsgID:  "wa-12345",
+					SignalMsgID:    "sig-67890",
+					WhatsAppChatID: "chat123",
+					SessionName:    "default",
+					DeliveryStatus: models.DeliveryStatusSent,
 				}
 				db.On("GetMessageMappingByWhatsAppID", mock.Anything, "wa-12345").Return(mapping, nil)
 			},
 			expectedData: &models.MessageMapping{
-				WhatsAppMsgID:   "wa-12345",
-				SignalMsgID:     "sig-67890",
-				WhatsAppChatID:  "chat123",
-				SessionName:     "default",
-				DeliveryStatus:  models.DeliveryStatusSent,
+				WhatsAppMsgID:  "wa-12345",
+				SignalMsgID:    "sig-67890",
+				WhatsAppChatID: "chat123",
+				SessionName:    "default",
+				DeliveryStatus: models.DeliveryStatusSent,
 			},
 			expectError: false,
 		},
@@ -119,7 +119,7 @@ func TestGetMessageMappingByWhatsAppID(t *testing.T) {
 			bridge := new(mockBridge)
 			db := new(mockDB)
 			mediaCache := new(mockMediaCache)
-			
+
 			if tt.setupMocks != nil {
 				tt.setupMocks(db)
 			}
@@ -153,7 +153,7 @@ func TestChannelManagerIntegration(t *testing.T) {
 			SignalDestinationPhoneNumber: "+1111111111",
 		},
 		{
-			WhatsAppSessionName:          "business", 
+			WhatsAppSessionName:          "business",
 			SignalDestinationPhoneNumber: "+2222222222",
 		},
 	}

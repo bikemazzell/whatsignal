@@ -23,7 +23,7 @@ type MessageMapping struct {
 	DeliveryStatus  DeliveryStatus `json:"deliveryStatus"`
 	MediaPath       *string        `json:"mediaPath,omitempty"`
 	MediaType       string         `json:"mediaType"`
-	SessionName     string         `json:"sessionName"`     // WhatsApp session name for multi-channel support
+	SessionName     string         `json:"sessionName"` // WhatsApp session name for multi-channel support
 	CreatedAt       time.Time      `json:"createdAt"`
 	UpdatedAt       time.Time      `json:"updatedAt"`
 }

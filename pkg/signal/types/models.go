@@ -19,7 +19,7 @@ func (f *FlexibleInt64) UnmarshalJSON(data []byte) error {
 		*f = FlexibleInt64(i)
 		return nil
 	}
-	
+
 	// Try as int64 directly
 	var i int64
 	if err := json.Unmarshal(data, &i); err != nil {
@@ -78,8 +78,8 @@ type SignalMessage struct {
 		Text      string `json:"text"`
 		Timestamp int64  `json:"timestamp"`
 	} `json:"quotedMessage,omitempty"`
-	Reaction     *SignalReaction     `json:"reaction,omitempty"`
-	Deletion     *SignalDeletion     `json:"deletion,omitempty"`
+	Reaction *SignalReaction `json:"reaction,omitempty"`
+	Deletion *SignalDeletion `json:"deletion,omitempty"`
 }
 
 // SignalDeletion represents a message deletion event
@@ -90,11 +90,11 @@ type SignalDeletion struct {
 
 // SignalReaction represents a reaction to a message
 type SignalReaction struct {
-	Emoji            string `json:"emoji"`
-	TargetAuthor     string `json:"targetAuthor"`
-	TargetTimestamp  int64  `json:"targetSentTimestamp"`
-	TargetMessageID  string `json:"targetMessageId,omitempty"`
-	IsRemove         bool   `json:"isRemove"`
+	Emoji           string `json:"emoji"`
+	TargetAuthor    string `json:"targetAuthor"`
+	TargetTimestamp int64  `json:"targetSentTimestamp"`
+	TargetMessageID string `json:"targetMessageId,omitempty"`
+	IsRemove        bool   `json:"isRemove"`
 }
 
 // REST API message types for receiving messages

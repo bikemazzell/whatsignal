@@ -27,7 +27,7 @@ type WAClient interface {
 	GetSessionStatus(ctx context.Context) (*Session, error)
 	WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error
 	GetSessionName() string
-	
+
 	// Contact methods
 	GetContact(ctx context.Context, contactID string) (*Contact, error)
 	GetAllContacts(ctx context.Context, limit, offset int) ([]Contact, error)

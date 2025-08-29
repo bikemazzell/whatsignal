@@ -16,12 +16,12 @@ import (
 
 func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 	tests := []struct {
-		name                 string
-		sessionName          string
-		channels             []models.Channel
-		expectedDestination  string
-		expectedError        bool
-		errorContains        string
+		name                string
+		sessionName         string
+		channels            []models.Channel
+		expectedDestination string
+		expectedError       bool
+		errorContains       string
 	}{
 		{
 			name:        "Route to correct Signal destination - default session",
@@ -127,13 +127,13 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 
 func TestBridge_MultiChannel_HandleSignalMessage(t *testing.T) {
 	tests := []struct {
-		name                string
-		destination         string
-		channels            []models.Channel
-		previousMapping     *models.MessageMapping
-		expectedSession     string
-		expectedError       bool
-		errorContains       string
+		name            string
+		destination     string
+		channels        []models.Channel
+		previousMapping *models.MessageMapping
+		expectedSession string
+		expectedError   bool
+		errorContains   string
 	}{
 		{
 			name:        "Route Signal message to correct WhatsApp session - destination 1",
@@ -278,7 +278,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 	// Test 1: Message from personal WhatsApp should go to personal Signal
 	t.Run("Personal to Personal", func(t *testing.T) {
 		mockContacts.On("GetContactDisplayName", ctx, "1111111111").Return("Personal Contact")
-		
+
 		mockSigClient.On("SendMessage", ctx, "+1111111111", "Personal Contact: Personal message", mock.AnythingOfType("[]string")).
 			Return(&signaltypes.SendMessageResponse{
 				MessageID: "sig-personal-1",
@@ -304,7 +304,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 	// Test 2: Message from business WhatsApp should go to business Signal
 	t.Run("Business to Business", func(t *testing.T) {
 		mockContacts.On("GetContactDisplayName", ctx, "2222222222").Return("Business Contact")
-		
+
 		mockSigClient.On("SendMessage", ctx, "+2222222222", "Business Contact: Business message", mock.AnythingOfType("[]string")).
 			Return(&signaltypes.SendMessageResponse{
 				MessageID: "sig-business-1",

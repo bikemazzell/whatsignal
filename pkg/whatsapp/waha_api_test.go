@@ -15,9 +15,9 @@ import (
 
 func TestWhatsAppClient_WAHA_API_Format(t *testing.T) {
 	tests := []struct {
-		name           string
-		sessionName    string
-		expectedURL    string
+		name            string
+		sessionName     string
+		expectedURL     string
 		expectedPayload map[string]interface{}
 	}{
 		{
@@ -49,7 +49,7 @@ func TestWhatsAppClient_WAHA_API_Format(t *testing.T) {
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				receivedURL = r.URL.Path
-				
+
 				err := json.NewDecoder(r.Body).Decode(&receivedPayload)
 				require.NoError(t, err)
 
@@ -87,10 +87,10 @@ func TestWhatsAppClient_WAHA_API_Format(t *testing.T) {
 
 func TestWhatsAppClient_StatusCodeHandling(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		expectError    bool
-		errorContains  string
+		name          string
+		statusCode    int
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name:        "HTTP 200 OK",
@@ -229,8 +229,8 @@ func TestWhatsAppClient_OptionalEndpoints(t *testing.T) {
 		case "/api/sendSeen", "/api/startTyping", "/api/stopTyping":
 			w.WriteHeader(http.StatusNotFound)
 			if _, err := w.Write([]byte("Not Found")); err != nil {
-		panic(err)
-	}
+				panic(err)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

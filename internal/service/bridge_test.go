@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-bridge-test")
 	require.NoError(t, err)
@@ -488,9 +487,9 @@ func TestHandleSignalMessage(t *testing.T) {
 				// Expect message mapping to be saved even when media processing fails
 				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(mapping *models.MessageMapping) bool {
 					return mapping.WhatsAppChatID == "chat123" &&
-						   mapping.WhatsAppMsgID == "msg124" &&
-						   mapping.SignalMsgID == "sig126" &&
-						   mapping.MediaPath == nil // No media path when processing fails
+						mapping.WhatsAppMsgID == "msg124" &&
+						mapping.SignalMsgID == "sig126" &&
+						mapping.MediaPath == nil // No media path when processing fails
 				})).Return(nil).Once()
 			},
 		},
@@ -518,7 +517,7 @@ func TestHandleSignalMessage(t *testing.T) {
 					SignalMsgID:    targetID,
 				}
 				bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, targetID).Return(targetMapping, nil).Once()
-				
+
 				// Expect SendReaction to be called
 				resp := &types.SendMessageResponse{
 					MessageID: "reaction_msg_id",
@@ -976,7 +975,7 @@ func TestHandleSignalVoiceRecordingWithoutExtension(t *testing.T) {
 
 	// Create a mock OGG voice recording file without extension (like Signal creates)
 	voiceFile := filepath.Join(tmpDir, "signal_voice_recording")
-	oggHeader := []byte("OggS") // OGG file signature
+	oggHeader := []byte("OggS")                              // OGG file signature
 	voiceContent := append(oggHeader, make([]byte, 1000)...) // Simulate 1KB voice recording
 	err := os.WriteFile(voiceFile, voiceContent, 0644)
 	require.NoError(t, err)

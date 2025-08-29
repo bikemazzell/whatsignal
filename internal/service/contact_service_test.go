@@ -577,10 +577,10 @@ func TestContactService_SyncAllContacts_SessionLogging(t *testing.T) {
 	t.Run("logs include session name", func(t *testing.T) {
 		mockDB := &mockContactDatabaseService{}
 		mockWA := &mockWAClient{}
-		
+
 		// Set up mock to return a specific session name (called at the start of SyncAllContacts)
 		mockWA.On("GetSessionName").Return("business-session")
-		
+
 		service := NewContactService(mockDB, mockWA)
 
 		// Single batch of contacts
@@ -605,9 +605,9 @@ func TestContactService_SyncAllContacts_SessionLogging(t *testing.T) {
 	t.Run("handles save error with session name in logs", func(t *testing.T) {
 		mockDB := &mockContactDatabaseService{}
 		mockWA := &mockWAClient{}
-		
+
 		mockWA.On("GetSessionName").Return("personal-session")
-		
+
 		service := NewContactService(mockDB, mockWA)
 
 		batch := []types.Contact{
@@ -619,7 +619,7 @@ func TestContactService_SyncAllContacts_SessionLogging(t *testing.T) {
 		}
 
 		mockWA.On("GetAllContacts", ctx, 100, 0).Return(batch, nil)
-		
+
 		// Mock database save error
 		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(errors.New("save error"))
 

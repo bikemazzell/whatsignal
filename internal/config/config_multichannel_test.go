@@ -74,7 +74,7 @@ func TestLoadConfig_MultiChannel(t *testing.T) {
 					"cache_dir": "./media"
 				}
 			}`,
-			expectedErr: true,
+			expectedErr:   true,
 			errorContains: "channels array is required",
 		},
 		{
@@ -216,7 +216,7 @@ func TestLoadConfig_MultiChannel(t *testing.T) {
 			// Create temporary config file
 			tmpDir := t.TempDir()
 			configPath := filepath.Join(tmpDir, "config.json")
-			
+
 			err := os.WriteFile(configPath, []byte(tt.configContent), 0600)
 			require.NoError(t, err)
 

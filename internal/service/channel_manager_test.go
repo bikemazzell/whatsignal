@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func TestChannelManager_GetAllWhatsAppSessions(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -41,7 +40,7 @@ func TestChannelManager_GetAllWhatsAppSessions(t *testing.T) {
 
 			result := cm.GetAllWhatsAppSessions()
 			assert.Len(t, result, len(tt.expected))
-			
+
 			// Check that all expected sessions are present (order may vary due to map iteration)
 			for _, expected := range tt.expected {
 				assert.Contains(t, result, expected)

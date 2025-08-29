@@ -80,14 +80,13 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 	return body, nil
 }
 
-
 // RateLimiter implements a simple rate limiter for webhook endpoints
 type RateLimiter struct {
-	requests     map[string][]time.Time
-	mu           sync.RWMutex
-	limit        int
-	window       time.Duration
-	lastCleanup  time.Time
+	requests    map[string][]time.Time
+	mu          sync.RWMutex
+	limit       int
+	window      time.Duration
+	lastCleanup time.Time
 }
 
 // NewRateLimiter creates a new rate limiter

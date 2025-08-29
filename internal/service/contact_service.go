@@ -30,16 +30,16 @@ type ContactDatabaseService interface {
 
 // ContactService provides contact caching and retrieval functionality
 type ContactService struct {
-	db             ContactDatabaseService
-	waClient       types.WAClient
+	db              ContactDatabaseService
+	waClient        types.WAClient
 	cacheValidHours int
 }
 
 // NewContactService creates a new contact service instance
 func NewContactService(db ContactDatabaseService, waClient types.WAClient) *ContactService {
 	return &ContactService{
-		db:             db,
-		waClient:       waClient,
+		db:              db,
+		waClient:        waClient,
 		cacheValidHours: 24, // Default to 24 hours
 	}
 }
@@ -50,8 +50,8 @@ func NewContactServiceWithConfig(db ContactDatabaseService, waClient types.WACli
 		cacheValidHours = 24 // Default fallback
 	}
 	return &ContactService{
-		db:             db,
-		waClient:       waClient,
+		db:              db,
+		waClient:        waClient,
 		cacheValidHours: cacheValidHours,
 	}
 }
@@ -95,7 +95,7 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 	// Save/update in cache
 	dbContact := &models.Contact{}
 	dbContact.FromWAContact(waContact)
-	
+
 	if err := cs.db.SaveContact(ctx, dbContact); err != nil {
 		log.Printf("Error saving contact to cache: %v", err)
 	}
@@ -121,7 +121,7 @@ func (cs *ContactService) RefreshContact(ctx context.Context, phoneNumber string
 
 	dbContact := &models.Contact{}
 	dbContact.FromWAContact(waContact)
-	
+
 	return cs.db.SaveContact(ctx, dbContact)
 }
 
@@ -145,7 +145,7 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 		for _, waContact := range contacts {
 			dbContact := &models.Contact{}
 			dbContact.FromWAContact(&waContact)
-			
+
 			if err := cs.db.SaveContact(ctx, dbContact); err != nil {
 				log.Printf("[%s] Error saving contact %s to cache: %v", sessionName, waContact.ID, err)
 				continue

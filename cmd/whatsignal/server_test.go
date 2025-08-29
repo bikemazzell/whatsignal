@@ -400,7 +400,7 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 	t.Run("timestamp too old", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
-		old := time.Now().Add(-(time.Duration(constants.DefaultWebhookMaxSkewSec)+10)*time.Second).Unix()
+		old := time.Now().Add(-(time.Duration(constants.DefaultWebhookMaxSkewSec) + 10) * time.Second).Unix()
 		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", old))
 
 		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
@@ -412,7 +412,7 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 	t.Run("timestamp in future too far", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
-		future := time.Now().Add((time.Duration(constants.DefaultWebhookMaxSkewSec)+10)*time.Second).Unix()
+		future := time.Now().Add((time.Duration(constants.DefaultWebhookMaxSkewSec) + 10) * time.Second).Unix()
 		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", future))
 
 		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
@@ -431,7 +431,6 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 		assert.Equal(t, payload, body)
 	})
 }
-
 
 func TestServer_Health(t *testing.T) {
 	msgService := &mockMessageService{}
@@ -492,7 +491,7 @@ func TestServer_SessionStatus(t *testing.T) {
 			logger := logrus.New()
 			cfg := &models.Config{
 				WhatsApp: models.WhatsAppConfig{
-					SessionAutoRestart:     true,
+					SessionAutoRestart:    true,
 					SessionHealthCheckSec: 30,
 				},
 			}
@@ -565,13 +564,13 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 		{
 			name: "valid text message",
 			payload: map[string]interface{}{
-				"event": "message",
+				"event":   "message",
 				"session": "default",
 				"payload": map[string]interface{}{
-					"id":      "msg123",
-					"from":    "+1234567890",
-					"fromMe":  false,
-					"body":    "Hello, World!",
+					"id":       "msg123",
+					"from":     "+1234567890",
+					"fromMe":   false,
+					"body":     "Hello, World!",
 					"hasMedia": false,
 				},
 			},
@@ -592,13 +591,13 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 		{
 			name: "status/broadcast message should be ignored",
 			payload: map[string]interface{}{
-				"event": "message",
+				"event":   "message",
 				"session": "default",
 				"payload": map[string]interface{}{
-					"id":      "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
-					"from":    "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
-					"fromMe":  false,
-					"body":    "Status update",
+					"id":       "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
+					"from":     "false_status@broadcast_3A732FBEB4228EB0DCB0_393382105411@c.us",
+					"fromMe":   false,
+					"body":     "Status update",
 					"hasMedia": false,
 				},
 			},
@@ -611,13 +610,13 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 		{
 			name: "valid media message",
 			payload: map[string]interface{}{
-				"event": "message",
+				"event":   "message",
 				"session": "default",
 				"payload": map[string]interface{}{
-					"id":      "msg124",
-					"from":    "+1234567891",
-					"fromMe":  false,
-					"body":    "Check this out!",
+					"id":       "msg124",
+					"from":     "+1234567891",
+					"fromMe":   false,
+					"body":     "Check this out!",
 					"hasMedia": true,
 					"media": map[string]interface{}{
 						"url": "/path/to/image.jpg",
@@ -641,7 +640,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 		{
 			name: "non-message event",
 			payload: map[string]interface{}{
-				"event": "status",
+				"event":   "status",
 				"session": "default",
 				"payload": map[string]interface{}{
 					"id": "status123",
@@ -674,9 +673,9 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			payload: map[string]interface{}{
 				"event": "message",
 				"payload": map[string]interface{}{
-					"from":    "+1234567892",
-					"fromMe":  false,
-					"body":    "Hello",
+					"from":     "+1234567892",
+					"fromMe":   false,
+					"body":     "Hello",
 					"hasMedia": false,
 					// Missing required "id" field
 				},
@@ -687,13 +686,13 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 		{
 			name: "service error",
 			payload: map[string]interface{}{
-				"event": "message",
+				"event":   "message",
 				"session": "default",
 				"payload": map[string]interface{}{
-					"id":      "msg125",
-					"from":    "+1234567893",
-					"fromMe":  false,
-					"body":    "Error message",
+					"id":       "msg125",
+					"from":     "+1234567893",
+					"fromMe":   false,
+					"body":     "Error message",
 					"hasMedia": false,
 				},
 			},
@@ -716,10 +715,10 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			payload: map[string]interface{}{
 				"event": "message",
 				"payload": map[string]interface{}{
-					"id":      "msg126",
-					"from":    "+1234567894",
-					"fromMe":  false,
-					"body":    "Test message",
+					"id":       "msg126",
+					"from":     "+1234567894",
+					"fromMe":   false,
+					"body":     "Test message",
 					"hasMedia": false,
 				},
 			},
@@ -766,273 +765,273 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 func TestServer_SignalWebhook(t *testing.T) {
 	t.Skip("Signal webhook functionality removed - Signal uses polling instead")
 	/*
-	msgService := &mockMessageService{}
-	logger := logrus.New()
-	cfg := &models.Config{
-		Signal: models.SignalConfig{},
-	}
-	mockWAClient := &mockWAClient{}
-	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+		msgService := &mockMessageService{}
+		logger := logrus.New()
+		cfg := &models.Config{
+			Signal: models.SignalConfig{},
+		}
+		mockWAClient := &mockWAClient{}
+		channelManager := createTestChannelManager()
+		server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
-	tests := []struct {
-		name         string
-		payload      interface{}
-		setup        func()
-		wantStatus   int
-		useSignature bool
-	}{
-		{
-			name: "valid message",
-			payload: map[string]interface{}{
-				"messageId": "sig123",
-				"sender":    "+1234567890",
-				"message":   "Hello, Signal!",
-				"timestamp": time.Now().UnixMilli(),
-				"type":      "text",
-				"threadId":  "thread123",
-				"recipient": "+0987654321",
+		tests := []struct {
+			name         string
+			payload      interface{}
+			setup        func()
+			wantStatus   int
+			useSignature bool
+		}{
+			{
+				name: "valid message",
+				payload: map[string]interface{}{
+					"messageId": "sig123",
+					"sender":    "+1234567890",
+					"message":   "Hello, Signal!",
+					"timestamp": time.Now().UnixMilli(),
+					"type":      "text",
+					"threadId":  "thread123",
+					"recipient": "+0987654321",
+				},
+				setup: func() {
+					msgService.On("ProcessIncomingSignalMessageWithDestination",
+						mock.Anything,
+						mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+							return msg.MessageID == "sig123" &&
+								msg.Sender == "+1234567890" &&
+								msg.Message == "Hello, Signal!"
+						}),
+						"+0987654321", // destination
+					).Return(nil).Once()
+				},
+				wantStatus:   http.StatusOK,
+				useSignature: true,
 			},
-			setup: func() {
-				msgService.On("ProcessIncomingSignalMessageWithDestination",
-					mock.Anything,
-					mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
-						return msg.MessageID == "sig123" &&
-							msg.Sender == "+1234567890" &&
-							msg.Message == "Hello, Signal!"
-					}),
-					"+0987654321", // destination
-				).Return(nil).Once()
+			{
+				name: "media message",
+				payload: map[string]interface{}{
+					"messageId":   "sig124",
+					"sender":      "+1234567890",
+					"message":     "Check this out!",
+					"timestamp":   time.Now().UnixMilli(),
+					"type":        "image",
+					"threadId":    "thread124",
+					"recipient":   "+0987654321",
+					"attachments": []string{"http://example.com/image.jpg"},
+				},
+				setup: func() {
+					msgService.On("ProcessIncomingSignalMessageWithDestination",
+						mock.Anything,
+						mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+							return msg.MessageID == "sig124" &&
+								msg.Sender == "+1234567890" &&
+								msg.Message == "Check this out!" &&
+								len(msg.Attachments) == 1 &&
+								msg.Attachments[0] == "http://example.com/image.jpg"
+						}),
+						"+0987654321", // destination
+					).Return(nil).Once()
+				},
+				wantStatus:   http.StatusOK,
+				useSignature: true,
 			},
-			wantStatus:   http.StatusOK,
-			useSignature: true,
-		},
-		{
-			name: "media message",
-			payload: map[string]interface{}{
-				"messageId":   "sig124",
-				"sender":      "+1234567890",
-				"message":     "Check this out!",
-				"timestamp":   time.Now().UnixMilli(),
-				"type":        "image",
-				"threadId":    "thread124",
-				"recipient":   "+0987654321",
-				"attachments": []string{"http://example.com/image.jpg"},
+			{
+				name: "missing required fields",
+				payload: map[string]interface{}{
+					"message": "Hello",
+				},
+				wantStatus:   http.StatusBadRequest,
+				useSignature: true,
 			},
-			setup: func() {
-				msgService.On("ProcessIncomingSignalMessageWithDestination",
-					mock.Anything,
-					mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
-						return msg.MessageID == "sig124" &&
-							msg.Sender == "+1234567890" &&
-							msg.Message == "Check this out!" &&
-							len(msg.Attachments) == 1 &&
-							msg.Attachments[0] == "http://example.com/image.jpg"
-					}),
-					"+0987654321", // destination
-				).Return(nil).Once()
+			{
+				name: "invalid payload",
+				payload: map[string]string{
+					"invalid": "payload",
+				},
+				wantStatus:   http.StatusBadRequest,
+				useSignature: true,
 			},
-			wantStatus:   http.StatusOK,
-			useSignature: true,
-		},
-		{
-			name: "missing required fields",
-			payload: map[string]interface{}{
-				"message": "Hello",
+			{
+				name: "service error",
+				payload: map[string]interface{}{
+					"messageId": "sig125",
+					"sender":    "+1234567890",
+					"message":   "Error message",
+					"timestamp": time.Now().UnixMilli(),
+					"type":      "text",
+					"threadId":  "thread125",
+					"recipient": "+0987654321",
+				},
+				setup: func() {
+					msgService.On("ProcessIncomingSignalMessageWithDestination",
+						mock.Anything,
+						mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+							return msg.MessageID == "sig125"
+						}),
+						"+0987654321", // destination
+					).Return(assert.AnError).Once()
+				},
+				wantStatus:   http.StatusInternalServerError,
+				useSignature: true,
 			},
-			wantStatus:   http.StatusBadRequest,
-			useSignature: true,
-		},
-		{
-			name: "invalid payload",
-			payload: map[string]string{
-				"invalid": "payload",
+			{
+				name: "invalid signature",
+				payload: map[string]interface{}{
+					"messageId": "sig126",
+					"sender":    "+1234567890",
+					"message":   "Test message",
+					"timestamp": time.Now().UnixMilli(),
+					"type":      "text",
+				},
+				wantStatus:   http.StatusUnauthorized,
+				useSignature: false,
 			},
-			wantStatus:   http.StatusBadRequest,
-			useSignature: true,
-		},
-		{
-			name: "service error",
-			payload: map[string]interface{}{
-				"messageId": "sig125",
-				"sender":    "+1234567890",
-				"message":   "Error message",
-				"timestamp": time.Now().UnixMilli(),
-				"type":      "text",
-				"threadId":  "thread125",
-				"recipient": "+0987654321",
-			},
-			setup: func() {
-				msgService.On("ProcessIncomingSignalMessageWithDestination",
-					mock.Anything,
-					mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
-						return msg.MessageID == "sig125"
-					}),
-					"+0987654321", // destination
-				).Return(assert.AnError).Once()
-			},
-			wantStatus:   http.StatusInternalServerError,
-			useSignature: true,
-		},
-		{
-			name: "invalid signature",
-			payload: map[string]interface{}{
-				"messageId": "sig126",
-				"sender":    "+1234567890",
-				"message":   "Test message",
-				"timestamp": time.Now().UnixMilli(),
-				"type":      "text",
-			},
-			wantStatus:   http.StatusUnauthorized,
-			useSignature: false,
-		},
-	}
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.setup != nil {
-				tt.setup()
-			}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if tt.setup != nil {
+					tt.setup()
+				}
 
-			payload, err := json.Marshal(tt.payload)
-			require.NoError(t, err)
+				payload, err := json.Marshal(tt.payload)
+				require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodPost, "/webhook/signal", bytes.NewReader(payload))
+				req := httptest.NewRequest(http.MethodPost, "/webhook/signal", bytes.NewReader(payload))
 
-			if tt.useSignature {
-				// Create valid signature
-				mac := hmac.New(sha256.New, []byte("test-secret"))
-				mac.Write(payload)
-				signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-				req.Header.Set("X-Signal-Signature-256", signature)
-			} else {
-				// Create invalid signature
-				req.Header.Set("X-Signal-Signature-256", "sha256=invalidsignature")
-			}
+				if tt.useSignature {
+					// Create valid signature
+					mac := hmac.New(sha256.New, []byte("test-secret"))
+					mac.Write(payload)
+					signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+					req.Header.Set("X-Signal-Signature-256", signature)
+				} else {
+					// Create invalid signature
+					req.Header.Set("X-Signal-Signature-256", "sha256=invalidsignature")
+				}
 
-			w := httptest.NewRecorder()
+				w := httptest.NewRecorder()
 
-			server.handleSignalWebhook()(w, req)
+				server.handleSignalWebhook()(w, req)
 
-			resp := w.Result()
-			assert.Equal(t, tt.wantStatus, resp.StatusCode)
-			msgService.AssertExpectations(t)
-		})
-	}
+				resp := w.Result()
+				assert.Equal(t, tt.wantStatus, resp.StatusCode)
+				msgService.AssertExpectations(t)
+			})
+		}
 	*/
 }
 
 func TestConvertWebhookPayloadToSignalMessage(t *testing.T) {
 	t.Skip("Signal webhook functionality removed - Signal uses polling instead")
 	/*
-	tests := []struct {
-		name     string
-		payload  *models.SignalWebhookPayload
-		expected *signaltypes.SignalMessage
-	}{
-		{
-			name: "basic message",
-			payload: &models.SignalWebhookPayload{
-				MessageID: "msg123",
-				Sender:    "+1234567890",
-				Message:   "Hello, World!",
-				Timestamp: 1234567890,
-				Type:      "text",
+		tests := []struct {
+			name     string
+			payload  *models.SignalWebhookPayload
+			expected *signaltypes.SignalMessage
+		}{
+			{
+				name: "basic message",
+				payload: &models.SignalWebhookPayload{
+					MessageID: "msg123",
+					Sender:    "+1234567890",
+					Message:   "Hello, World!",
+					Timestamp: 1234567890,
+					Type:      "text",
+				},
+				expected: &signaltypes.SignalMessage{
+					MessageID:     "msg123",
+					Sender:        "+1234567890",
+					Message:       "Hello, World!",
+					Timestamp:     1234567890,
+					Attachments:   []string{},
+					QuotedMessage: nil,
+				},
 			},
-			expected: &signaltypes.SignalMessage{
-				MessageID:     "msg123",
-				Sender:        "+1234567890",
-				Message:       "Hello, World!",
-				Timestamp:     1234567890,
-				Attachments:   []string{},
-				QuotedMessage: nil,
+			{
+				name: "message with attachments",
+				payload: &models.SignalWebhookPayload{
+					MessageID:   "msg124",
+					Sender:      "+1234567890",
+					Message:     "Check this out!",
+					Timestamp:   1234567890,
+					Type:        "image",
+					Attachments: []string{"http://example.com/image.jpg"},
+				},
+				expected: &signaltypes.SignalMessage{
+					MessageID:     "msg124",
+					Sender:        "+1234567890",
+					Message:       "Check this out!",
+					Timestamp:     1234567890,
+					Attachments:   []string{"http://example.com/image.jpg"},
+					QuotedMessage: nil,
+				},
 			},
-		},
-		{
-			name: "message with attachments",
-			payload: &models.SignalWebhookPayload{
-				MessageID:   "msg124",
-				Sender:      "+1234567890",
-				Message:     "Check this out!",
-				Timestamp:   1234567890,
-				Type:        "image",
-				Attachments: []string{"http://example.com/image.jpg"},
+			{
+				name: "message with media path",
+				payload: &models.SignalWebhookPayload{
+					MessageID: "msg125",
+					Sender:    "+1234567890",
+					Message:   "Media message",
+					Timestamp: 1234567890,
+					Type:      "image",
+					MediaPath: "/path/to/media.jpg",
+				},
+				expected: &signaltypes.SignalMessage{
+					MessageID:     "msg125",
+					Sender:        "+1234567890",
+					Message:       "Media message",
+					Timestamp:     1234567890,
+					Attachments:   []string{"/path/to/media.jpg"},
+					QuotedMessage: nil,
+				},
 			},
-			expected: &signaltypes.SignalMessage{
-				MessageID:     "msg124",
-				Sender:        "+1234567890",
-				Message:       "Check this out!",
-				Timestamp:     1234567890,
-				Attachments:   []string{"http://example.com/image.jpg"},
-				QuotedMessage: nil,
+			{
+				name: "message with both attachments and media path",
+				payload: &models.SignalWebhookPayload{
+					MessageID:   "msg126",
+					Sender:      "+1234567890",
+					Message:     "Multiple attachments",
+					Timestamp:   1234567890,
+					Type:        "image",
+					Attachments: []string{"http://example.com/image1.jpg"},
+					MediaPath:   "/path/to/media2.jpg",
+				},
+				expected: &signaltypes.SignalMessage{
+					MessageID:     "msg126",
+					Sender:        "+1234567890",
+					Message:       "Multiple attachments",
+					Timestamp:     1234567890,
+					Attachments:   []string{"http://example.com/image1.jpg", "/path/to/media2.jpg"},
+					QuotedMessage: nil,
+				},
 			},
-		},
-		{
-			name: "message with media path",
-			payload: &models.SignalWebhookPayload{
-				MessageID: "msg125",
-				Sender:    "+1234567890",
-				Message:   "Media message",
-				Timestamp: 1234567890,
-				Type:      "image",
-				MediaPath: "/path/to/media.jpg",
+			{
+				name: "message with nil attachments",
+				payload: &models.SignalWebhookPayload{
+					MessageID:   "msg127",
+					Sender:      "+1234567890",
+					Message:     "No attachments",
+					Timestamp:   1234567890,
+					Type:        "text",
+					Attachments: nil,
+				},
+				expected: &signaltypes.SignalMessage{
+					MessageID:     "msg127",
+					Sender:        "+1234567890",
+					Message:       "No attachments",
+					Timestamp:     1234567890,
+					Attachments:   []string{},
+					QuotedMessage: nil,
+				},
 			},
-			expected: &signaltypes.SignalMessage{
-				MessageID:     "msg125",
-				Sender:        "+1234567890",
-				Message:       "Media message",
-				Timestamp:     1234567890,
-				Attachments:   []string{"/path/to/media.jpg"},
-				QuotedMessage: nil,
-			},
-		},
-		{
-			name: "message with both attachments and media path",
-			payload: &models.SignalWebhookPayload{
-				MessageID:   "msg126",
-				Sender:      "+1234567890",
-				Message:     "Multiple attachments",
-				Timestamp:   1234567890,
-				Type:        "image",
-				Attachments: []string{"http://example.com/image1.jpg"},
-				MediaPath:   "/path/to/media2.jpg",
-			},
-			expected: &signaltypes.SignalMessage{
-				MessageID:     "msg126",
-				Sender:        "+1234567890",
-				Message:       "Multiple attachments",
-				Timestamp:     1234567890,
-				Attachments:   []string{"http://example.com/image1.jpg", "/path/to/media2.jpg"},
-				QuotedMessage: nil,
-			},
-		},
-		{
-			name: "message with nil attachments",
-			payload: &models.SignalWebhookPayload{
-				MessageID:   "msg127",
-				Sender:      "+1234567890",
-				Message:     "No attachments",
-				Timestamp:   1234567890,
-				Type:        "text",
-				Attachments: nil,
-			},
-			expected: &signaltypes.SignalMessage{
-				MessageID:     "msg127",
-				Sender:        "+1234567890",
-				Message:       "No attachments",
-				Timestamp:     1234567890,
-				Attachments:   []string{},
-				QuotedMessage: nil,
-			},
-		},
-	}
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := convertWebhookPayloadToSignalMessage(tt.payload)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := convertWebhookPayloadToSignalMessage(tt.payload)
+				assert.Equal(t, tt.expected, result)
+			})
+		}
 	*/
 }
 
@@ -1085,11 +1084,11 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				// Mock finding the original message mapping
 				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_123").
 					Return(&models.MessageMapping{
-						WhatsAppMsgID:   "original_msg_123",
-						SignalMsgID:     "sig_123",
-						WhatsAppChatID:  "+0987654321@c.us",
-						SessionName:     "default",
-						DeliveryStatus:  models.DeliveryStatusSent,
+						WhatsAppMsgID:  "original_msg_123",
+						SignalMsgID:    "sig_123",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "default",
+						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
 
 				// Mock sending reaction notification to Signal
@@ -1104,22 +1103,22 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				"timestamp": time.Now().UnixMilli(),
 				"session":   "default",
 				"payload": map[string]interface{}{
-					"id":               "edit123",
-					"from":             "+0987654321",
-					"fromMe":           false,
-					"body":             "This is the edited message",
-					"editedMessageId":  "original_msg_124",
+					"id":              "edit123",
+					"from":            "+0987654321",
+					"fromMe":          false,
+					"body":            "This is the edited message",
+					"editedMessageId": "original_msg_124",
 				},
 			},
 			setup: func() {
 				// Mock finding the original message mapping
 				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_124").
 					Return(&models.MessageMapping{
-						WhatsAppMsgID:   "original_msg_124",
-						SignalMsgID:     "sig_124",
-						WhatsAppChatID:  "+0987654321@c.us",
-						SessionName:     "default",
-						DeliveryStatus:  models.DeliveryStatusSent,
+						WhatsAppMsgID:  "original_msg_124",
+						SignalMsgID:    "sig_124",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "default",
+						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
 
 				// Mock sending edit notification to Signal
@@ -1144,11 +1143,11 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				// Mock finding the message mapping for ACK
 				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_ack_123").
 					Return(&models.MessageMapping{
-						WhatsAppMsgID:   "msg_ack_123",
-						SignalMsgID:     "sig_ack_123",
-						WhatsAppChatID:  "+0987654321@c.us",
-						SessionName:     "default",
-						DeliveryStatus:  models.DeliveryStatusSent,
+						WhatsAppMsgID:  "msg_ack_123",
+						SignalMsgID:    "sig_ack_123",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "default",
+						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
 
 				// Mock updating delivery status
@@ -1305,11 +1304,11 @@ func TestNewServer(t *testing.T) {
 
 func TestRequestSizeLimit(t *testing.T) {
 	tests := []struct {
-		name           string
-		maxBytes       int
-		bodySize       int
-		expectStatus   int
-		expectError    bool
+		name         string
+		maxBytes     int
+		bodySize     int
+		expectStatus int
+		expectError  bool
 	}{
 		{
 			name:         "request within limit",
@@ -1334,7 +1333,7 @@ func TestRequestSizeLimit(t *testing.T) {
 		},
 		{
 			name:         "very large request",
-			maxBytes:     1024 * 1024, // 1MB
+			maxBytes:     1024 * 1024,     // 1MB
 			bodySize:     5 * 1024 * 1024, // 5MB
 			expectStatus: http.StatusRequestEntityTooLarge,
 			expectError:  true,
@@ -1353,7 +1352,7 @@ func TestRequestSizeLimit(t *testing.T) {
 					WebhookSecret: "test-secret",
 				},
 			}
-			
+
 			mockWAClient := &mockWAClient{}
 			channelManager := createTestChannelManager()
 			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
@@ -1363,26 +1362,26 @@ func TestRequestSizeLimit(t *testing.T) {
 			for i := range body {
 				body[i] = 'a'
 			}
-			
+
 			// Wrap the body in a valid JSON structure
 			jsonBody := fmt.Sprintf(`{"event":"test","data":"%s"}`, string(body))
-			
+
 			req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewBufferString(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
-			
+
 			// Add valid signature for the request
 			mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
 			mac.Write([]byte(jsonBody))
 			signature := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set("X-Webhook-Hmac", signature)
 			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
-			
+
 			rr := httptest.NewRecorder()
-			
+
 			// Process the request through the middleware and handler
 			handler := server.securityMiddleware(server.router)
 			handler.ServeHTTP(rr, req)
-			
+
 			// Check the response
 			if tt.expectError {
 				assert.Equal(t, tt.expectStatus, rr.Code)
@@ -1405,35 +1404,35 @@ func TestRequestSizeLimit_NoLimit(t *testing.T) {
 			WebhookSecret: "test-secret",
 		},
 	}
-	
+
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
 	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
-	
+
 	// Create a request larger than typical default (5MB)
 	bodySize := 3 * 1024 * 1024 // 3MB (should be within default 5MB limit)
 	body := make([]byte, bodySize)
 	for i := range body {
 		body[i] = 'x'
 	}
-	
+
 	jsonBody := fmt.Sprintf(`{"event":"test","data":"%s"}`, string(body))
-	
+
 	req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewBufferString(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Add valid signature
 	mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
 	mac.Write([]byte(jsonBody))
 	signature := hex.EncodeToString(mac.Sum(nil))
 	req.Header.Set("X-Webhook-Hmac", signature)
 	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
-	
+
 	rr := httptest.NewRecorder()
-	
+
 	handler := server.securityMiddleware(server.router)
 	handler.ServeHTTP(rr, req)
-	
+
 	// Should accept since it's within default limit (5MB)
 	assert.NotEqual(t, http.StatusRequestEntityTooLarge, rr.Code)
 }
@@ -1548,7 +1547,7 @@ func TestServer_RequireSessionName(t *testing.T) {
 			server.router.ServeHTTP(rr, req)
 
 			assert.Equal(t, tt.wantStatus, rr.Code)
-			
+
 			if tt.wantError {
 				// Check that the error message mentions session requirement
 				responseBody := rr.Body.String()
@@ -1572,79 +1571,79 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
 
 	tests := []struct {
-		name         string
-		payload      interface{}
-		session      string
+		name          string
+		payload       interface{}
+		session       string
 		expectHandled bool
-		wantStatus   int
+		wantStatus    int
 	}{
 		{
-			name: "message from configured session",
+			name:    "message from configured session",
 			session: "default",
 			payload: map[string]interface{}{
-				"event": "message",
+				"event":   "message",
 				"session": "default",
 				"payload": map[string]interface{}{
-					"id":      "msg123",
-					"from":    "+1234567895",
-					"fromMe":  false,
-					"body":    "Hello from default session",
+					"id":       "msg123",
+					"from":     "+1234567895",
+					"fromMe":   false,
+					"body":     "Hello from default session",
 					"hasMedia": false,
 				},
 			},
 			expectHandled: true,
-			wantStatus:   http.StatusOK,
+			wantStatus:    http.StatusOK,
 		},
 		{
-			name: "message from undefined session",
+			name:    "message from undefined session",
 			session: "jo",
 			payload: map[string]interface{}{
-				"event": "message",
+				"event":   "message",
 				"session": "jo",
 				"payload": map[string]interface{}{
-					"id":      "msg456",
-					"from":    "+1234567896",
-					"fromMe":  false,
-					"body":    "Hello from jo session",
+					"id":       "msg456",
+					"from":     "+1234567896",
+					"fromMe":   false,
+					"body":     "Hello from jo session",
 					"hasMedia": false,
 				},
 			},
 			expectHandled: false,
-			wantStatus:   http.StatusOK, // Still returns OK but doesn't process
+			wantStatus:    http.StatusOK, // Still returns OK but doesn't process
 		},
 		{
-			name: "reaction from undefined session",
+			name:    "reaction from undefined session",
 			session: "unknown",
 			payload: map[string]interface{}{
-				"event": "message.reaction",
+				"event":   "message.reaction",
 				"session": "unknown",
 				"payload": map[string]interface{}{
 					"id":   "reaction123",
 					"from": "+1234567897",
 					"reaction": map[string]interface{}{
 						"messageId": "msg789",
-						"text": "👍",
+						"text":      "👍",
 					},
 				},
 			},
 			expectHandled: false,
-			wantStatus:   http.StatusOK,
+			wantStatus:    http.StatusOK,
 		},
 		{
-			name: "edited message from undefined session",
+			name:    "edited message from undefined session",
 			session: "another",
 			payload: map[string]interface{}{
-				"event": "message.edited",
+				"event":   "message.edited",
 				"session": "another",
 				"payload": map[string]interface{}{
-					"id":   "edited123",
-					"from": "+1234567898",
-					"body": "Edited message",
+					"id":              "edited123",
+					"from":            "+1234567898",
+					"body":            "Edited message",
 					"editedMessageId": "msg999",
 				},
 			},
 			expectHandled: false,
-			wantStatus:   http.StatusOK,
+			wantStatus:    http.StatusOK,
 		},
 	}
 
@@ -1706,7 +1705,6 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 		})
 	}
 }
-
 
 func TestWhatsAppWebhook_InvalidJSON_NoRawBodyLogged(t *testing.T) {
 	msgService := &mockMessageService{}

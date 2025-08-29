@@ -94,7 +94,6 @@ func (cm *ChannelManager) GetAllSignalDestinations() []string {
 	return destinations
 }
 
-
 // GetChannelCount returns the number of configured channels
 func (cm *ChannelManager) GetChannelCount() int {
 	cm.mu.RLock()
@@ -133,4 +132,3 @@ func (cm *ChannelManager) IsValidDestination(destination string) bool {
 	_, exists := cm.reverse[destination]
 	return exists
 }
-

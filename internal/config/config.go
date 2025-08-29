@@ -145,7 +145,6 @@ func applyEnvironmentOverrides(c *models.Config) {
 	// Signal CLI REST API typically doesn't require auth tokens
 	// Remove the auth token override as it's not part of the standard API
 
-
 	if path := os.Getenv("DB_PATH"); path != "" {
 		c.Database.Path = path
 	}
@@ -172,7 +171,6 @@ func validateSecurity(c *models.Config) error {
 
 		// Signal CLI REST API typically doesn't require auth tokens in standard deployments
 		// Remove auth token validation as it's not part of the standard Signal CLI REST API
-
 
 		// Warn about debug logging in production
 		if c.LogLevel == "debug" {

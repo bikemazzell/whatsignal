@@ -143,4 +143,3 @@ func TestToWAContact_GroupContact(t *testing.T) {
 	assert.True(t, waContact.IsGroup)
 	assert.False(t, waContact.IsMyContact)
 }
-

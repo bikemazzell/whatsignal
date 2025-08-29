@@ -122,7 +122,7 @@ func setupTestService(t *testing.T) (MessageService, context.Context) {
 	signalClient := &mockSignalClient{}
 	signalConfig := models.SignalConfig{
 		PollIntervalSec: 5,
-		PollTimeoutSec: 10,
+		PollTimeoutSec:  10,
 	}
 	channelManager, _ := NewChannelManager([]models.Channel{
 		{
@@ -139,7 +139,7 @@ func createTestMessageService(bridge *mockBridge, db *mockDB, mediaCache *mockMe
 	signalClient := &mockSignalClient{}
 	signalConfig := models.SignalConfig{
 		PollIntervalSec: 5,
-		PollTimeoutSec: 10,
+		PollTimeoutSec:  10,
 	}
 	channelManager, _ := NewChannelManager([]models.Channel{
 		{
@@ -665,7 +665,7 @@ func TestProcessIncomingSignalMessage(t *testing.T) {
 	signalClient := &mockSignalClient{}
 	signalConfig := models.SignalConfig{
 		PollIntervalSec: 5,
-		PollTimeoutSec: 10,
+		PollTimeoutSec:  10,
 	}
 	channelManager, _ := NewChannelManager([]models.Channel{
 		{
@@ -783,7 +783,7 @@ func TestPollSignalMessages(t *testing.T) {
 			},
 		},
 		{
-			name: "no messages",
+			name:     "no messages",
 			messages: []signaltypes.SignalMessage{},
 			setup: func(bridge *mockBridge, signalClient *mockSignalClient) {
 				signalClient.On("ReceiveMessages", mock.AnythingOfType("context.backgroundCtx"), 10).Return([]signaltypes.SignalMessage{}, nil).Once()
@@ -799,7 +799,7 @@ func TestPollSignalMessages(t *testing.T) {
 			signalClient := &mockSignalClient{}
 			signalConfig := models.SignalConfig{
 				PollIntervalSec: 5,
-				PollTimeoutSec: 10,
+				PollTimeoutSec:  10,
 			}
 			channelManager, _ := NewChannelManager([]models.Channel{
 				{
@@ -847,7 +847,7 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 					Timestamp: time.Now().UnixMilli(),
 				},
 				{
-					MessageID: "sig2", 
+					MessageID: "sig2",
 					Sender:    "+8888888888", // External sender with business session history
 					Message:   "Hello from business contact",
 					Timestamp: time.Now().UnixMilli(),
@@ -857,12 +857,12 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 				ctx := context.Background()
 				// Set up history expectations. Due to non-deterministic map iteration,
 				// we need to handle both possible session orderings:
-				
+
 				// +9999999999 has history with personal only
 				db.On("HasMessageHistoryBetween", ctx, "personal", "+9999999999").Return(true, nil).Maybe()
 				db.On("HasMessageHistoryBetween", ctx, "business", "+9999999999").Return(false, nil).Maybe()
-				
-				// +8888888888 has history with business only  
+
+				// +8888888888 has history with business only
 				db.On("HasMessageHistoryBetween", ctx, "personal", "+8888888888").Return(false, nil).Maybe()
 				db.On("HasMessageHistoryBetween", ctx, "business", "+8888888888").Return(true, nil).Maybe()
 			},
@@ -872,7 +872,7 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
 					return msg.MessageID == "sig1" && msg.Sender == "+9999999999"
 				}), "+1111111111").Return(nil)
-				
+
 				// Second message should route to business destination
 				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
 					return msg.MessageID == "sig2" && msg.Sender == "+8888888888"
@@ -947,7 +947,7 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 						SignalDestinationPhoneNumber: "+1111111111",
 					},
 					{
-						WhatsAppSessionName:          "business", 
+						WhatsAppSessionName:          "business",
 						SignalDestinationPhoneNumber: "+2222222222",
 					},
 				}
@@ -989,9 +989,9 @@ func TestDetermineDestinationForSender(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                   string
-		sender                 string
-		availableDestinations  []string
+		name                  string
+		sender                string
+		availableDestinations []string
 		setupHistory          func(*mockDB)
 		expectedDestination   string
 		description           string
@@ -1035,7 +1035,7 @@ func TestDetermineDestinationForSender(t *testing.T) {
 		{
 			name:                  "sender with no history",
 			sender:                "+3333333333",
-			availableDestinations: []string{"+1111111111", "+2222222222"}, 
+			availableDestinations: []string{"+1111111111", "+2222222222"},
 			setupHistory: func(db *mockDB) {
 				ctx := context.Background()
 				// Due to non-deterministic map iteration, either session could be checked first
@@ -1054,11 +1054,11 @@ func TestDetermineDestinationForSender(t *testing.T) {
 			db := new(mockDB)
 			mediaCache := new(mockMediaCache)
 			signalClient := &mockSignalClient{}
-			
+
 			signalConfig := models.SignalConfig{}
 			channelManager, _ := NewChannelManager(channels)
 			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager).(*messageService)
-			
+
 			tt.setupHistory(db)
 
 			ctx := context.Background()

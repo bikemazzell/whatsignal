@@ -10,6 +10,11 @@ on:
       - main
       - develop
 
+# Required for uploading SARIF to the Code Scanning API
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -91,7 +96,7 @@ jobs:
 
       - name: Upload gosec results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           sarif_file: gosec-results.sarif
 
@@ -140,7 +145,7 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -169,13 +174,11 @@ jobs:
           go-version: '1.24.6'
           cache: true
 
+      - name: Format code
+        run: make fmt
+
       - name: Check code formatting
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "The following files are not formatted:"
-            gofmt -l .
-            exit 1
-          fi
+        run: make format-check
 
       - name: Run go mod tidy check
         run: |

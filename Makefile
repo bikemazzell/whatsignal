@@ -53,17 +53,19 @@ help:
 	@echo "  clean      - Clean build artifacts"
 	@echo ""
 	@echo "Development targets:"
-	@echo "  test       - Run tests"
-	@echo "  test-race  - Run tests with race detection"
-	@echo "  coverage   - Run tests with coverage report"
-	@echo "  lint       - Run linter (requires golangci-lint)"
-	@echo "  fmt        - Format code"
-	@echo "  vet        - Run go vet"
-	@echo "  security   - Run security scans (gosec, govulncheck)"
-	@echo "  deps       - Download dependencies"
-	@echo "  tidy       - Tidy go modules"
-	@echo "  install-tools - Install development and CI tools"
-	@echo "  ci         - Run all CI checks (fmt, vet, lint, security, test-race, coverage)"
+	@echo "  test           - Run tests"
+	@echo "  test-race      - Run tests with race detection"
+	@echo "  coverage       - Run tests with coverage report"
+	@echo "  lint           - Run linter (requires golangci-lint)"
+	@echo "  lint-fix       - Run linter with --fix (requires golangci-lint)"
+	@echo "  fmt            - Format code (gofmt -s -w)"
+	@echo "  format-check   - Check formatting (fails if files need formatting)"
+	@echo "  vet            - Run go vet"
+	@echo "  security       - Run security scans (gosec, govulncheck)"
+	@echo "  deps           - Download dependencies"
+	@echo "  tidy           - Tidy go modules"
+	@echo "  install-tools  - Install development and CI tools"
+	@echo "  ci             - Run all CI checks (fmt, vet, lint, security, test-race, coverage)"
 	@echo ""
 	@echo "Run targets:"
 	@echo "  run        - Run debug version"
@@ -164,9 +166,22 @@ coverage:
 lint:
 	@echo "Running linter..."
 	@if [ -x "$$(go env GOPATH)/bin/golangci-lint" ]; then \
-		$$(go env GOPATH)/bin/golangci-lint run; \
+		$$(go env GOPATH)/bin/golangci-lint run --timeout=5m ./...; \
 	elif command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
+		golangci-lint run --timeout=5m ./...; \
+	else \
+		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		exit 1; \
+	fi
+
+# Auto-fix lint where supported
+.PHONY: lint-fix
+lint-fix:
+	@echo "Running linter with --fix..."
+	@if [ -x "$$(go env GOPATH)/bin/golangci-lint" ]; then \
+		$$(go env GOPATH)/bin/golangci-lint run --fix --timeout=5m ./...; \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run --fix --timeout=5m ./...; \
 	else \
 		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 		exit 1; \
@@ -175,8 +190,18 @@ lint:
 # Format code
 .PHONY: fmt
 fmt:
-	@echo "Formatting code..."
-	@go fmt ./...
+	@echo "Formatting code (gofmt -s -w)..."
+	@gofmt -s -w .
+
+# Check formatting only (CI-friendly)
+.PHONY: format-check
+format-check:
+	@echo "Checking formatting..."
+	@if [ -n "$$($(shell which gofmt) -l .)" ]; then \
+		echo "The following files are not formatted:"; \
+		$$(which gofmt) -l .; \
+		exit 1; \
+	fi
 
 # Run go vet
 .PHONY: vet

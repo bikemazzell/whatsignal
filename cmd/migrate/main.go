@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 
@@ -41,11 +40,11 @@ func main() {
 	}
 
 	if count > 0 {
-		fmt.Println("Migration 2 already applied, skipping...")
+		log.Println("Migration 2 already applied, skipping...")
 		return
 	}
 
-	fmt.Println("Applying migration 2: Add session_name and media_type columns")
+	log.Println("Applying migration 2: Add session_name and media_type columns")
 
 	// Apply migration 2
 	migrations := []string{
@@ -57,13 +56,13 @@ func main() {
 	}
 
 	for i, migration := range migrations {
-		fmt.Printf("Executing step %d/%d...\n", i+1, len(migrations))
+		log.Printf("Executing step %d/%d...\n", i+1, len(migrations))
 		_, err = db.Exec(migration)
 		if err != nil {
 			log.Fatalf("Failed to execute migration step %d: %v", i+1, err)
 		}
 	}
 
-	fmt.Println("Migration 2 applied successfully")
-	fmt.Println("Database schema updated. You can now restart WhatSignal.")
+	log.Println("Migration 2 applied successfully")
+	log.Println("Database schema updated. You can now restart WhatSignal.")
 }

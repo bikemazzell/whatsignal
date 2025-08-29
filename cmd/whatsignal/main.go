@@ -38,12 +38,10 @@ func main() {
 	flag.Parse()
 	
 	if *version {
-		fmt.Printf("WhatSignal %s\n", Version)
-		fmt.Printf("Build Time: %s\n", BuildTime)
-		fmt.Printf("Git Commit: %s\n", GitCommit)
+		fmt.Printf("WhatSignal %s\nBuild Time: %s\nGit Commit: %s\n", Version, BuildTime, GitCommit)
 		os.Exit(0)
 	}
-	
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

@@ -16,6 +16,8 @@ import (
 	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
 	"whatsignal/pkg/whatsapp/types"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -26,21 +28,23 @@ const (
 )
 
 type WhatsAppClient struct {
-	baseURL          string
-	apiKey           string
-	sessionName      string
-	client           *http.Client
-	sessionMgr       types.SessionManager
-	supportsVideo    *bool  // Cached video support status
+	baseURL       string
+	apiKey        string
+	sessionName   string
+	client        *http.Client
+	sessionMgr    types.SessionManager
+	supportsVideo *bool // Cached video support status
+	logger        *logrus.Logger
 }
 
 func NewClient(config types.ClientConfig) types.WAClient {
 	client := &WhatsAppClient{
-		baseURL:      config.BaseURL,
-		apiKey:       config.APIKey,
-		sessionName:  config.SessionName,
-		client:       &http.Client{Timeout: config.Timeout},
-		sessionMgr:   NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
+		baseURL:     config.BaseURL,
+		apiKey:      config.APIKey,
+		sessionName: config.SessionName,
+		client:     &http.Client{Timeout: config.Timeout},
+		sessionMgr:  NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
+		logger:     logrus.New(),
 	}
 	return client
 }
@@ -174,7 +178,9 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 								return nil // Session is ready
 							}
 							// Log current status for debugging
-							fmt.Printf("Session %s status: %s, waiting...\n", c.sessionName, status)
+							if c.logger != nil {
+							c.logger.WithFields(logrus.Fields{"session": c.sessionName, "status": status}).Debug("Session status; waiting")
+						}
 						}
 						break
 					}
@@ -301,12 +307,16 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 	
 	const maxRecommendedSize = 50 * 1024 * 1024 // 50MB
 	if fileInfo.Size() > maxRecommendedSize {
-		fmt.Printf("WARNING: Large file detected (%d MB). This may cause performance issues.\n", fileInfo.Size()/(1024*1024))
+		if c.logger != nil {
+			c.logger.WithField("size_mb", fileInfo.Size()/(1024*1024)).Warn("Large file detected; may cause performance issues")
+		}
 	}
-	
+
 	// Check video support and downgrade to document if not supported
 	if mediaType == types.MediaTypeVideo && !c.checkVideoSupport(ctx) {
-		fmt.Printf("Video support not available, sending as document instead\n")
+		if c.logger != nil {
+			c.logger.Info("Video support not available; sending as document instead")
+		}
 		mediaType = types.MediaTypeFile
 	}
 
@@ -520,9 +530,6 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Debug logging for troubleshooting (commented out due to large payloads)
-	// fmt.Printf("DEBUG: Sending request to %s\n", c.baseURL+endpoint)
-	// fmt.Printf("DEBUG: Payload: %s\n", string(jsonData))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -721,7 +728,9 @@ func (c *WhatsAppClient) checkVideoSupport(ctx context.Context) bool {
 	version, err := c.getServerVersion(ctx)
 	if err != nil {
 		// Log error but don't fail - assume no video support
-		fmt.Printf("Failed to check WAHA version for video support: %v\n", err)
+		if c.logger != nil {
+			c.logger.WithError(err).Warn("Failed to check WAHA version for video support")
+		}
 		c.supportsVideo = &supportsVideo
 		return supportsVideo
 	}
@@ -729,9 +738,13 @@ func (c *WhatsAppClient) checkVideoSupport(ctx context.Context) bool {
 	// Check if tier is PLUS and browser is chrome
 	if version.Tier == "PLUS" && strings.Contains(version.Browser, "google-chrome") {
 		supportsVideo = true
-		fmt.Printf("WAHA Plus detected (tier: %s, browser: %s) - video sending enabled\n", version.Tier, version.Browser)
+		if c.logger != nil {
+			c.logger.WithFields(logrus.Fields{"tier": version.Tier, "browser": version.Browser}).Info("WAHA Plus detected - video sending enabled")
+		}
 	} else {
-		fmt.Printf("WAHA version does not support video (tier: %s, browser: %s) - videos will be sent as documents\n", version.Tier, version.Browser)
+		if c.logger != nil {
+			c.logger.WithFields(logrus.Fields{"tier": version.Tier, "browser": version.Browser}).Info("WAHA version does not support video - videos will be sent as documents")
+		}
 	}
 
 	// Cache the result

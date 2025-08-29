@@ -5,6 +5,38 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.1.2] - 28-08-2025
+
+### Security
+- Webhook hardening for WAHA:
+  - Enforced request body size limits via http.MaxBytesReader (default 5MB; configurable)
+  - Added timestamp skew validation for replay protection (default 300s; configurable)
+  - Removed raw webhook body logging on decode errors; only logs body length at debug level
+
+- Database encryption safety:
+  - Encryption is now mandatory; WHATSIGNAL_ENCRYPTION_SECRET (>=32 chars) is required at runtime; plaintext mode removed
+  - Introduced HMAC-SHA256 lookup hashing with independent derived key (EncryptionLookupSalt)
+  - Stored values continue to use random-nonce AES-GCM; removed deterministic lookup encryption
+  - Updated DB layer to store and query via *_hash fields; added indexes
+
+- Media SSRF prevention:
+  - Added URL validation for media downloads; only allow WAHA base host
+  - Blocked IP literals and private/loopback/link-local resolutions
+  - Preserved testability by allowing httptest servers when WAHA base URL is unset
+
+### Changed
+- WhatsApp client logging:
+  - Replaced fmt.Printf with structured logrus logs (warn/info/debug) and sanitized fields
+  - Removed commented debug fmt.Printf blocks for payload/endpoint
+- cmd/migrate: swapped fmt.Print* for log.Print* for consistency
+- Version CLI output consolidated into a single fmt.Printf (intentional stdout behavior)
+
+### Tests
+- Added test to ensure invalid JSON webhook does not log raw body content
+- Extended signature/TS skew tests for webhooks
+- Full build and test verification
+
 ## [1.1.1] - 28-08-2025
 
 ### Security

@@ -3,9 +3,11 @@ package database
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"whatsignal/internal/constants"
@@ -15,7 +17,8 @@ import (
 )
 
 type encryptor struct {
-	gcm cipher.AEAD
+	gcm     cipher.AEAD
+	hmacKey []byte
 }
 
 func NewEncryptor() (*encryptor, error) {
@@ -35,7 +38,38 @@ func NewEncryptor() (*encryptor, error) {
 		return nil, fmt.Errorf("failed to create GCM: %w", err)
 	}
 
-	return &encryptor{gcm: gcm}, nil
+	// Derive independent HMAC key for lookup hashing
+	hmacKey, err := deriveHMACKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive HMAC key: %w", err)
+	}
+
+	return &encryptor{gcm: gcm, hmacKey: hmacKey}, nil
+}
+
+
+func deriveHMACKey() ([]byte, error) {
+	secret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	if secret == "" {
+		return nil, fmt.Errorf("WHATSIGNAL_ENCRYPTION_SECRET environment variable is required when encryption is enabled")
+	}
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
+	}
+	// Use separate salt for HMAC key derivation to avoid key reuse
+	salt := []byte(constants.EncryptionLookupSalt)
+	key := pbkdf2.Key([]byte(secret), salt, models.Iterations, models.KeySize, sha256.New)
+	return key, nil
+}
+
+// LookupHash returns a hex-encoded HMAC-SHA256 of the plaintext using a dedicated key
+func (e *encryptor) LookupHash(plaintext string) (string, error) {
+	if e.hmacKey == nil {
+		return "", fmt.Errorf("hmac key not initialized")
+	}
+	mac := hmac.New(sha256.New, e.hmacKey)
+	mac.Write([]byte(plaintext))
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
 func (e *encryptor) Encrypt(plaintext string) (string, error) {

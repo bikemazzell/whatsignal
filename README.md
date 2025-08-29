@@ -8,94 +8,14 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 
 ## Features
 
-- **Core Bridging**:
-  - One-to-one chat bridging between WhatsApp and Signal
-  - Bidirectional message forwarding with context preservation
-  - Message metadata preservation
-
-- **Smart Contact Management**:
-  - **Automatic contact name display**: Messages show "John Doe: message" instead of "+1234567890: message"
-  - **Startup contact sync**: All WhatsApp contacts cached on startup for instant performance (configurable)
-  - **Intelligent caching**: 24-hour contact cache with configurable refresh intervals (default: 24 hours)
-  - **Fallback handling**: Graceful degradation to phone numbers when contacts unavailable
-
-- **WAHA API Integration**:
-  - Full WAHA API compliance with best practices
-  - **Automatic WAHA version detection**: Detects WAHA Plus vs Core capabilities
-  - **Intelligent video handling**: Adapts video sending based on WAHA version
-  - Natural typing simulation
-  - Message seen status
-  - Proper message flow handling
-  - Session management and recovery
-  
-- **Comprehensive Media Support**:
-  - **Config-driven file types**: Add new file formats without rebuilding
-  - **Smart defaults**: Unknown file types automatically sent as documents
-  - **Binary file detection**: Automatic detection of file types using content signatures
-  - **Intelligent video routing**: WAHA Plus gets native videos, WAHA Core gets document fallback
-  - Images (JPEG, PNG, GIF, WebP)
-  - Videos (MP4, MOV, AVI) with automatic WAHA compatibility detection
-  - Documents (PDF, DOC, DOCX, TXT, SVG, ZIP, etc.)
-  - Voice messages (OGG, AAC, M4A, MP3)
-  - Intelligent media caching and cleanup
-
-- **Message Features**:
-  - Text with formatting preservation
-  - Media attachments in replies
-  - Message delivery status tracking
-  - **Auto-reply to last sender**: Replies without quotes automatically go to the most recent WhatsApp contact
-  - **Message reactions**: Full emoji reaction support between Signal and WhatsApp (👍, ❤️, etc.)
-  - **Smart voice detection**: Automatic detection of Signal voice recordings without file extensions
-  
-- **Security & Privacy**:
-  - Database encryption at rest
-  - Webhook authentication and validation
-  - Path traversal protection
-  - **Simplified authentication**: No auth tokens required for Signal CLI
-  - Configurable data retention
-  - Automated cleanup scheduling
-  - Contact information encryption
-  - Deterministic encryption for message lookup optimization
-  - Comprehensive security scanning and vulnerability protection
-
-- **System Features**:
-  - Health monitoring endpoint
-  - Structured JSON logging
-  - Comprehensive test coverage (>80%)
-  - Type-safe message handling
-  - Graceful error handling and retries
-  - Docker deployment ready
-
-## Building
-
-This project includes a comprehensive Makefile for building debug and release versions:
-
-### Quick Start
-```bash
-# Build debug version (default)
-make
-
-# Build release version
-make release
-
-# Build both versions
-make both
-
-# Clean build artifacts
-make clean
-
-# Run tests
-make test
-
-# Show all available targets
-make help
-```
-
-### Build Output
-
-Binaries are created in:
-- `build/debug/whatsignal` - Debug version
-- `build/release/whatsignal` - Release version
+- WhatsApp ↔ Signal one-to-one bridge with preserved context (replies, quotes, metadata)
+- Smart contacts: show names (not numbers), warm cache at startup, periodic refresh, graceful fallback
+- Media that just works: images, videos, documents, voice notes; config-driven types; binary sniffing; WAHA Plus/Core‑aware routing
+- WAHA integration: auto version detection, typing indicators, seen status, session management and recovery
+- Message extras: reactions, auto‑reply to last sender, delivery status tracking
+- Security by default: encrypted storage, webhook auth/validation, configurable retention, automated cleanup
+- Operational hygiene: health endpoint, structured JSON logs, graceful retries
+- Developer‑friendly: Dockerized, type‑safe handling, comprehensive tests (>80% coverage)
 
 
 ## Prerequisite Accounts
@@ -104,7 +24,6 @@ To use WhatSignal, you must have:
 1. **WhatsApp Number**: Registered and active, activated as a session on WAHA.
 2. **Signal Bridge Number**: Dedicated for the bridge, used by Signal-CLI, and different from the destination number.
 3. **Signal Destination Number**: The final recipient, typically on your mobile or desktop Signal app. This must not be the same as the bridge number.
-
 
 ## Quick Start
 

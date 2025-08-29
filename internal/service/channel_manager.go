@@ -94,19 +94,6 @@ func (cm *ChannelManager) GetAllSignalDestinations() []string {
 	return destinations
 }
 
-// GetDefaultSessionName returns the first configured WhatsApp session name
-// This is used for backward compatibility and default operations
-func (cm *ChannelManager) GetDefaultSessionName() string {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-
-	// Return the first session name in the order they were configured
-	if len(cm.orderedNames) > 0 {
-		return cm.orderedNames[0]
-	}
-
-	return "" // Should never happen if properly initialized
-}
 
 // GetChannelCount returns the number of configured channels
 func (cm *ChannelManager) GetChannelCount() int {

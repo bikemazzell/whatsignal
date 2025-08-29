@@ -13,7 +13,6 @@ import (
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
-	"whatsignal/pkg/whatsapp"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/gorilla/mux"
@@ -38,7 +37,7 @@ type Server struct {
 	router         *mux.Router
 	logger         *logrus.Logger
 	msgService     service.MessageService
-	waWebhook      whatsapp.WebhookHandler
+
 	server         *http.Server
 	cfg            *models.Config
 	waClient       types.WAClient
@@ -52,7 +51,6 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 		router:         mux.NewRouter(),
 		logger:         logger,
 		msgService:     msgService,
-		waWebhook:      whatsapp.NewWebhookHandler(),
 		cfg:            cfg,
 		waClient:       waClient,
 		channelManager: channelManager,
@@ -60,7 +58,7 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 	}
 
 	s.setupRoutes()
-	s.setupWebhookHandlers()
+
 	return s
 }
 
@@ -76,25 +74,6 @@ func (s *Server) setupRoutes() {
 
 }
 
-func (s *Server) setupWebhookHandlers() {
-	s.waWebhook.RegisterEventHandler("message.any", func(ctx context.Context, payload json.RawMessage) error {
-		var msg types.MessagePayload
-		if err := json.Unmarshal(payload, &msg); err != nil {
-			return fmt.Errorf("failed to unmarshal message payload: %w", err)
-		}
-
-		s.logger.WithFields(logrus.Fields{
-			"messageId": service.SanitizeWhatsAppMessageID(msg.ID),
-			"chatId":    service.SanitizePhoneNumber(msg.ChatID),
-			"sender":    service.SanitizePhoneNumber(msg.Sender),
-			"type":      msg.Type,
-		}).Info("Received WhatsApp message")
-
-		// Use default session name for legacy webhook handler
-	sessionName := "default"
-	return s.msgService.HandleWhatsAppMessageWithSession(ctx, sessionName, msg.ChatID, msg.ID, msg.Sender, msg.Content, msg.MediaURL)
-	})
-}
 
 func (s *Server) Start() error {
 	port := os.Getenv("PORT")
@@ -351,10 +330,10 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 
 	chatID := payload.Payload.From
 	
-	// Use session from webhook payload or default to "default"
+	// Use session from webhook payload
 	sessionName := payload.Session
 	if sessionName == "" {
-		sessionName = "default"
+		return ValidationError{Message: "session name is required but was not provided"}
 	}
 
 	// Validate session name
@@ -390,7 +369,7 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 	// Check if session is configured
 	sessionName := payload.Session
 	if sessionName == "" {
-		sessionName = "default"
+		return ValidationError{Message: "session name is required but was not provided"}
 	}
 	if !s.channelManager.IsValidSession(sessionName) {
 		s.logger.WithField("session", sessionName).Debug("Ignoring reaction from unconfigured session")
@@ -425,9 +404,10 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 
 	// Send reaction notification to the appropriate Signal destination
 	// Use the session from the mapping to determine the destination
-	reactionSessionName := "default"
-	if mapping.SessionName != "" {
-		reactionSessionName = mapping.SessionName
+	reactionSessionName := mapping.SessionName
+	if reactionSessionName == "" {
+		s.logger.Error("Session name missing in message mapping for reaction")
+		return ValidationError{Message: "session name required but not found in message mapping"}
 	}
 
 	// Use the message service to send via the bridge with session context
@@ -457,7 +437,7 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	// Check if session is configured
 	sessionName := payload.Session
 	if sessionName == "" {
-		sessionName = "default"
+		return ValidationError{Message: "session name is required but was not provided"}
 	}
 	if !s.channelManager.IsValidSession(sessionName) {
 		s.logger.WithField("session", sessionName).Debug("Ignoring edited message from unconfigured session")
@@ -487,9 +467,10 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	
 	// Send to Signal using message service
 	// Send edit notification to the appropriate Signal destination
-	editSessionName := "default"
-	if mapping.SessionName != "" {
-		editSessionName = mapping.SessionName
+	editSessionName := mapping.SessionName
+	if editSessionName == "" {
+		s.logger.Error("Session name missing in message mapping for edited message")
+		return ValidationError{Message: "session name required but not found in message mapping"}
 	}
 
 	// Use the message service to send via the bridge with session context
@@ -571,13 +552,14 @@ func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *mode
 		"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.ID),
 	}).Info("Processing WhatsApp waiting message event")
 
-	// For waiting messages, we might want to send a notification to Signal
 	waitingNotification := "⏳ WhatsApp is waiting for a message"
 
-	// Send waiting notification to default session
-	sessionName := s.channelManager.GetDefaultSessionName()
+	// Require session context for waiting messages
+	sessionName := payload.Session
+	if sessionName == "" {
+		return ValidationError{Message: "session name is required for waiting message events"}
+	}
 
-	// Use the message service to send via the bridge with session context
 	err := s.msgService.SendSignalNotification(ctx, sessionName, waitingNotification)
 	if err != nil {
 		s.logger.WithError(err).Warn("Failed to send waiting notification to Signal")

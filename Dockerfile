@@ -1,7 +1,11 @@
-FROM golang:1.23-alpine AS builder
+# Pin Go Alpine image with digest for security
+FROM golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052 AS builder
 
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+# Install build dependencies with no-cache and verification
+RUN apk add --no-cache --update \
+    gcc~=13.2 \
+    musl-dev~=1.2 \
+    sqlite-dev~=3.45
 
 WORKDIR /app
 
@@ -26,35 +30,48 @@ RUN VERSION=${VERSION:-$(cat VERSION)} \
     -ldflags "-extldflags '-static' -X main.Version=$VERSION -X main.BuildTime=$BUILD_TIME -X main.GitCommit=$GIT_COMMIT" \
     -o whatsignal ./cmd/whatsignal
 
-# Final stage
-FROM alpine:latest
+# Final stage - use distroless image for security
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9f88e0d99c1ceedbce565fad7d3f96744d15e6919c19c7dafe84a6dd9a80c61
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates sqlite wget
-
-# Create non-root user
-RUN addgroup -g 1001 -S whatsignal && \
-    adduser -u 1001 -S whatsignal -G whatsignal
+# Add security labels
+LABEL org.opencontainers.image.title="WhatsSignal" \
+      org.opencontainers.image.description="Secure WhatsApp-Signal Bridge" \
+      org.opencontainers.image.vendor="WhatsSignal Project" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/user/whatsignal" \
+      security.non-root="true" \
+      security.read-only-root="true" \
+      security.no-shell="true"
 
 WORKDIR /app
 
-# Copy binary and set permissions
-COPY --from=builder /app/whatsignal .
-RUN chmod 755 /app/whatsignal
+# Copy statically linked binary (distroless doesn't have shell/package manager)
+COPY --from=builder --chown=nonroot:nonroot /app/whatsignal /app/whatsignal
 
-# Create directories and set ownership
-RUN mkdir -p /app/cache /app/data /app/media-cache /app/signal-attachments /app/database && \
-    chown -R whatsignal:whatsignal /app
-
-# Switch to non-root user
-USER whatsignal
-
-# Expose port
+# Expose port (non-privileged port)
 EXPOSE 8082
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 -O /dev/null http://localhost:8082/health || exit 1
+# Security: Use non-root user (distroless nonroot user: uid=65532)
+USER nonroot:nonroot
 
-# Default command
-CMD ["/app/whatsignal"] 
+# Default command with explicit path
+ENTRYPOINT ["/app/whatsignal"]
+
+# Document required volumes for data persistence
+# These should be mounted as volumes in production:
+# - /app/data (database and persistent storage) 
+# - /app/media-cache (media file cache)
+# - /app/signal-attachments (signal attachment storage)
+#
+# Example docker run with proper volumes:
+# docker run -d \
+#   --read-only \
+#   --tmpfs /tmp:noexec,nosuid,size=100m \
+#   --tmpfs /var/tmp:noexec,nosuid,size=100m \
+#   -v whatsignal-data:/app/data:rw \
+#   -v whatsignal-cache:/app/media-cache:rw \
+#   -v whatsignal-attachments:/app/signal-attachments:rw \
+#   --cap-drop ALL \
+#   --security-opt no-new-privileges=true \
+#   -p 8082:8082 \
+#   whatsignal:latest 

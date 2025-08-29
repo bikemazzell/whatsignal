@@ -258,10 +258,6 @@ func (m *mockChannelManager) GetWhatsAppSession(destination string) (string, err
 	return args.String(0), args.Error(1)
 }
 
-func (m *mockChannelManager) GetDefaultSessionName() string {
-	args := m.Called()
-	return args.String(0)
-}
 
 func (m *mockChannelManager) GetAllWhatsAppSessions() []string {
 	args := m.Called()

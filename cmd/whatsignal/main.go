@@ -111,22 +111,22 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}
 
-	// Create channel manager first to get the default session name
+	// Create channel manager
 	channelManager, err := service.NewChannelManager(cfg.Channels)
 	if err != nil {
 		return fmt.Errorf("failed to create channel manager: %w", err)
 	}
 
-	// Use the first configured session as the default for client operations
-	defaultSessionName := channelManager.GetDefaultSessionName()
-	if defaultSessionName == "" {
+	// Use the first configured session explicitly from config for client operations
+	if len(cfg.Channels) == 0 {
 		return fmt.Errorf("no channels configured")
 	}
+	defaultSessionName := cfg.Channels[0].WhatsAppSessionName
 
 	waClient := whatsapp.NewClient(types.ClientConfig{
 		BaseURL:      cfg.WhatsApp.APIBaseURL,
 		APIKey:       apiKey,
-		SessionName:  defaultSessionName, // Use first configured session
+		SessionName:  defaultSessionName,
 		Timeout:      cfg.WhatsApp.Timeout,
 		RetryCount:   cfg.WhatsApp.RetryCount,
 	})

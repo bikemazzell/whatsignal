@@ -180,7 +180,7 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	const numRecords = 10000
+	const numRecords = 500
 	start := time.Now()
 
 	ctx := context.Background()

@@ -119,10 +119,9 @@ func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.Messa
 		encryptedMediaPath = &encrypted
 	}
 
-	// Use 'default' session if not specified for backward compatibility
 	sessionName := mapping.SessionName
 	if sessionName == "" {
-		sessionName = "default"
+		return fmt.Errorf("session name is required in message mapping")
 	}
 
 	query := InsertMessageMappingQuery
@@ -208,61 +207,8 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 	if qErr != sql.ErrNoRows {
 		return nil, fmt.Errorf("failed to get message mapping: %w", qErr)
 	}
-	// Backward-compatibility fallback for legacy rows without hashes
-	legacyQuery := `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
-		       signal_timestamp, forwarded_at, delivery_status, media_path,
-		       created_at, updated_at
-		FROM message_mappings
-		WHERE whatsapp_msg_id = ?
-	`
-	// Compute legacy deterministic encrypted value for lookup compatibility
-	encryptedWhatsAppID, err := d.encryptor.EncryptForLookupIfEnabled(whatsappID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt WhatsApp ID for legacy lookup: %w", err)
-	}
-	row := d.db.QueryRowContext(ctx, legacyQuery, encryptedWhatsAppID)
-	var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
-	var encryptedMediaPath *string
-	mapping = &models.MessageMapping{}
-	if err := row.Scan(
-		&mapping.ID,
-		&encryptedChatID,
-		&encryptedWhatsAppMsgID,
-		&encryptedSignalMsgID,
-		&mapping.SignalTimestamp,
-		&mapping.ForwardedAt,
-		&mapping.DeliveryStatus,
-		&encryptedMediaPath,
-		&mapping.CreatedAt,
-		&mapping.UpdatedAt,
-	); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get legacy message mapping: %w", err)
-	}
-	// Decrypt fields
-	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedChatID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt chat ID: %w", err)
-	}
-	mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWhatsAppMsgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
-	}
-	mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
-	}
-	if encryptedMediaPath != nil {
-		decryptedMediaPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt media path: %w", err)
-		}
-		mapping.MediaPath = &decryptedMediaPath
-	}
-	return mapping, nil
+	// Legacy fallback removed; mappings must be retrievable via hash
+	return nil, nil
 }
 
 // GetMessageMapping retrieves a message mapping by either WhatsApp or Signal message ID
@@ -524,9 +470,8 @@ func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.Message
 }
 
 func (d *Database) GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error) {
-	// Use 'default' if sessionName is empty for backward compatibility
 	if sessionName == "" {
-		sessionName = "default"
+		return nil, fmt.Errorf("session name is required")
 	}
 
 	query := SelectLatestMessageMappingBySessionQuery
@@ -706,9 +651,8 @@ func (d *Database) CleanupOldContacts(retentionDays int) error {
 
 // HasMessageHistoryBetween checks if there's any message history between a session and Signal sender
 func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error) {
-	// Use 'default' if sessionName is empty for backward compatibility
 	if sessionName == "" {
-		sessionName = "default"
+		return false, fmt.Errorf("session name is required")
 	}
 
 	// We need to check both directions:

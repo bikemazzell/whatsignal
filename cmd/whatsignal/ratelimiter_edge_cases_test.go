@@ -142,21 +142,21 @@ func TestRateLimiter_CleanupOldEntries(t *testing.T) {
 
 // TestRateLimiter_EdgeCaseTimestamps tests edge cases with timestamps
 func TestRateLimiter_EdgeCaseTimestamps(t *testing.T) {
-	rl := NewRateLimiter(3, 100*time.Millisecond)
+	rl := NewRateLimiter(3, 50*time.Millisecond) // Reduced window for faster tests
 	ip := "192.168.1.1"
 
 	// Make some requests
 	assert.True(t, rl.Allow(ip))
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(15 * time.Millisecond) // Reduced sleep
 	assert.True(t, rl.Allow(ip))
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(15 * time.Millisecond) // Reduced sleep
 	assert.True(t, rl.Allow(ip))
 	
 	// Should be at limit
 	assert.False(t, rl.Allow(ip))
 	
 	// Wait for first request to expire
-	time.Sleep(45 * time.Millisecond)
+	time.Sleep(25 * time.Millisecond) // Reduced sleep
 	
 	// Should allow one more
 	assert.True(t, rl.Allow(ip))

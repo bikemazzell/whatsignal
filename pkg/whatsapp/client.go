@@ -260,20 +260,23 @@ func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, 
 		// Continue if this fails - it's optional
 	}
 
-	typingDuration := time.Duration(len(text)) * TypingDurationPerChar
-	if typingDuration > MaxTypingDuration {
-		typingDuration = MaxTypingDuration
-	}
+	// Skip typing delay in test mode
+	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+		typingDuration := time.Duration(len(text)) * TypingDurationPerChar
+		if typingDuration > MaxTypingDuration {
+			typingDuration = MaxTypingDuration
+		}
 
-	// Use context-aware sleep to avoid blocking indefinitely
-	select {
-	case <-time.After(typingDuration):
-		// Normal completion
-	case <-ctx.Done():
-		// Context cancelled, stop typing and return
-		// Best effort cleanup - ignore error as context is already cancelled
-		_ = c.stopTypingWithSession(ctx, chatID, sessionName)
-		return nil, ctx.Err()
+		// Use context-aware sleep to avoid blocking indefinitely
+		select {
+		case <-time.After(typingDuration):
+			// Normal completion
+		case <-ctx.Done():
+			// Context cancelled, stop typing and return
+			// Best effort cleanup - ignore error as context is already cancelled
+			_ = c.stopTypingWithSession(ctx, chatID, sessionName)
+			return nil, ctx.Err()
+		}
 	}
 
 	if err := c.stopTypingWithSession(ctx, chatID, sessionName); err != nil {

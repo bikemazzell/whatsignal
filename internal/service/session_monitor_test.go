@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -271,4 +272,105 @@ func TestSessionMonitor_isSessionUnhealthy(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestSessionMonitor_StopMultipleTimes(t *testing.T) {
+	whatsappClient := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+	checkInterval := 30 * time.Second
+
+	monitor := NewSessionMonitor(whatsappClient, logger, checkInterval)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	whatsappClient.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Name:   "test-session",
+		Status: "WORKING",
+	}, nil).Maybe()
+
+	monitor.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+
+	// First stop
+	monitor.Stop()
+
+	// Second stop - this should not panic
+	assert.NotPanics(t, func() {
+		monitor.Stop()
+	})
+
+	// Third stop - this should also not panic
+	assert.NotPanics(t, func() {
+		monitor.Stop()
+	})
+}
+
+func TestSessionMonitor_ConcurrentStop(t *testing.T) {
+	whatsappClient := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+	checkInterval := 30 * time.Second
+
+	monitor := NewSessionMonitor(whatsappClient, logger, checkInterval)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	whatsappClient.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Name:   "test-session",
+		Status: "WORKING",
+	}, nil).Maybe()
+
+	monitor.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+
+	// Launch multiple goroutines calling Stop() concurrently
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NotPanics(t, func() {
+				monitor.Stop()
+			})
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestSessionMonitor_StartStopStartStop(t *testing.T) {
+	whatsappClient := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+	checkInterval := 30 * time.Second
+
+	monitor := NewSessionMonitor(whatsappClient, logger, checkInterval)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	whatsappClient.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Name:   "test-session",
+		Status: "WORKING",
+	}, nil).Maybe()
+
+	// First cycle
+	monitor.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+	monitor.Stop()
+
+	// Second cycle - ensure stopCh is recreated properly
+	monitor.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+	monitor.Stop()
+
+	// Third cycle
+	monitor.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+	monitor.Stop()
+
+	assert.True(t, true) // If we get here without issues, test passed
 }

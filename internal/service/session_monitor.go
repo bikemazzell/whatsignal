@@ -44,6 +44,11 @@ func (sm *SessionMonitor) Start(ctx context.Context) {
 		return
 	}
 
+	// Reinitialize stopCh if it was closed
+	if sm.stopCh == nil {
+		sm.stopCh = make(chan struct{})
+	}
+
 	sm.running = true
 	go sm.monitorLoop(ctx)
 	sm.logger.Info("Session monitor started")
@@ -58,7 +63,10 @@ func (sm *SessionMonitor) Stop() {
 		return
 	}
 
-	close(sm.stopCh)
+	if sm.stopCh != nil {
+		close(sm.stopCh)
+		sm.stopCh = nil
+	}
 	sm.running = false
 	sm.logger.Info("Session monitor stopped")
 }

@@ -14,12 +14,47 @@ CREATE TABLE IF NOT EXISTS message_mappings (
     media_path TEXT,
     session_name TEXT NOT NULL DEFAULT 'default',
     media_type TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add hash columns if they don't exist (for existing databases)
+-- We need to handle the case where table exists but columns don't
+-- This approach recreates the table if it exists without the hash columns
+
+-- Create temporary table with all columns
+CREATE TABLE IF NOT EXISTS message_mappings_temp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    whatsapp_chat_id TEXT NOT NULL,
+    whatsapp_msg_id TEXT NOT NULL,
+    signal_msg_id TEXT NOT NULL,
+    signal_timestamp DATETIME NOT NULL,
+    forwarded_at DATETIME NOT NULL,
+    delivery_status TEXT NOT NULL,
+    media_path TEXT,
+    session_name TEXT NOT NULL DEFAULT 'default',
+    media_type TEXT,
     chat_id_hash TEXT,
     whatsapp_msg_id_hash TEXT,
     signal_msg_id_hash TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Copy data from old table if it exists and has different schema
+INSERT OR IGNORE INTO message_mappings_temp 
+    (id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+     forwarded_at, delivery_status, media_path, session_name, media_type, created_at, updated_at)
+SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
+       forwarded_at, delivery_status, media_path, 
+       COALESCE(session_name, 'default') as session_name,
+       media_type, created_at, updated_at
+FROM message_mappings
+WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='message_mappings');
+
+-- Drop old table and rename new one
+DROP TABLE IF EXISTS message_mappings;
+ALTER TABLE message_mappings_temp RENAME TO message_mappings;
 
 CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id ON message_mappings(whatsapp_msg_id);
 CREATE INDEX IF NOT EXISTS idx_signal_msg_id ON message_mappings(signal_msg_id);

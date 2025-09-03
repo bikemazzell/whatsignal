@@ -47,8 +47,9 @@ LABEL org.opencontainers.image.title="WhatsSignal" \
 
 WORKDIR /app
 
-# Copy statically linked binary (distroless doesn't have shell/package manager)
+# Copy statically linked binary and migrations (distroless doesn't have shell/package manager)
 COPY --from=builder --chown=nonroot:nonroot /app/whatsignal /app/whatsignal
+COPY --from=builder --chown=nonroot:nonroot /app/scripts/migrations /app/scripts/migrations
 
 # Expose port (non-privileged port)
 EXPOSE 8082

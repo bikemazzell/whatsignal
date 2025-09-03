@@ -13,8 +13,16 @@ import (
 
 var (
 	// MigrationsDir can be overridden in tests or by the application
-	MigrationsDir = "scripts/migrations"
+	MigrationsDir = getDefaultMigrationsDir()
 )
+
+// getDefaultMigrationsDir returns the migrations directory, checking environment variable first
+func getDefaultMigrationsDir() string {
+	if dir := os.Getenv("WHATSIGNAL_MIGRATIONS_DIR"); dir != "" {
+		return dir
+	}
+	return "scripts/migrations"
+}
 
 // RunMigrations applies all pending database migrations
 func RunMigrations(db *sql.DB) error {
@@ -57,12 +65,9 @@ func createMigrationsTable(db *sql.DB) error {
 
 // findMigrationFiles finds and sorts all SQL migration files
 func findMigrationFiles() ([]string, error) {
-	// Search for migration directory in common locations
 	searchPaths := []string{
 		MigrationsDir,
-		filepath.Join("..", "..", MigrationsDir),
-		filepath.Join("..", MigrationsDir),
-		filepath.Join("..", "..", "..", MigrationsDir),
+		"/app/scripts/migrations",
 	}
 
 	var migrationsPath string

@@ -141,11 +141,8 @@ func createLargeTestFile(t *testing.T) string {
 	tmpDir := t.TempDir()
 	filepath := filepath.Join(tmpDir, "large_test.jpg")
 
-	// Create a file larger than 50MB
-	largeContent := make([]byte, 60*1024*1024) // 60MB
-	for i := range largeContent {
-		largeContent[i] = byte(i % 256)
-	}
+	// Create a file larger than 5MB
+	largeContent := make([]byte, 6*1024*1024) // 6MB
 
 	err := os.WriteFile(filepath, largeContent, 0644)
 	require.NoError(t, err)

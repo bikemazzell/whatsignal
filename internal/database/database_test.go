@@ -8,11 +8,87 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// setupTestMigrations creates test migration files
+func setupTestMigrations(t *testing.T, tmpDir string) string {
+	// Create migrations directory
+	migrationsPath := filepath.Join(tmpDir, "migrations")
+	err := os.MkdirAll(migrationsPath, 0755)
+	require.NoError(t, err)
+
+	// Create the complete initial schema
+	schemaContent := `-- Initial schema for WhatsSignal
+CREATE TABLE IF NOT EXISTS message_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    whatsapp_chat_id TEXT NOT NULL,
+    whatsapp_msg_id TEXT NOT NULL,
+    signal_msg_id TEXT NOT NULL,
+    signal_timestamp DATETIME NOT NULL,
+    forwarded_at DATETIME NOT NULL,
+    delivery_status TEXT NOT NULL,
+    media_path TEXT,
+    session_name TEXT NOT NULL DEFAULT 'default',
+    media_type TEXT,
+    chat_id_hash TEXT,
+    whatsapp_msg_id_hash TEXT,
+    signal_msg_id_hash TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id ON message_mappings(whatsapp_msg_id);
+CREATE INDEX IF NOT EXISTS idx_signal_msg_id ON message_mappings(signal_msg_id);
+CREATE INDEX IF NOT EXISTS idx_chat_time ON message_mappings(whatsapp_chat_id, forwarded_at);
+CREATE INDEX IF NOT EXISTS idx_session_name ON message_mappings(session_name);
+CREATE INDEX IF NOT EXISTS idx_session_chat ON message_mappings(session_name, whatsapp_chat_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id_hash ON message_mappings(whatsapp_msg_id_hash);
+CREATE INDEX IF NOT EXISTS idx_signal_msg_id_hash ON message_mappings(signal_msg_id_hash);
+CREATE INDEX IF NOT EXISTS idx_chat_id_hash ON message_mappings(chat_id_hash);
+
+CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at 
+AFTER UPDATE ON message_mappings
+BEGIN
+    UPDATE message_mappings SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id TEXT NOT NULL UNIQUE,
+    phone_number TEXT NOT NULL,
+    name TEXT,
+    push_name TEXT,
+    short_name TEXT,
+    is_blocked BOOLEAN DEFAULT FALSE,
+    is_group BOOLEAN DEFAULT FALSE,
+    is_my_contact BOOLEAN DEFAULT FALSE,
+    cached_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_id ON contacts(contact_id);
+CREATE INDEX IF NOT EXISTS idx_phone_number ON contacts(phone_number);
+CREATE INDEX IF NOT EXISTS idx_cached_at ON contacts(cached_at);
+
+CREATE TRIGGER IF NOT EXISTS contacts_updated_at
+AFTER UPDATE ON contacts
+BEGIN
+    UPDATE contacts SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
+END;`
+
+	// Write the schema to the test directory
+	err = os.WriteFile(filepath.Join(migrationsPath, "001_initial_schema.sql"), []byte(schemaContent), 0644)
+	require.NoError(t, err)
+
+	return migrationsPath
+}
 
 func setupTestDB(t *testing.T) (*Database, string, func()) {
 	// Set up encryption secret for tests
@@ -23,6 +99,13 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 	require.NoError(t, err)
 
+	// Set up test migrations
+	migrationsPath := setupTestMigrations(t, tmpDir)
+
+	// Set migrations directory for the test
+	originalMigrationsDir := migrations.MigrationsDir
+	migrations.MigrationsDir = migrationsPath
+
 	dbPath := filepath.Join(tmpDir, "test.db")
 	db, err := New(dbPath)
 	require.NoError(t, err)
@@ -31,6 +114,7 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 		db.Close()
 		os.RemoveAll(tmpDir)
 		// Restore original environment
+		migrations.MigrationsDir = originalMigrationsDir
 		if originalSecret != "" {
 			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
@@ -65,6 +149,13 @@ func TestNewDatabase(t *testing.T) {
 				tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 				require.NoError(t, err)
 				t.Cleanup(func() { os.RemoveAll(tmpDir) })
+
+				// Set up test migrations for this test
+				migrationsPath := setupTestMigrations(t, tmpDir)
+				originalMigrationsDir := migrations.MigrationsDir
+				migrations.MigrationsDir = migrationsPath
+				t.Cleanup(func() { migrations.MigrationsDir = originalMigrationsDir })
+
 				return filepath.Join(tmpDir, "test.db")
 			},
 			expectError: false,

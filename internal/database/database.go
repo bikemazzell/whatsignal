@@ -49,19 +49,12 @@ func New(dbPath string) (*Database, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	schema, err := migrations.GetInitialSchema()
-	if err != nil {
+	// Run all database migrations
+	if err := migrations.RunMigrations(db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			return nil, fmt.Errorf("failed to read schema: %w (close error: %v)", err, closeErr)
+			return nil, fmt.Errorf("failed to run migrations: %w (close error: %v)", err, closeErr)
 		}
-		return nil, fmt.Errorf("failed to read schema: %w", err)
-	}
-
-	if _, err := db.Exec(schema); err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return nil, fmt.Errorf("failed to initialize schema: %w (close error: %v)", err, closeErr)
-		}
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	encryptor, err := NewEncryptor()

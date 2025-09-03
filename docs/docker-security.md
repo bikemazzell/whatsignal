@@ -88,33 +88,64 @@ volumes:
   - ./config.json:/app/config.json:ro
 
   # Writable data volumes (minimal)
-### Writable paths when using read_only
+### Practical Security Balance
 
-When read_only: true is enabled, the container’s root filesystem is immutable. Any path the app needs to write to must be mounted as read-write.
+WhatsSignal uses a balanced approach to security that maintains strong protection while ensuring functionality:
 
-Common writable paths for WhatSignal:
-- /app/data: database and persistent state
-- /tmp: temporary files
-- /var/cache: media cache (set media.cache_dir in config.json to /var/cache), or mount /app/media-cache if you keep the default
-- /app/signal-attachments: Signal attachment storage (set attachmentsDir accordingly)
+#### Service-Specific Security Requirements
 
-Example (matching the repo’s docker-compose.yml):
+**WhatsSignal (Main Bridge):**
+- `read_only: true` - Works with distroless image
+- `tmpfs` mounts for `/tmp` and `/var/cache`
+- Minimal volume mounts for essential data only
+
+**WAHA (WhatsApp API):**
+- `read_only: true` - But requires extensive tmpfs mounts for Chrome
+- Chrome needs `/tmp`, `/var/tmp`, `/dev/shm`, and `/var/crashes`
+- Requires `PUPPETEER_ARGS` for container compatibility
+
+**Signal-CLI REST API:**
+- `read_only: false` - **Must be writable** due to system file modifications
+- Uses tmpfs for `/tmp` to avoid conflicts
+- Requires write access for user/group management during startup
+
+#### Example Configuration (from docker-compose.yml):
 ```yaml
 services:
+  # WhatsSignal - can use read-only with tmpfs
   whatsignal:
     read_only: true
     user: "1000:1000"
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+      - /var/cache:size=50M,mode=1777
     volumes:
       - /mnt/data/whatsignal/config.json:/app/config.json:ro
       - /mnt/data/whatsignal/data:/app/data
-      - /mnt/data/waha/tmp:/tmp
-      - /mnt/data/waha/cache:/var/cache
       - signal_attachments:/app/signal-attachments:rw
+
+  # WAHA - requires Chrome-specific tmpfs mounts
+  waha:
+    read_only: true
+    tmpfs:
+      - /tmp:size=200M,mode=1777
+      - /var/tmp:size=50M,mode=1777
+      - /dev/shm:size=2G,mode=1777
+      - /var/crashes:size=100M,mode=1777
+    environment:
+      - PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --crash-dumps-dir=/var/crashes
+
+  # Signal-CLI - cannot use read-only due to system modifications
+  signal-cli-rest-api:
+    read_only: false  # Required for system file access
+    tmpfs:
+      - /tmp:size=100M,mode=1777
 ```
 
-Notes:
-- Ensure host directories are writable by the container user (e.g., UID 1000)
-- Named volumes or bind mounts with :rw remain writable even when read_only is enabled
+**Important Notes:**
+- **Do not** bind-mount `/tmp` or `/var/cache` when using `read_only: true`
+- Use `tmpfs` mounts instead to avoid filesystem conflicts
+- Signal-CLI **must** have `read_only: false` to function properly
 
   - whatsignal-data:/app/data:rw
   - whatsignal-cache:/app/media-cache:rw
@@ -184,15 +215,17 @@ docker exec whatsignal-secure id
 ## Security Checklist
 
 - [ ] **Base Images**: Pinned with SHA digests
-- [ ] **Distroless**: Using minimal runtime image
-- [ ] **Non-root**: Running as unprivileged user (uid=65532)
-- [ ] **Read-only**: Root filesystem is read-only
+- [ ] **Distroless**: Using minimal runtime image (WhatsSignal only)
+- [ ] **Non-root**: Running as unprivileged user where possible
+- [ ] **Read-only**: Root filesystem read-only where feasible (WhatsSignal: ✓, WAHA: ✓, Signal-CLI: ✗)
 - [ ] **Capabilities**: All capabilities dropped
 - [ ] **No Privileges**: Privilege escalation disabled
-- [ ] **Resource Limits**: Memory and CPU constraints set
-- [ ] **Network**: Optional custom network; default bridge is acceptable. Do not disable ICC if services must communicate
+- [ ] **Resource Limits**: Memory and CPU constraints set (optional)
+- [ ] **Network**: Default bridge network (sufficient for most use cases)
 - [ ] **Volumes**: Minimal writable mounts only
-- [ ] **Secrets**: No secrets in environment variables
+- [ ] **Tmpfs**: Use tmpfs instead of volume binds for temporary directories
+- [ ] **Chrome Security**: WAHA configured with proper Puppeteer arguments
+- [ ] **Secrets**: No secrets in environment variables (use Docker secrets or external management)
 - [ ] **Health Checks**: Container health monitoring enabled
 
 ## Environment-Specific Recommendations
@@ -222,6 +255,46 @@ This security configuration helps meet:
 - **NIST Cybersecurity Framework**: Security controls implementation
 - **OWASP Container Security**: Top 10 container risks mitigation
 - **SOC 2 Type II**: Security and availability controls
+
+## Troubleshooting Common Issues
+
+### Chrome/Puppeteer Errors in WAHA
+**Error**: `chrome_crashpad_handler: --database is required`
+**Solution**: Add tmpfs mounts and Puppeteer arguments:
+```yaml
+waha:
+  tmpfs:
+    - /tmp:size=200M,mode=1777
+    - /dev/shm:size=2G,mode=1777
+    - /var/crashes:size=100M,mode=1777
+  environment:
+    - PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --crash-dumps-dir=/var/crashes
+```
+
+### Signal-CLI Group Modification Errors
+**Error**: `groupmod: cannot lock /etc/group; try again later`
+**Solution**: Set `read_only: false` for signal-cli-rest-api:
+```yaml
+signal-cli-rest-api:
+  read_only: false  # Required for system file modifications
+```
+
+### Read-only Filesystem Conflicts
+**Error**: `EROFS: read-only file system, mkdir '/tmp/...'`
+**Solution**: Use tmpfs mounts instead of volume binds for temporary directories:
+```yaml
+# ✗ Wrong - causes conflicts
+volumes:
+  - /host/tmp:/tmp
+
+# ✓ Correct - use tmpfs
+tmpfs:
+  - /tmp:size=100M,mode=1777
+```
+
+### Distroless Container Shell Errors
+**Error**: `exec: "/bin/sh": stat /bin/sh: no such file or directory`
+**Solution**: Remove shell-based entrypoints and healthchecks. Use direct binary execution.
 
 ## Maintenance
 

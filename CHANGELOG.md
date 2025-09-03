@@ -5,6 +5,42 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2025-09-03
+
+### Testing
+- **Comprehensive test coverage improvements**: Added extensive unit tests for critical zero-coverage functions
+  - Created `pkg/whatsapp/client_media_test.go` with 28+ test cases for media session functions (SendImageWithSession, SendVoiceWithSession, SendVideoWithSession, SendDocumentWithSession)
+  - Created `pkg/media/validate_url_test.go` with 60+ security test cases for URL validation and SSRF protection
+  - Created `pkg/signal/client_attachment_test.go` with comprehensive attachment processing tests including HTTP downloads, timeout handling, and integration scenarios
+  - Added 50+ test cases for migration number parser in `internal/migrations/migrations_test.go`
+  - All new tests validate happy paths, error conditions, edge cases, security concerns, and boundary conditions
+
+### Changed
+- **Database migrations**: Simplified migration system to single initial schema
+  - Removed `002_add_session_name.sql` and integrated session_name column into initial schema
+  - Consolidated migration logic for cleaner deployment
+- **Docker Compose**: Updated volume mounts for better organization
+  - Changed data volume from `./data/whatsignal:/app/data` to `./data:/app/data`
+  - Ensures consistent directory structure across deployments
+- **Migration tool**: Removed standalone `cmd/migrate/main.go` as migrations are now handled automatically
+
+### Fixed
+- **Test infrastructure**: Fixed server setup bug in attachment extraction tests
+  - Corrected condition for unified server creation when testing failed downloads
+  - Failed attachment downloads now correctly return empty attachment lists instead of creating empty files
+- **Database tests**: Enhanced edge case testing for message mapping queries
+  - Added comprehensive tests for GetLatestMessageMappingByWhatsAppChatID
+  - Improved coverage for empty database scenarios and concurrent access patterns
+
+### Security
+- **Media URL validation**: Achieved comprehensive test coverage (60+ tests) for SSRF protection mechanisms
+  - Tests validate scheme restrictions, host validation, IP literal blocking, DNS resolution checks
+  - Security bypass attempt tests including URL encoding, redirects, and obfuscation techniques
+
+### Documentation
+- **Docker security**: Updated security documentation to reflect current volume mount structure
+- **README**: Updated installation instructions with current docker-compose configuration
+
 ## [1.1.3] - 29-08-2025
 
 ### Security

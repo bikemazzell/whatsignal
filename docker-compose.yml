@@ -7,7 +7,7 @@ services:
     image: bbernhard/signal-cli-rest-api:latest
     container_name: signal-cli-rest-api
     restart: unless-stopped
-    read_only: true
+    read_only: false
     cap_drop:
       - ALL
     security_opt:
@@ -16,9 +16,9 @@ services:
       - "8081:8080"
     volumes:
       - /mnt/data/signal-cli-waha:/home/.local/share/signal-cli
-      - /mnt/data/signal-waha/cache:/var/cache
-      - /mnt/data/signal-waha/tmp:/tmp
       - signal_attachments:/var/lib/signal-cli-rest-api/attachments:rw
+    tmpfs:
+      - /tmp:size=100M,mode=1777
     environment:
       - MODE=native
       - AUTO_RECEIVE_SCHEDULE=0 */6 * * *
@@ -44,6 +44,11 @@ services:
       - "3000:3000"
     volumes:
       - /mnt/data/waha/sessions:/app/data
+    tmpfs:
+      - /tmp:size=200M,mode=1777
+      - /var/tmp:size=50M,mode=1777
+      - /dev/shm:size=2G,mode=1777
+      - /var/crashes:size=100M,mode=1777
     logging:
       driver: "json-file"
       options:
@@ -53,6 +58,7 @@ services:
       - WHATSAPP_HOOK_URL=http://whatsignal:8082/webhook/whatsapp
       - WHATSAPP_HOOK_EVENTS=message,message.reaction,message.edited
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY:-your-api-key}
+      - PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --crash-dumps-dir=/var/crashes
     healthcheck:
       test: ["CMD-SHELL", "curl -f -H \"X-Api-Key: $$WHATSAPP_API_KEY\" http://localhost:3000/health || exit 1"]
       interval: 30s
@@ -78,9 +84,10 @@ services:
       # Replace with the folder path to where your WhatSignal configuration will be stored
       - /mnt/data/whatsignal/config.json:/app/config.json:ro
       - /mnt/data/whatsignal/data:/app/data
-      - /mnt/data/waha/tmp:/tmp
-      - /mnt/data/waha/cache:/var/cache
       - signal_attachments:/app/signal-attachments:rw
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+      - /var/cache:size=50M,mode=1777
     environment:
       # Load from .env file or use defaults
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}

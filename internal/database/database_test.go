@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1253,4 +1255,265 @@ func TestDatabase_New_ErrorCases(t *testing.T) {
 	// Test with directory that doesn't exist
 	_, err = New("/nonexistent/dir/test.db")
 	assert.Error(t, err)
+}
+
+// TestDatabase_SchemaUpgrade tests upgrading from an old database schema to the new one
+func TestDatabase_SchemaUpgrade(t *testing.T) {
+	ctx := context.Background()
+	// Setup encryption environment for test
+	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "test-secret-key-for-database-upgrade-test-32chars!")
+	t.Cleanup(func() {
+		if originalSecret != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+		}
+	})
+
+	// Create temporary directory for test database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "upgrade_test.db")
+
+	// Step 1: Create old database schema without hash columns
+	// This simulates a database from before the hash columns were added
+	sqliteDB, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	defer sqliteDB.Close()
+	// Create old schema migrations table
+	_, err = sqliteDB.Exec(`CREATE TABLE schema_migrations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		filename TEXT NOT NULL UNIQUE,
+		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+	// Create old message_mappings table WITHOUT hash columns (pre-upgrade)
+	oldSchemaSQL := `
+	CREATE TABLE message_mappings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		whatsapp_chat_id TEXT NOT NULL,
+		whatsapp_msg_id TEXT NOT NULL,
+		signal_msg_id TEXT NOT NULL,
+		signal_timestamp DATETIME NOT NULL,
+		forwarded_at DATETIME NOT NULL,
+		delivery_status TEXT NOT NULL,
+		media_path TEXT,
+		session_name TEXT NOT NULL DEFAULT 'default',
+		media_type TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	
+	CREATE TABLE contacts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		contact_id TEXT NOT NULL UNIQUE,
+		phone_number TEXT NOT NULL,
+		name TEXT,
+		push_name TEXT,
+		short_name TEXT,
+		is_blocked BOOLEAN DEFAULT FALSE,
+		is_group BOOLEAN DEFAULT FALSE,
+		is_my_contact BOOLEAN DEFAULT FALSE,
+		last_seen DATETIME,
+		cached_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	
+	CREATE INDEX idx_whatsapp_msg_id ON message_mappings(whatsapp_msg_id);
+	CREATE INDEX idx_signal_msg_id ON message_mappings(signal_msg_id);
+	`
+
+	_, err = sqliteDB.Exec(oldSchemaSQL)
+	require.NoError(t, err)
+
+	// Step 2: Insert test data into old schema
+	testData := []struct {
+		whatsappChatID  string
+		whatsappMsgID   string
+		signalMsgID     string
+		signalTimestamp time.Time
+		forwardedAt     time.Time
+		deliveryStatus  string
+		sessionName     string
+	}{
+		{
+			whatsappChatID:  "+1234567890@c.us",
+			whatsappMsgID:   "old_wa_msg_1",
+			signalMsgID:     "old_sig_msg_1",
+			signalTimestamp: time.Now().Add(-2 * time.Hour),
+			forwardedAt:     time.Now().Add(-2 * time.Hour),
+			deliveryStatus:  "sent",
+			sessionName:     "test-session",
+		},
+		{
+			whatsappChatID:  "+9876543210@c.us",
+			whatsappMsgID:   "old_wa_msg_2",
+			signalMsgID:     "old_sig_msg_2",
+			signalTimestamp: time.Now().Add(-1 * time.Hour),
+			forwardedAt:     time.Now().Add(-1 * time.Hour),
+			deliveryStatus:  "delivered",
+			sessionName:     "personal",
+		},
+	}
+	for _, data := range testData {
+		_, err = sqliteDB.Exec(`
+			INSERT INTO message_mappings 
+			(whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+			 forwarded_at, delivery_status, session_name) 
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			data.whatsappChatID, data.whatsappMsgID, data.signalMsgID,
+			data.signalTimestamp, data.forwardedAt, data.deliveryStatus, data.sessionName)
+		require.NoError(t, err)
+	}
+
+	// Insert test contact data
+	_, err = sqliteDB.Exec(`
+		INSERT INTO contacts (contact_id, phone_number, name, push_name)
+		VALUES (?, ?, ?, ?)`,
+		"+1234567890@c.us", "+1234567890", "Old Contact", "Old Push Name")
+	require.NoError(t, err)
+	// Verify old schema - these columns should NOT exist yet
+	var hasHashColumns bool
+	err = sqliteDB.QueryRow(`
+		SELECT COUNT(*) > 0 
+		FROM pragma_table_info('message_mappings') 
+		WHERE name IN ('chat_id_hash', 'whatsapp_msg_id_hash', 'signal_msg_id_hash')`).Scan(&hasHashColumns)
+	require.NoError(t, err)
+	assert.False(t, hasHashColumns, "Hash columns should not exist in old schema")
+
+	// Close the raw database connection
+	sqliteDB.Close()
+
+	// Step 3: Copy the actual migration to a test location with some modifications
+	// This allows us to use the real migration logic while ensuring the test is isolated
+	testMigrationsPath := filepath.Join(tmpDir, "test_migrations")
+	err = os.MkdirAll(testMigrationsPath, 0755)
+	require.NoError(t, err)
+	// Read the actual migration file
+	realMigrationPath := "/home/v/Documents/Dev/whatsignal/scripts/migrations/001_initial_schema.sql"
+	migrationContent, err := os.ReadFile(realMigrationPath)
+	require.NoError(t, err)
+
+	// Write it to the test migrations directory
+	testMigrationPath := filepath.Join(testMigrationsPath, "001_initial_schema.sql")
+	err = os.WriteFile(testMigrationPath, migrationContent, 0644)
+	require.NoError(t, err)
+
+	originalMigrationsDir := migrations.MigrationsDir
+	migrations.MigrationsDir = testMigrationsPath
+	t.Cleanup(func() { migrations.MigrationsDir = originalMigrationsDir })
+
+	// Step 4: Initialize database through our migration system
+	// This should upgrade the schema from old to new
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	defer func() {
+		err := db.Close()
+		assert.NoError(t, err)
+	}()
+	// Step 5: Verify schema has been upgraded
+	// Check that hash columns now exist
+	var hashColumnCount int
+	err = db.db.QueryRow(`
+		SELECT COUNT(*) 
+		FROM pragma_table_info('message_mappings') 
+		WHERE name IN ('chat_id_hash', 'whatsapp_msg_id_hash', 'signal_msg_id_hash')`).Scan(&hashColumnCount)
+	require.NoError(t, err)
+	assert.Equal(t, 3, hashColumnCount, "All 3 hash columns should exist after upgrade")
+	// Step 6: Verify all old data was preserved
+	var count int
+	err = db.db.QueryRow("SELECT COUNT(*) FROM message_mappings").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, len(testData), count, "All old message mappings should be preserved")
+	// Verify specific old data is intact
+	for _, expectedData := range testData {
+		var retrievedMapping models.MessageMapping
+		err = db.db.QueryRow(`
+			SELECT whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, delivery_status, session_name
+			FROM message_mappings 
+			WHERE whatsapp_msg_id = ?`, expectedData.whatsappMsgID).Scan(
+			&retrievedMapping.WhatsAppChatID,
+			&retrievedMapping.WhatsAppMsgID,
+			&retrievedMapping.SignalMsgID,
+			&retrievedMapping.DeliveryStatus,
+			&retrievedMapping.SessionName)
+		require.NoError(t, err)
+		assert.Equal(t, expectedData.whatsappChatID, retrievedMapping.WhatsAppChatID)
+		assert.Equal(t, expectedData.whatsappMsgID, retrievedMapping.WhatsAppMsgID)
+		assert.Equal(t, expectedData.signalMsgID, retrievedMapping.SignalMsgID)
+		assert.Equal(t, expectedData.deliveryStatus, string(retrievedMapping.DeliveryStatus))
+		assert.Equal(t, expectedData.sessionName, retrievedMapping.SessionName)
+	}
+	// Verify contacts table is intact
+	var contactCount int
+	err = db.db.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&contactCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, contactCount, "Contact data should be preserved")
+	// Step 7: Verify new functionality works with upgraded schema
+	// Test that we can save new mappings with hash columns
+	newMapping := &models.MessageMapping{
+		WhatsAppChatID:  "+5555555555@c.us",
+		WhatsAppMsgID:   "upgraded_wa_msg",
+		SignalMsgID:     "upgraded_sig_msg",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "upgraded-session",
+	}
+
+	err = db.SaveMessageMapping(ctx, newMapping)
+	require.NoError(t, err, "Should be able to save new mappings after upgrade")
+
+	// Verify the new mapping was saved and can be retrieved
+	retrievedMapping, err := db.GetMessageMapping(ctx, newMapping.WhatsAppMsgID)
+	require.NoError(t, err)
+	require.NotNil(t, retrievedMapping)
+	assert.Equal(t, newMapping.WhatsAppChatID, retrievedMapping.WhatsAppChatID)
+	assert.Equal(t, newMapping.SignalMsgID, retrievedMapping.SignalMsgID)
+	// Step 8: Verify hash columns are being populated for new data
+	// First check if our new record exists at all by computing the hash
+	expectedHash, err := db.encryptor.LookupHash(newMapping.WhatsAppMsgID)
+	require.NoError(t, err)
+
+	var totalNewRecords int
+	err = db.db.QueryRow(`SELECT COUNT(*) FROM message_mappings WHERE whatsapp_msg_id_hash = ?`,
+		expectedHash).Scan(&totalNewRecords)
+	require.NoError(t, err)
+	assert.Equal(t, 1, totalNewRecords, "New record should exist")
+
+	// Verify hash columns are populated for new data
+	var chatHash, waHash, sigHash sql.NullString
+	err = db.db.QueryRow(`
+		SELECT chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash 
+		FROM message_mappings 
+		WHERE whatsapp_msg_id_hash = ?`,
+		expectedHash).Scan(&chatHash, &waHash, &sigHash)
+	require.NoError(t, err)
+	// The hash columns should have values for the new mapping
+	var hashCount int
+	err = db.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM message_mappings 
+		WHERE whatsapp_msg_id_hash = ? 
+		AND chat_id_hash IS NOT NULL 
+		AND whatsapp_msg_id_hash IS NOT NULL 
+		AND signal_msg_id_hash IS NOT NULL`,
+		expectedHash).Scan(&hashCount)
+	require.NoError(t, err)
+
+	// Verify that hash columns are populated for new data
+	assert.Equal(t, 1, hashCount, "New data should have hash columns populated")
+
+	// Step 9: Verify old data doesn't have hash values (which is expected)
+	// Old data should have NULL hash columns since they weren't populated during upgrade
+	var oldRecordsWithoutHashes int
+	err = db.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM message_mappings 
+		WHERE whatsapp_msg_id IN (?, ?) 
+		AND (chat_id_hash IS NULL OR whatsapp_msg_id_hash IS NULL OR signal_msg_id_hash IS NULL)`,
+		testData[0].whatsappMsgID, testData[1].whatsappMsgID).Scan(&oldRecordsWithoutHashes)
+	require.NoError(t, err)
+	assert.Equal(t, 2, oldRecordsWithoutHashes, "Old data should not have hash values populated")
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -1390,8 +1391,10 @@ func TestDatabase_SchemaUpgrade(t *testing.T) {
 	testMigrationsPath := filepath.Join(tmpDir, "test_migrations")
 	err = os.MkdirAll(testMigrationsPath, 0755)
 	require.NoError(t, err)
-	// Read the actual migration file
-	realMigrationPath := "/home/v/Documents/Dev/whatsignal/scripts/migrations/001_initial_schema.sql"
+	// Read the actual migration file - find the project root first
+	_, filename, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
+	realMigrationPath := filepath.Join(projectRoot, "scripts", "migrations", "001_initial_schema.sql")
 	migrationContent, err := os.ReadFile(realMigrationPath)
 	require.NoError(t, err)
 

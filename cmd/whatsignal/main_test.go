@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
 
 	"github.com/stretchr/testify/assert"
@@ -394,6 +396,93 @@ func setupTestEnv(t *testing.T) {
 	os.Setenv("MEDIA_DIR", tmpDir+"/media")
 	os.Setenv("MEDIA_RETENTION_DAYS", "7")
 	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-main-testing-purposes")
+
+	// Set up test migrations
+	setupTestMigrations(t, tmpDir)
+}
+
+// setupTestMigrations creates test migration files for main app tests
+func setupTestMigrations(t *testing.T, tmpDir string) {
+	t.Helper()
+
+	// Store original migrations directory
+	originalMigrationsDir := migrations.MigrationsDir
+	t.Cleanup(func() {
+		migrations.MigrationsDir = originalMigrationsDir
+	})
+
+	// Create migrations directory
+	migrationsPath := filepath.Join(tmpDir, "migrations")
+	err := os.MkdirAll(migrationsPath, 0755)
+	require.NoError(t, err)
+
+	// Create the complete initial schema
+	schemaContent := `-- Initial schema for WhatsSignal
+CREATE TABLE IF NOT EXISTS message_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    whatsapp_chat_id TEXT NOT NULL,
+    whatsapp_msg_id TEXT NOT NULL,
+    signal_msg_id TEXT NOT NULL,
+    signal_timestamp DATETIME NOT NULL,
+    forwarded_at DATETIME NOT NULL,
+    delivery_status TEXT NOT NULL,
+    media_path TEXT,
+    session_name TEXT NOT NULL DEFAULT 'default',
+    media_type TEXT,
+    chat_id_hash TEXT,
+    whatsapp_msg_id_hash TEXT,
+    signal_msg_id_hash TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id ON message_mappings(whatsapp_msg_id);
+CREATE INDEX IF NOT EXISTS idx_signal_msg_id ON message_mappings(signal_msg_id);
+CREATE INDEX IF NOT EXISTS idx_chat_time ON message_mappings(whatsapp_chat_id, forwarded_at);
+CREATE INDEX IF NOT EXISTS idx_session_name ON message_mappings(session_name);
+CREATE INDEX IF NOT EXISTS idx_session_chat ON message_mappings(session_name, whatsapp_chat_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id_hash ON message_mappings(whatsapp_msg_id_hash);
+CREATE INDEX IF NOT EXISTS idx_signal_msg_id_hash ON message_mappings(signal_msg_id_hash);
+CREATE INDEX IF NOT EXISTS idx_chat_id_hash ON message_mappings(chat_id_hash);
+
+CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at 
+AFTER UPDATE ON message_mappings
+BEGIN
+    UPDATE message_mappings SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id TEXT NOT NULL UNIQUE,
+    phone_number TEXT NOT NULL,
+    name TEXT,
+    push_name TEXT,
+    short_name TEXT,
+    is_blocked BOOLEAN DEFAULT FALSE,
+    is_group BOOLEAN DEFAULT FALSE,
+    is_my_contact BOOLEAN DEFAULT FALSE,
+    cached_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_id ON contacts(contact_id);
+CREATE INDEX IF NOT EXISTS idx_phone_number ON contacts(phone_number);
+CREATE INDEX IF NOT EXISTS idx_cached_at ON contacts(cached_at);
+
+CREATE TRIGGER IF NOT EXISTS contacts_updated_at
+AFTER UPDATE ON contacts
+BEGIN
+    UPDATE contacts SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
+END;`
+
+	// Write the schema to the test directory
+	err = os.WriteFile(filepath.Join(migrationsPath, "001_initial_schema.sql"), []byte(schemaContent), 0644)
+	require.NoError(t, err)
+
+	// Set migrations directory temporarily - this will be restored by t.Cleanup
+	migrations.MigrationsDir = migrationsPath
 }
 
 func TestMultiSessionContactSync(t *testing.T) {

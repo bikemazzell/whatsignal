@@ -1,20 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Running pre-commit hook..."
+
+# Store the list of staged files before any modifications
+STAGED_FILES=$(git diff --cached --name-only)
+
+# Check if there are any staged changes to process
+if [ -z "$STAGED_FILES" ]; then
+  echo "No staged files to process."
+  exit 0
+fi
+
 # Stash unstaged changes to avoid partial staging issues
-git stash -q --keep-index --include-untracked || true
-STASHED=0
-if git rev-parse -q --verify refs/stash >/dev/null 2>&1; then
+# Only stash if there are unstaged changes
+if ! git diff --quiet; then
+  echo "Stashing unstaged changes..."
+  git stash -q --keep-index --include-untracked
   STASHED=1
+else
+  STASHED=0
 fi
 
 cleanup() {
+  # Only restore stash if we actually stashed something
   if [ "$STASHED" -eq 1 ]; then
-    git stash pop -q || true
+    echo "Restoring unstaged changes..."
+    git stash pop -q || {
+      echo "Warning: Could not restore stashed changes. Check 'git stash list'"
+      echo "You may need to manually resolve conflicts and run 'git stash drop' when ready."
+    }
   fi
 }
 trap cleanup EXIT
 
-# Run pre-commit tasks
-make pre-commit
+# Run pre-commit tasks (this includes formatting and re-staging)
+echo "Running formatting, linting, and tests..."
+if ! make pre-commit; then
+  echo "Pre-commit checks failed. Commit aborted."
+  exit 1
+fi
+
+echo "Pre-commit hook completed successfully."
 

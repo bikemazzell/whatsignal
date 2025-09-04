@@ -374,3 +374,61 @@ func TestSessionMonitor_StartStopStartStop(t *testing.T) {
 
 	assert.True(t, true) // If we get here without issues, test passed
 }
+
+func TestSessionMonitor_UnhealthyStatusesTriggerRestart(t *testing.T) {
+	statuses := []string{"OPENING", "disconnected", "FAILED"}
+	for _, st := range statuses {
+		t.Run(st, func(t *testing.T) {
+			client := &mockWhatsAppClient{}
+			logger := logrus.New()
+			logger.SetLevel(logrus.ErrorLevel)
+			monitor := NewSessionMonitor(client, logger, 30*time.Second)
+
+			client.On("GetSessionStatus", mock.Anything).Return(&types.Session{Name: "test", Status: types.SessionStatus(st)}, nil).Once()
+			client.On("RestartSession", mock.Anything).Return(nil).Once()
+			client.On("WaitForSessionReady", mock.Anything, mock.AnythingOfType("time.Duration")).Return(nil).Once()
+
+			ctx := context.Background()
+			monitor.checkAndRecoverSession(ctx)
+
+			client.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSessionMonitor_Restart_WaitError(t *testing.T) {
+	client := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+	monitor := NewSessionMonitor(client, logger, 30*time.Second)
+
+	client.On("GetSessionStatus", mock.Anything).Return(&types.Session{Name: "test", Status: "STOPPED"}, nil).Once()
+	client.On("RestartSession", mock.Anything).Return(nil).Once()
+	client.On("WaitForSessionReady", mock.Anything, mock.AnythingOfType("time.Duration")).Return(assert.AnError).Once()
+
+	ctx := context.Background()
+	monitor.checkAndRecoverSession(ctx)
+
+	client.AssertExpectations(t)
+}
+
+func TestSessionMonitor_RapidStateChanges(t *testing.T) {
+	client := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+	monitor := NewSessionMonitor(client, logger, 30*time.Second)
+
+	// First call: STOPPED -> triggers restart
+	client.On("GetSessionStatus", mock.Anything).Return(&types.Session{Name: "test", Status: "STOPPED"}, nil).Once()
+	client.On("RestartSession", mock.Anything).Return(nil).Once()
+	client.On("WaitForSessionReady", mock.Anything, mock.AnythingOfType("time.Duration")).Return(nil).Once()
+
+	// Second call: WORKING -> no restart
+	client.On("GetSessionStatus", mock.Anything).Return(&types.Session{Name: "test", Status: "WORKING"}, nil).Once()
+
+	ctx := context.Background()
+	monitor.checkAndRecoverSession(ctx)
+	monitor.checkAndRecoverSession(ctx)
+
+	client.AssertExpectations(t)
+}

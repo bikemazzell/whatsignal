@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_msg_id_hash ON message_mappings(whatsapp
 CREATE INDEX IF NOT EXISTS idx_signal_msg_id_hash ON message_mappings(signal_msg_id_hash);
 CREATE INDEX IF NOT EXISTS idx_chat_id_hash ON message_mappings(chat_id_hash);
 
-CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at 
+CREATE TRIGGER IF NOT EXISTS message_mappings_updated_at
 AFTER UPDATE ON message_mappings
 BEGIN
     UPDATE message_mappings SET updated_at = CURRENT_TIMESTAMP
@@ -558,4 +558,251 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, retrieved2)
 	assert.Equal(t, mapping2.WhatsAppMsgID, retrieved2.WhatsAppMsgID)
+}
+
+// Test decrypt errors for specific query paths to increase coverage of error branches
+func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
+	// Always-on encryption: set a test secret
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
+	cleanup := setupTestMigrationsForEdgeCases(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "decrypt_errors_signal.db")
+
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	enc := db.encryptor
+
+	chatPlain := "+1000000000@c.us"
+	waPlain := "wa-decrypt-ok"
+	sigPlain := "sig-decrypt-target"
+
+	// Prepare mostly valid encrypted fields but corrupt chat ID so first decrypt fails
+	encWA, err := enc.EncryptForLookupIfEnabled(waPlain)
+	require.NoError(t, err)
+	encSIG, err := enc.EncryptForLookupIfEnabled(sigPlain)
+	require.NoError(t, err)
+	badChat := "not-base64!!" // will cause failed to decode base64
+
+	chatHash, err := enc.LookupHash(chatPlain)
+	require.NoError(t, err)
+	waHash, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	sigHash, err := enc.LookupHash(sigPlain)
+	require.NoError(t, err)
+
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, badChat, encWA, encSIG, time.Now(), time.Now(), models.DeliveryStatusSent, chatHash, waHash, sigHash)
+	require.NoError(t, err)
+
+	// Query by signal ID should hit decrypt chat error
+	res, err := db.GetMessageMappingBySignalID(ctx, sigPlain)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt chat ID")
+}
+
+func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
+	cleanup := setupTestMigrationsForEdgeCases(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "decrypt_errors_chat.db")
+
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	enc := db.encryptor
+
+	chatPlain := "+2000000000@c.us"
+	waPlain := "wa-ok"
+	sigPlain := "sig-ok"
+
+	encWA, err := enc.EncryptForLookupIfEnabled(waPlain)
+	require.NoError(t, err)
+	encSIG, err := enc.EncryptForLookupIfEnabled(sigPlain)
+	require.NoError(t, err)
+	badChat := "bad%%base64"
+
+	chatHash, err := enc.LookupHash(chatPlain)
+	require.NoError(t, err)
+
+	// Case 1: bad chat decrypt
+	waHash, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	sigHash, err := enc.LookupHash(sigPlain)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, badChat, encWA, encSIG, time.Now(), time.Now(), models.DeliveryStatusSent,
+		chatHash, waHash, sigHash)
+	require.NoError(t, err)
+
+	res, err := db.GetLatestMessageMappingByWhatsAppChatID(ctx, chatPlain)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt WhatsApp chat ID")
+
+	// Case 2: bad WA message ID decrypt
+	goodChatEnc, err := enc.EncryptForLookupIfEnabled(chatPlain)
+	require.NoError(t, err)
+	badWA := "!!!"
+	waHash2, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	sigHash2, err := enc.LookupHash(sigPlain)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, goodChatEnc, badWA, encSIG, time.Now(), time.Now().Add(time.Second), models.DeliveryStatusSent,
+		chatHash, waHash2, sigHash2)
+	require.NoError(t, err)
+
+	res, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, chatPlain)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt WhatsApp message ID")
+
+	// Case 3: bad Signal message ID decrypt
+	badSIG := "not-b64"
+	reqWAHash, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	reqSigHash, err := enc.LookupHash(sigPlain)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, goodChatEnc, encWA, badSIG, time.Now(), time.Now().Add(2*time.Second), models.DeliveryStatusSent,
+		chatHash, reqWAHash, reqSigHash)
+	require.NoError(t, err)
+
+	res, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, chatPlain)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt Signal message ID")
+
+	// Case 4: bad media path decrypt
+	badMedia := "%%%"
+	waHash4, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	sigHash4, err := enc.LookupHash(sigPlain)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status, media_path,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, goodChatEnc, encWA, encSIG, time.Now(), time.Now().Add(3*time.Second), models.DeliveryStatusSent, badMedia,
+		chatHash, waHash4, sigHash4)
+	require.NoError(t, err)
+
+	res, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, chatPlain)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt media path")
+}
+
+func TestDatabase_GetLatestMessageMapping_DecryptErrors(t *testing.T) {
+	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+
+	cleanup := setupTestMigrationsForEdgeCases(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "decrypt_errors_latest.db")
+
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	enc := db.encryptor
+
+	chatPlain := "+3000000000@c.us"
+	waPlain := "wa-ok2"
+	sigPlain := "sig-ok2"
+
+	goodChatEnc, err := enc.EncryptForLookupIfEnabled(chatPlain)
+	require.NoError(t, err)
+	goodWA, err := enc.EncryptForLookupIfEnabled(waPlain)
+	require.NoError(t, err)
+	badSIG := "!bad!"
+	badMedia := "badmedia==="
+
+	// Insert a row with bad signal ID decrypt and most recent forwarded_at
+	chatHash2, err := enc.LookupHash(chatPlain)
+	require.NoError(t, err)
+	waHash2, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	sigHash2, err := enc.LookupHash(sigPlain)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status, media_path,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, goodChatEnc, goodWA, badSIG, time.Now(), time.Now().Add(10*time.Second), models.DeliveryStatusSent, nil,
+		chatHash2, waHash2, sigHash2)
+	require.NoError(t, err)
+
+	res, err := db.GetLatestMessageMapping(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt Signal message ID")
+
+	// Insert a row with bad media path decrypt that is now the most recent
+	chatHash3, err := enc.LookupHash(chatPlain)
+	require.NoError(t, err)
+	waHash3, err := enc.LookupHash(waPlain)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (
+			whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
+			signal_timestamp, forwarded_at, delivery_status, media_path,
+			session_name, media_type,
+			chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'test', 'text', ?, ?, ?)
+	`, goodChatEnc, goodWA, goodWA, time.Now(), time.Now().Add(20*time.Second), models.DeliveryStatusSent, badMedia,
+		chatHash3, waHash3, waHash3)
+	require.NoError(t, err)
+
+	res, err = db.GetLatestMessageMapping(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "failed to decrypt media path")
 }

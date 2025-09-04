@@ -5,6 +5,26 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.1.5] - 2025-09-04
+
+### Testing
+- Coverage improvements and new tests:
+  - Verified and extended `pkg/whatsapp/client_media_test.go` covering all media session methods, error paths, and payload validation
+  - Confirmed comprehensive SSRF tests in `pkg/media/validate_url_test.go`
+  - Confirmed Signal attachment processing tests exist in `pkg/signal/client_attachment_test.go`
+  - Added `cmd/whatsignal/getclientip_test.go` covering client IP extraction scenarios
+  - Verified extensive migration parser tests in `internal/migrations/migrations_test.go`
+  - Added `internal/service/message_service_thread_test.go` to validate GetMessageThread behavior and error handling
+  - Extended `internal/service/session_monitor_test.go` with unhealthy status triggers, rapid state changes, and wait error cases
+  - Added `pkg/whatsapp/client_core_edge_test.go` to harden RestartSession, GetAllContacts, SendTextWithSession optional flows, and sendReactionRequest
+
+  - Added decrypt-error coverage tests for DB queries in `internal/database/database_edge_cases_test.go` (SignalID, LatestByChatID, Latest)
+
+### Security
+- Strengthened rate limiting accuracy by testing client IP extraction across proxy scenarios (XFF, X-Real-IP, IPv4/IPv6, malformed headers)
+
+
 ## [1.1.4] - 2025-09-03
 
 ### Testing

@@ -47,8 +47,11 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 			return nil, fmt.Errorf("invalid X-Webhook-Timestamp: %w", err)
 		}
 		eventTime := time.Unix(ts, 0)
-		if now := time.Now(); eventTime.Before(now.Add(-maxSkew)) || eventTime.After(now.Add(maxSkew)) {
-			return nil, fmt.Errorf("timestamp out of acceptable range")
+		now := time.Now()
+		if eventTime.Before(now.Add(-maxSkew)) || eventTime.After(now.Add(maxSkew)) {
+			timeDiff := now.Sub(eventTime)
+			return nil, fmt.Errorf("timestamp out of acceptable range (webhook time: %s, server time: %s, difference: %v, max allowed: %v)",
+				eventTime.Format(time.RFC3339), now.Format(time.RFC3339), timeDiff, maxSkew)
 		}
 
 		// Validate signature (body-only per current WAHA tests); if WAHA binds timestamp in the future, include it here

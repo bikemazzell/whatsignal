@@ -55,4 +55,7 @@ signal-attachments/
 
 # Debug files
 __debug_bin
-debug.test 
+debug.test
+
+# TODO files
+docs/TODO*.md

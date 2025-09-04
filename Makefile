@@ -363,13 +363,20 @@ dev-setup: deps tidy fmt vet test
 pre-commit:
 	@echo "Pre-commit: formatting, re-staging, vet, lint, test..."
 	@$(MAKE) fmt
+	@# Check if formatting made any changes and re-stage them
 	@if ! git diff --quiet; then \
-		echo "Formatting applied; re-staging files..."; \
-		git add -A; \
+		echo "Formatting applied changes; re-staging modified files..."; \
+		git add -u; \
+	fi
+	@# Check if there are any new files that need to be added after formatting
+	@if [ -n "$$(git ls-files --others --exclude-standard)" ]; then \
+		echo "Adding new files created during formatting..."; \
+		git add .; \
 	fi
 	@$(MAKE) vet
 	@$(MAKE) lint
 	@$(MAKE) test
+	@echo "All pre-commit checks passed."
 
 .PHONY: hooks-install
 hooks-install:

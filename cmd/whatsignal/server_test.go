@@ -387,6 +387,47 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 		return hex.EncodeToString(mac.Sum(nil))
 	}
 
+	t.Run("millisecond timestamp conversion", func(t *testing.T) {
+		// This test specifically verifies that millisecond timestamps from WAHA
+		// are correctly converted to seconds for validation
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+		// Use current time in milliseconds (as WAHA sends)
+		currentTimeMs := time.Now().UnixMilli()
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", currentTimeMs))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, 5*time.Minute)
+		assert.NoError(t, err, "Should accept valid millisecond timestamp")
+		assert.Equal(t, payload, body)
+	})
+
+	t.Run("edge case: timestamp exactly at max skew boundary", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+		// Timestamp exactly at the edge of acceptable skew (5 minutes ago in milliseconds)
+		edgeTime := time.Now().Add(-time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second + 1*time.Second).UnixMilli()
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", edgeTime))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
+		assert.NoError(t, err, "Should accept timestamp at edge of acceptable range")
+		assert.Equal(t, payload, body)
+	})
+
+	t.Run("wrong timestamp format: seconds instead of milliseconds", func(t *testing.T) {
+		// This test verifies what happens if someone accidentally sends seconds
+		// (which would appear as a timestamp from 1970)
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
+		// Send seconds instead of milliseconds - this would be interpreted as early 1970
+		wrongFormatTime := time.Now().Unix() // seconds, not milliseconds
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", wrongFormatTime))
+
+		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, 5*time.Minute)
+		assert.Error(t, err, "Should reject timestamp in wrong format (seconds instead of ms)")
+		assert.Contains(t, err.Error(), "timestamp out of acceptable range")
+		assert.Nil(t, body)
+	})
+
 	t.Run("missing timestamp header", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
@@ -400,7 +441,7 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 	t.Run("timestamp too old", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
-		old := time.Now().Add(-(time.Duration(constants.DefaultWebhookMaxSkewSec) + 10) * time.Second).Unix()
+		old := time.Now().Add(-(time.Duration(constants.DefaultWebhookMaxSkewSec) + 10) * time.Second).UnixMilli()
 		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", old))
 
 		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
@@ -412,7 +453,7 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 	t.Run("timestamp in future too far", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
-		future := time.Now().Add((time.Duration(constants.DefaultWebhookMaxSkewSec) + 10) * time.Second).Unix()
+		future := time.Now().Add((time.Duration(constants.DefaultWebhookMaxSkewSec) + 10) * time.Second).UnixMilli()
 		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", future))
 
 		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
@@ -424,7 +465,7 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 	t.Run("valid WAHA signature and timestamp", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		req.Header.Set(XWahaSignatureHeader, computeSig(payload))
-		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
 		assert.NoError(t, err)
@@ -744,11 +785,11 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 				mac.Write(payload)
 				signature := hex.EncodeToString(mac.Sum(nil))
 				req.Header.Set(XWahaSignatureHeader, signature)
-				req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+				req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 			} else {
 				// Create invalid signature
 				req.Header.Set(XWahaSignatureHeader, "invalidsignature")
-				req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+				req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 			}
 
 			w := httptest.NewRecorder()
@@ -1191,7 +1232,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			mac.Write(payload)
 			signature := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set(XWahaSignatureHeader, signature)
-			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 			w := httptest.NewRecorder()
 
@@ -1374,7 +1415,7 @@ func TestRequestSizeLimit(t *testing.T) {
 			mac.Write([]byte(jsonBody))
 			signature := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set("X-Webhook-Hmac", signature)
-			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 			rr := httptest.NewRecorder()
 
@@ -1426,7 +1467,7 @@ func TestRequestSizeLimit_NoLimit(t *testing.T) {
 	mac.Write([]byte(jsonBody))
 	signature := hex.EncodeToString(mac.Sum(nil))
 	req.Header.Set("X-Webhook-Hmac", signature)
-	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 	rr := httptest.NewRecorder()
 
@@ -1541,7 +1582,7 @@ func TestServer_RequireSessionName(t *testing.T) {
 			mac.Write(body)
 			signature := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set("X-Webhook-Hmac", signature)
-			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+			req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 			rr := httptest.NewRecorder()
 			server.router.ServeHTTP(rr, req)
@@ -1671,7 +1712,7 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 
 			// Add timestamp header (required for WAHA webhooks)
-			timestamp := fmt.Sprintf("%d", time.Now().Unix())
+			timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
 			req.Header.Set("X-Webhook-Timestamp", timestamp)
 
 			// Add signature for authentication (using SHA512 for WAHA)
@@ -1732,7 +1773,7 @@ func TestWhatsAppWebhook_InvalidJSON_NoRawBodyLogged(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	// Add timestamp header (required for WAHA webhooks)
-	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+	req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
 	// Add valid WAHA signature (SHA-512)
 	mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
 	mac.Write(payload)

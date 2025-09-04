@@ -46,7 +46,8 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 		if err != nil {
 			return nil, fmt.Errorf("invalid X-Webhook-Timestamp: %w", err)
 		}
-		eventTime := time.Unix(ts, 0)
+		// WAHA sends timestamp in milliseconds, convert to seconds
+		eventTime := time.Unix(ts/1000, (ts%1000)*1e6)
 		now := time.Now()
 		if eventTime.Before(now.Add(-maxSkew)) || eventTime.After(now.Add(maxSkew)) {
 			timeDiff := now.Sub(eventTime)

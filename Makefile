@@ -368,11 +368,6 @@ pre-commit:
 		echo "Formatting applied changes; re-staging modified files..."; \
 		git add -u; \
 	fi
-	@# Check if there are any new files that need to be added after formatting
-	@if [ -n "$$(git ls-files --others --exclude-standard)" ]; then \
-		echo "Adding new files created during formatting..."; \
-		git add .; \
-	fi
 	@$(MAKE) vet
 	@$(MAKE) lint
 	@$(MAKE) test

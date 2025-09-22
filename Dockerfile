@@ -1,13 +1,21 @@
-# Pin Go Alpine image with digest for security
-FROM golang:1.24.6-alpine@sha256:c8c5f95d64aa79b6547f3b626eb84b16a7ce18a139e3e9ca19a8c078b85ba80d AS builder
+# Use latest Alpine Go image for smaller size
+FROM golang:1.24.6-alpine AS builder
 
 # Ensure Go can auto-install the required toolchain from go.mod (go1.23.x)
 ENV GOTOOLCHAIN=auto
 
-# Install build dependencies (avoid strict pins to support Alpine updates)
-RUN apk add --no-cache --update \
-    build-base \
-    sqlite-dev
+# Install build dependencies with proper error handling
+RUN set -eux; \
+    # Add community repository for additional packages
+    echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/main" > /etc/apk/repositories; \
+    echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/community" >> /etc/apk/repositories; \
+    # Update package index
+    apk update; \
+    # Install required packages
+    apk add --no-cache \
+        build-base \
+        sqlite-dev \
+        ca-certificates
 
 WORKDIR /app
 

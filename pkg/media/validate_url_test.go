@@ -498,3 +498,44 @@ func TestValidateDownloadURL_CodeCoverage(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateDownloadURL_DockerInternalIP(t *testing.T) {
+	// Test with external IP as WAHA base URL (simulating Docker deployment)
+	h := setupHandlerForURLValidation(t, "http://192.168.1.23:3000")
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Docker internal IP with matching port - allowed",
+			url:         "http://172.18.0.3:3000/api/files/voice.ogg",
+			expectError: false,
+		},
+		{
+			name:        "Docker internal IP with different port - blocked",
+			url:         "http://172.18.0.3:8080/api/files/voice.ogg",
+			expectError: true,
+			errorMsg:    "download host not allowed: 172.18.0.3",
+		},
+		{
+			name:        "Docker internal IP different subnet - allowed if same port",
+			url:         "http://172.17.0.2:3000/api/files/voice.ogg",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

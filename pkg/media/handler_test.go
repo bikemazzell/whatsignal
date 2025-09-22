@@ -870,6 +870,58 @@ func TestRewriteMediaURL(t *testing.T) {
 	}
 }
 
+func TestRewriteMediaURL_DockerInternalIP(t *testing.T) {
+	tests := []struct {
+		name        string
+		wahaBaseURL string
+		inputURL    string
+		expectedURL string
+	}{
+		{
+			name:        "Docker internal IP rewritten to external WAHA host",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://172.18.0.3:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Docker internal IP different subnet rewritten",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://172.17.0.2:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Docker internal IP with different port not rewritten",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://172.18.0.3:8080/api/files/default/voice.ogg",
+			expectedURL: "http://172.18.0.3:8080/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Non-Docker IP unchanged",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://10.0.0.1:3000/api/files/default/voice.ogg",
+			expectedURL: "http://10.0.0.1:3000/api/files/default/voice.ogg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			cacheDir := filepath.Join(tmpDir, "cache")
+			mediaHandler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), tt.wahaBaseURL, "")
+			require.NoError(t, err)
+
+			// Access the private method through type assertion
+			h, ok := mediaHandler.(*handler)
+			require.True(t, ok, "handler should be of type *handler")
+			result := h.rewriteMediaURL(tt.inputURL)
+			assert.Equal(t, tt.expectedURL, result)
+		})
+	}
+}
+
 func TestProcessMediaFromURLWithAPIKey(t *testing.T) {
 	// Test that WAHA API key is properly included in requests
 	apiKey := "test-api-key"
@@ -1436,4 +1488,42 @@ func TestDetectFileTypeFromContent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProcessMediaFromURL_DockerInternalIP_VoiceMessage(t *testing.T) {
+	// Test the URL rewriting functionality for Docker internal IPs
+	// This tests that Docker internal IPs are correctly rewritten to external IPs
+
+	tmpDir, err := os.MkdirTemp("", "whatsignal-voice-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+
+	// Configure handler with external WAHA base URL (simulating Docker deployment)
+	wahaBaseURL := "http://192.168.1.23:3000"
+	handlerInterface, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), wahaBaseURL, "test-api-key")
+	require.NoError(t, err)
+
+	// Cast to concrete type to access private methods
+	h, ok := handlerInterface.(*handler)
+	require.True(t, ok, "handler should be of type *handler")
+
+	// Test URL rewriting for Docker internal IP
+	dockerInternalURL := "http://172.18.0.3:3000/api/files/default/voice.ogg"
+	rewrittenURL := h.rewriteMediaURL(dockerInternalURL)
+
+	// The Docker IP should be rewritten to the external WAHA host
+	expectedURL := "http://192.168.1.23:3000/api/files/default/voice.ogg"
+	assert.Equal(t, expectedURL, rewrittenURL)
+
+	// Test validation - Docker internal IP with matching port should be allowed
+	err = h.validateDownloadURL(dockerInternalURL)
+	assert.NoError(t, err, "Docker internal IP with matching port should be allowed")
+
+	// Test validation - Docker internal IP with different port should be blocked
+	dockerDifferentPortURL := "http://172.18.0.3:8080/api/files/default/voice.ogg"
+	err = h.validateDownloadURL(dockerDifferentPortURL)
+	assert.Error(t, err, "Docker internal IP with different port should be blocked")
+	assert.Contains(t, err.Error(), "download host not allowed")
 }

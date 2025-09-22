@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for URL rewriting functionality with Docker internal networks
 - Added validation tests for Docker deployment scenarios
 
+### Build
+- Fixed Docker build failures caused by Alpine package repository connectivity issues
+- Enhanced Dockerfile with proper repository configuration and error handling
+- Improved build reliability for multi-platform Docker images (linux/amd64, linux/arm64)
+
 ## [1.1.5] - 2025-09-04
 
 ### Testing

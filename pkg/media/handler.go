@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -317,19 +318,35 @@ func (h *handler) rewriteMediaURL(mediaURL string) string {
 		return mediaURL // Return original if parsing fails
 	}
 
-	// Check if this is a localhost URL that needs rewriting
+	// Parse the WAHA base URL to get the correct host
+	wahaURL, err := url.Parse(h.wahaBaseURL)
+	if err != nil {
+		return mediaURL // Return original if WAHA URL parsing fails
+	}
+
+	// Check if this URL needs rewriting
+	needsRewrite := false
+
+	// Check for localhost URLs
 	devPort := fmt.Sprintf(":%d", constants.DefaultDevServerPort)
 	if u.Host == "localhost"+devPort || u.Host == "127.0.0.1"+devPort || u.Host == "[::1]"+devPort {
-		// Parse the WAHA base URL to get the correct host
-		wahaURL, err := url.Parse(h.wahaBaseURL)
-		if err != nil {
-			return mediaURL // Return original if WAHA URL parsing fails
-		}
+		needsRewrite = true
+	}
 
+	// Check for Docker internal network IPs (172.16.0.0/12 range)
+	// This includes 172.18.0.0/16 which is Docker's default bridge network
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		// Check if it's in the Docker internal network range (172.16.0.0/12)
+		// and has the same port as the WAHA base URL
+		if isDockerInternalIP(ip) && u.Port() == wahaURL.Port() {
+			needsRewrite = true
+		}
+	}
+
+	if needsRewrite {
 		// Replace the host with the WAHA host
 		u.Scheme = wahaURL.Scheme
 		u.Host = wahaURL.Host
-
 		return u.String()
 	}
 
@@ -339,6 +356,14 @@ func (h *handler) rewriteMediaURL(mediaURL string) string {
 func isURL(str string) bool {
 	u, err := url.Parse(str)
 	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
+// isDockerInternalIP checks if an IP is in the Docker internal network range (172.16.0.0/12)
+func isDockerInternalIP(ip net.IP) bool {
+	// Docker uses 172.16.0.0/12 for internal networks
+	// This includes the default bridge network 172.18.0.0/16
+	_, dockerNet, _ := net.ParseCIDR("172.16.0.0/12")
+	return dockerNet.Contains(ip)
 }
 
 func (h *handler) getFileExtensionFromResponse(resp *http.Response, mediaURL string) string {

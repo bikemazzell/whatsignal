@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.6] - 2025-09-22
+
+### Fixed
+- **Critical**: Fixed voice message relay failure in Docker deployments
+  - Resolved "failed to process media: resolved to disallowed IP: 172.x.x.x" error
+  - Enhanced URL rewriting to handle Docker internal network IPs (172.x.x.x/12 range)
+  - Updated media validation to allow Docker internal IPs when they match WAHA port and external WAHA host is configured
+  - Voice messages from WhatsApp now properly forward to Signal in containerized environments
+
+### Security
+- Maintained security restrictions while allowing legitimate Docker internal network access
+- Docker internal IPs are only allowed when:
+  - They have the same port as the configured WAHA base URL
+  - The WAHA base URL is a real IP address (not a domain name)
+  - The WAHA IP is not a loopback address
+
+### Testing
+- Added comprehensive tests for Docker internal IP handling in media processing
+- Added tests for URL rewriting functionality with Docker internal networks
+- Added validation tests for Docker deployment scenarios
+
 ## [1.1.5] - 2025-09-04
 
 ### Testing

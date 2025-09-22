@@ -922,6 +922,64 @@ func TestRewriteMediaURL_DockerInternalIP(t *testing.T) {
 	}
 }
 
+func TestRewriteMediaURL_DockerInternalHosts(t *testing.T) {
+	tests := []struct {
+		name        string
+		wahaBaseURL string
+		inputURL    string
+		expectedURL string
+	}{
+		{
+			name:        "Docker internal host 'waha' rewritten to external host",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://waha:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Docker internal host 'signal-cli-waha' rewritten",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://signal-cli-waha:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Docker internal host 'myservice' rewritten",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://myservice:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Domain name with dots unchanged",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://example.com:3000/api/files/default/voice.ogg",
+			expectedURL: "http://example.com:3000/api/files/default/voice.ogg",
+		},
+		{
+			name:        "Localhost unchanged (handled separately)",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			inputURL:    "http://localhost:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			cacheDir := filepath.Join(tmpDir, "cache")
+			mediaHandler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), tt.wahaBaseURL, "")
+			require.NoError(t, err)
+
+			// Access the private method through type assertion
+			h, ok := mediaHandler.(*handler)
+			require.True(t, ok, "handler should be of type *handler")
+			result := h.rewriteMediaURL(tt.inputURL)
+			assert.Equal(t, tt.expectedURL, result)
+		})
+	}
+}
+
 func TestProcessMediaFromURLWithAPIKey(t *testing.T) {
 	// Test that WAHA API key is properly included in requests
 	apiKey := "test-api-key"

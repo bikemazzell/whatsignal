@@ -4,6 +4,20 @@ This document describes all configuration options available in `config.json`.
 
 WhatSignal supports multiple WhatsApp-Signal channel pairs, allowing you to route messages between specific WhatsApp sessions and Signal destination numbers with complete isolation between channels.
 
+## Required Environment Variables
+
+Before starting whatsignal, ensure these environment variables are set:
+
+- `WHATSAPP_API_KEY`: API key for authenticating with WAHA
+  - **Required** if your WAHA instance uses API key authentication
+  - Must match the `WHATSAPP_API_KEY` configured in your WAHA instance
+  - Contact sync and all WhatsApp operations will fail without this
+
+- `WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET`: Secret for webhook authentication
+  - **Required for security**
+  - Used to verify incoming webhooks from WAHA
+  - Should be a secure random string
+
 ## WhatsApp Configuration
 
 - `whatsapp.api_base_url`: URL of your Waha instance (WhatsApp HTTP API)
@@ -31,6 +45,8 @@ WhatSignal supports multiple WhatsApp-Signal channel pairs, allowing you to rout
 - `whatsapp.contactSyncOnStartup`: Sync all contacts on startup for better performance
   - Default: `true`
   - Recommended for better user experience
+  - **Note**: Requires `WHATSAPP_API_KEY` environment variable to be set
+  - If contact sync fails with 500/401 errors, check that your WAHA API key is correctly configured
 
 - `whatsapp.contactCacheHours`: How many hours to cache contact info before refreshing
   - Default: `24` hours
@@ -382,4 +398,80 @@ export WHATSIGNAL_ENCRYPTION_SECRET="your-very-long-random-secret-at-least-32-ch
 ./whatsignal
 ```
 
-**Warning**: These environment variables must be set consistently every time the application runs. Consider using a `.env` file or systemd environment configuration to ensure they're always available. 
+**Warning**: These environment variables must be set consistently every time the application runs. Consider using a `.env` file or systemd environment configuration to ensure they're always available.
+
+## Troubleshooting
+
+### Contact Sync Failures
+
+If you see errors like:
+```
+Failed to sync contacts on startup: failed to fetch contacts batch (offset 0): request failed with status 500
+```
+
+**Common causes:**
+
+1. **Missing API Key**: Ensure `WHATSAPP_API_KEY` environment variable is set
+   ```bash
+   export WHATSAPP_API_KEY="your-waha-api-key"
+   ```
+
+2. **WAHA Service Issues**: Check that your WAHA instance is running and accessible
+   ```bash
+   curl http://192.168.1.23:3000/api/sessions
+   ```
+
+3. **Session Not Ready**: The WhatsApp session may not be fully initialized
+   - Check WAHA logs for session status
+   - Ensure QR code has been scanned and session is "WORKING"
+
+4. **Authentication Issues**: Verify API key matches WAHA configuration
+   - Check WAHA's `WHATSAPP_API_KEY` environment variable
+   - Ensure both services use the same key
+
+**Workaround**: You can disable contact sync on startup by setting:
+```json
+{
+  "whatsapp": {
+    "contactSyncOnStartup": false
+  }
+}
+```
+
+### Docker Network Issues
+
+If you see connection errors like:
+```
+Get "http://waha:3000/api/sessions": dial tcp 172.18.0.2:3000: connect: connection refused
+```
+
+This indicates the application is trying to use Docker internal service names but network restrictions are blocking access.
+
+**Solutions:**
+
+1. **Environment Variable Override** (Recommended):
+   ```bash
+   # In your .env file or Docker Compose environment
+   WHATSAPP_API_URL=http://YOUR_SERVER_IP:3000
+   SIGNAL_RPC_URL=http://YOUR_SERVER_IP:8081
+   ```
+
+2. **Use Host Networking** (Less secure):
+   ```yaml
+   services:
+     whatsignal:
+       network_mode: host
+   ```
+
+3. **Docker Host Gateway**:
+   ```yaml
+   services:
+     whatsignal:
+       extra_hosts:
+         - "host.docker.internal:host-gateway"
+       environment:
+         - WHATSAPP_API_URL=http://host.docker.internal:3000
+         - SIGNAL_RPC_URL=http://host.docker.internal:8081
+   ```
+
+The application automatically detects and rewrites Docker internal hostnames (single-word hostnames without dots) to use the configured external WAHA host, but environment variable overrides provide the most reliable solution.

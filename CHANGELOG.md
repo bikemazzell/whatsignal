@@ -32,6 +32,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced Dockerfile with proper repository configuration and error handling
 - Improved build reliability for multi-platform Docker images (linux/amd64, linux/arm64)
 
+### Configuration
+- Added default timeout (10 seconds) and retry count (3) for WhatsApp API requests
+- Enhanced error messages for contact sync failures to indicate missing API key
+- Improved session status validation before attempting contact sync
+- Added better diagnostics for WAHA API authentication issues
+
+### Network Security
+- **CRITICAL FIX**: Resolved Docker network access restrictions blocking WAHA and Signal API connections
+- Implemented intelligent Docker internal hostname detection (single-word hostnames without dots)
+- Enhanced media URL rewriting to automatically handle any Docker internal hostname
+- Updated URL validation to allow Docker internal hostnames that will be rewritten to external hosts
+- Added configurable environment variable overrides (WHATSAPP_API_URL, SIGNAL_RPC_URL) for external access
+- Removed hardcoded service names in favor of heuristic-based detection
+- Fixed issue where applications running in Docker containers couldn't access external services due to internal network restrictions
+
 ## [1.1.5] - 2025-09-04
 
 ### Testing

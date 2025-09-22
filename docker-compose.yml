@@ -94,6 +94,9 @@ services:
       - WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET=${WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET}
       - WHATSIGNAL_ENABLE_ENCRYPTION=${WHATSIGNAL_ENABLE_ENCRYPTION:-true}
       - WHATSIGNAL_ENCRYPTION_SECRET=${WHATSIGNAL_ENCRYPTION_SECRET}
+      # Optional: Override API URLs if needed (e.g., for external access)
+      - WHATSAPP_API_URL=${WHATSAPP_API_URL:-}
+      - SIGNAL_RPC_URL=${SIGNAL_RPC_URL:-}
     depends_on:
       waha:
         condition: service_healthy

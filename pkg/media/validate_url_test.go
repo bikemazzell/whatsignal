@@ -539,3 +539,120 @@ func TestValidateDownloadURL_DockerInternalIP(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDownloadURL_DockerInternalHosts(t *testing.T) {
+	// Test with external IP as WAHA base URL (simulating Docker deployment)
+	h := setupHandlerForURLValidation(t, "http://192.168.1.23:3000")
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Docker internal host 'waha' - allowed",
+			url:         "http://waha:3000/api/files/voice.ogg",
+			expectError: false,
+		},
+		{
+			name:        "Docker internal host 'signal-cli-waha' - allowed",
+			url:         "http://signal-cli-waha:8080/api/files/voice.ogg",
+			expectError: false,
+		},
+		{
+			name:        "Docker internal host 'myservice' - allowed",
+			url:         "http://myservice:3000/api/files/voice.ogg",
+			expectError: false,
+		},
+		{
+			name:        "Domain name with dots - blocked",
+			url:         "http://malicious.example.com:3000/api/files/voice.ogg",
+			expectError: true,
+			errorMsg:    "download host not allowed: malicious.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestIsDockerInternalHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		expected bool
+	}{
+		{
+			name:     "waha service name",
+			hostname: "waha",
+			expected: true,
+		},
+		{
+			name:     "signal-cli service name",
+			hostname: "signal-cli",
+			expected: true,
+		},
+		{
+			name:     "signal-cli-rest-api service name",
+			hostname: "signal-cli-rest-api",
+			expected: true,
+		},
+		{
+			name:     "signal-cli-waha service name",
+			hostname: "signal-cli-waha",
+			expected: true,
+		},
+		{
+			name:     "domain name with dots",
+			hostname: "example.com",
+			expected: false,
+		},
+		{
+			name:     "subdomain",
+			hostname: "api.example.com",
+			expected: false,
+		},
+		{
+			name:     "localhost",
+			hostname: "localhost",
+			expected: false,
+		},
+		{
+			name:     "IP address",
+			hostname: "192.168.1.1",
+			expected: false,
+		},
+		{
+			name:     "IPv6 address",
+			hostname: "::1",
+			expected: false,
+		},
+		{
+			name:     "empty hostname",
+			hostname: "",
+			expected: false,
+		},
+		{
+			name:     "single word hostname",
+			hostname: "myservice",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isDockerInternalHost(tt.hostname)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

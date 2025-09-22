@@ -43,6 +43,12 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 		}
 	}
 
+	// Check if this is a Docker internal hostname that would be rewritten
+	// For validation, we allow Docker internal hostnames since they will be rewritten
+	if isDockerInternalHost(u.Hostname()) {
+		return nil // Allow - this will be rewritten by rewriteMediaURL
+	}
+
 	// Only allow downloads from the same host as WAHA base
 	if !strings.EqualFold(u.Hostname(), waha.Hostname()) {
 		return fmt.Errorf("download host not allowed: %s", u.Hostname())
@@ -65,4 +71,28 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 		}
 	}
 	return nil
+}
+
+// isDockerInternalHost checks if a hostname appears to be a Docker internal service
+// This is a heuristic check - if it's not a valid domain name and not an IP,
+// it's likely a Docker service name that should be rewritten
+func isDockerInternalHost(hostname string) bool {
+	// If it's an IP address, it's not a Docker service name
+	if net.ParseIP(hostname) != nil {
+		return false
+	}
+
+	// If it contains dots, it's likely a domain name, not a Docker service
+	if strings.Contains(hostname, ".") {
+		return false
+	}
+
+	// If it's localhost variants, handle separately
+	if hostname == "localhost" {
+		return false
+	}
+
+	// Single word hostnames without dots are likely Docker service names
+	// This covers cases like "waha", "signal-cli-rest-api", etc.
+	return len(hostname) > 0
 }

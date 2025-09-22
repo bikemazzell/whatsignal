@@ -661,14 +661,22 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Try to decode error response
+		// Read response body for better error diagnostics
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("request failed with status %d (failed to read error response: %w)", resp.StatusCode, err)
+		}
+
+		// Try to decode structured error response
 		var errorResp map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+		if err := json.Unmarshal(bodyBytes, &errorResp); err == nil {
 			if errMsg, ok := errorResp["error"].(string); ok {
 				return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errMsg)
 			}
 		}
-		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
+
+		// Fallback to raw response body for debugging
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var contacts []types.Contact

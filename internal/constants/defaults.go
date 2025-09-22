@@ -51,6 +51,8 @@ const (
 const (
 	DefaultSignalPollingTimeoutSec = 30
 	DefaultWhatsAppPollIntervalSec = 30
+	DefaultWhatsAppTimeoutMs       = 10000 // 10 seconds
+	DefaultWhatsAppRetryCount      = 3
 	TypingDurationPerCharMs        = 50
 	MaxTypingDurationSec           = 3
 	CleanupSchedulerIntervalHours  = 24

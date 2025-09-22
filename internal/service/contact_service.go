@@ -131,9 +131,13 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 	batchSize := constants.DefaultContactSyncBatchSize
 	offset := 0
 
+	log.Printf("[%s] Starting contact sync with batch size %d", sessionName, batchSize)
+
 	for {
+		log.Printf("[%s] Fetching contacts batch at offset %d", sessionName, offset)
 		contacts, err := cs.waClient.GetAllContacts(ctx, batchSize, offset)
 		if err != nil {
+			log.Printf("[%s] Contact sync failed at offset %d: %v", sessionName, offset, err)
 			return fmt.Errorf("failed to fetch contacts batch (offset %d): %w", offset, err)
 		}
 

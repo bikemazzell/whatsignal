@@ -333,6 +333,11 @@ func (h *handler) rewriteMediaURL(mediaURL string) string {
 		needsRewrite = true
 	}
 
+	// Check for Docker internal hostnames that should be rewritten to external hosts
+	if isDockerInternalHost(u.Hostname()) {
+		needsRewrite = true
+	}
+
 	// Check for Docker internal network IPs (172.16.0.0/12 range)
 	// This includes 172.18.0.0/16 which is Docker's default bridge network
 	if ip := net.ParseIP(u.Hostname()); ip != nil {

@@ -175,6 +175,18 @@ func run(ctx context.Context) error {
 
 			logger.WithField("session", sessionName).Info("WhatsApp session is ready. Syncing contacts...")
 
+			// Check session status before attempting contact sync
+			sessionStatus, err := sessionClient.GetSessionStatus(ctx)
+			if err != nil {
+				logger.WithField("session", sessionName).Warnf("Failed to get session status before contact sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping contact sync.", err)
+				continue
+			}
+
+			if sessionStatus == nil || sessionStatus.Status != "WORKING" {
+				logger.WithField("session", sessionName).Warnf("Session status is %v, not WORKING. Skipping contact sync.", sessionStatus)
+				continue
+			}
+
 			// Create a contact service for this session
 			sessionContactService := service.NewContactServiceWithConfig(db, sessionClient, cacheHours)
 			if err := sessionContactService.SyncAllContacts(ctx); err != nil {

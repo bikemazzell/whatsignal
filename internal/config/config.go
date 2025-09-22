@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
@@ -121,6 +122,14 @@ func validate(c *models.Config) error {
 	}
 	if c.WhatsApp.PollIntervalSec <= 0 {
 		c.WhatsApp.PollIntervalSec = constants.DefaultWhatsAppPollIntervalSec
+	}
+	// Set default timeout if not provided
+	if c.WhatsApp.Timeout == 0 {
+		c.WhatsApp.Timeout = time.Duration(constants.DefaultWhatsAppTimeoutMs) * time.Millisecond
+	}
+	// Set default retry count if not provided
+	if c.WhatsApp.RetryCount == 0 {
+		c.WhatsApp.RetryCount = constants.DefaultWhatsAppRetryCount
 	}
 	// Default webhook skew if not provided
 	if c.Server.WebhookMaxSkewSec <= 0 {

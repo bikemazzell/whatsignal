@@ -264,7 +264,7 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 		"whatsapp": {
 			"api_base_url": "http://localhost:8080",
 			"session_name": "test-session",
-			"timeout_ms": 5000,
+			"timeout_ms": 5000000000,
 			"retry_count": 3,
 			"webhook_secret": "test-secret",
 			"pollIntervalSec": 30

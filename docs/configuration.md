@@ -294,7 +294,7 @@ To add support for new file types, simply update your `config.json`:
   "whatsapp": {
     "api_base_url": "http://localhost:3000",
     "api_key": "your-waha-api-key",
-    "timeout_ms": 10000,
+    "timeout_ms": 10000000000,
     "retry_count": 3,
     "webhook_secret": "your-whatsapp-webhook-secret",
     "contactSyncOnStartup": true,

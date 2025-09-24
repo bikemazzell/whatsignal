@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.7] - 2025-09-24
+
+### Fixed
+- **Critical**: Fixed unbounded memory growth in rate limiter with periodic cleanup mechanism
+- **Critical**: Added database connection pooling to prevent connection exhaustion under load
+
+### Added
+- Externalized all hard-coded configuration values with sensible defaults
+- Comprehensive input validation and bounds checking for all numeric configurations
+- Circuit breaker pattern for external API calls (WhatsApp/Signal APIs)
+- Graceful degradation for external service failures with fallback to cached data
+- Structured error handling with error codes and retryable flags
+- Docker volume path configuration via environment variable
+
+### Security
+- Fixed potential goroutine leaks in Signal attachment downloads
+- Added proper context cancellation and cleanup for all background operations
+- Enhanced rate limiter with configurable limits and cleanup intervals
+
+### Changed
+- Server timeouts now configurable (read/write/idle)
+- Database connection pool settings externalized
+- Rate limiting configuration moved to config file
+- All magic numbers replaced with named constants
+
 ## [1.1.6] - 2025-09-22
 
 ### Fixed

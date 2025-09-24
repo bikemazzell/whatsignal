@@ -47,6 +47,18 @@ type Server struct {
 }
 
 func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient, channelManager *service.ChannelManager) *Server {
+	// Use configured rate limit or default
+	rateLimit := cfg.Server.RateLimitPerMinute
+	if rateLimit <= 0 {
+		rateLimit = constants.DefaultRateLimitPerMinute
+	}
+
+	// Use configured cleanup period or default
+	cleanupMinutes := cfg.Server.RateLimitCleanupMinutes
+	if cleanupMinutes <= 0 {
+		cleanupMinutes = constants.DefaultRateLimitCleanupMinutes
+	}
+
 	s := &Server{
 		router:         mux.NewRouter(),
 		logger:         logger,
@@ -54,7 +66,7 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 		cfg:            cfg,
 		waClient:       waClient,
 		channelManager: channelManager,
-		rateLimiter:    NewRateLimiter(100, time.Minute), // 100 requests per minute per IP
+		rateLimiter:    NewRateLimiter(rateLimit, time.Minute, time.Duration(cleanupMinutes)*time.Minute),
 	}
 
 	s.setupRoutes()
@@ -111,6 +123,11 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Stop the rate limiter cleanup goroutine
+	if s.rateLimiter != nil {
+		s.rateLimiter.Stop()
+	}
+
 	s.serverMu.RLock()
 	server := s.server
 	s.serverMu.RUnlock()

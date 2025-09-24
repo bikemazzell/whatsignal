@@ -86,21 +86,86 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 
 // RateLimiter implements a simple rate limiter for webhook endpoints
 type RateLimiter struct {
-	requests    map[string][]time.Time
-	mu          sync.RWMutex
-	limit       int
-	window      time.Duration
-	lastCleanup time.Time
+	requests      map[string][]time.Time
+	mu            sync.RWMutex
+	limit         int
+	window        time.Duration
+	lastCleanup   time.Time
+	cleanupTicker *time.Ticker
+	cleanupStop   chan bool
+	cleanupPeriod time.Duration
 }
 
 // NewRateLimiter creates a new rate limiter
-func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
-	return &RateLimiter{
-		requests:    make(map[string][]time.Time),
-		limit:       limit,
-		window:      window,
-		lastCleanup: time.Now(),
+func NewRateLimiter(limit int, window time.Duration, cleanupPeriod time.Duration) *RateLimiter {
+	rl := &RateLimiter{
+		requests:      make(map[string][]time.Time),
+		limit:         limit,
+		window:        window,
+		lastCleanup:   time.Now(),
+		cleanupPeriod: cleanupPeriod,
+		cleanupStop:   make(chan bool),
 	}
+
+	// Start background cleanup goroutine
+	rl.startBackgroundCleanup()
+
+	return rl
+}
+
+// startBackgroundCleanup starts a background goroutine that periodically cleans up old entries
+func (rl *RateLimiter) startBackgroundCleanup() {
+	if rl.cleanupPeriod <= 0 {
+		// Default to 5 minutes if not specified
+		rl.cleanupPeriod = 5 * time.Minute
+	}
+
+	rl.cleanupTicker = time.NewTicker(rl.cleanupPeriod)
+
+	go func() {
+		for {
+			select {
+			case <-rl.cleanupTicker.C:
+				rl.cleanup()
+			case <-rl.cleanupStop:
+				return
+			}
+		}
+	}()
+}
+
+// Stop stops the background cleanup goroutine
+func (rl *RateLimiter) Stop() {
+	if rl.cleanupTicker != nil {
+		rl.cleanupTicker.Stop()
+	}
+	close(rl.cleanupStop)
+}
+
+// cleanup removes old entries from the request map
+func (rl *RateLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-rl.window)
+
+	// Clean up all IPs
+	for ip, requests := range rl.requests {
+		var validRequests []time.Time
+		for _, reqTime := range requests {
+			if reqTime.After(cutoff) {
+				validRequests = append(validRequests, reqTime)
+			}
+		}
+		if len(validRequests) == 0 {
+			delete(rl.requests, ip)
+		} else {
+			rl.requests[ip] = validRequests
+		}
+	}
+
+	rl.lastCleanup = now
 }
 
 // Allow checks if a request from the given IP is allowed
@@ -111,25 +176,7 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-rl.window)
 
-	// Opportunistic global cleanup to prevent unbounded map growth
-	if now.Sub(rl.lastCleanup) >= rl.window {
-		for key, reqs := range rl.requests {
-			var kept []time.Time
-			for _, t := range reqs {
-				if t.After(cutoff) {
-					kept = append(kept, t)
-				}
-			}
-			if len(kept) == 0 {
-				delete(rl.requests, key)
-			} else {
-				rl.requests[key] = kept
-			}
-		}
-		rl.lastCleanup = now
-	}
-
-	// Clean old requests for this IP and delete empty entries
+	// Clean old requests for this IP
 	if requests, exists := rl.requests[ip]; exists {
 		var validRequests []time.Time
 		for _, reqTime := range requests {

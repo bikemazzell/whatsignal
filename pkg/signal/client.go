@@ -197,7 +197,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			Sender:      msg.Envelope.Source,
 			MessageID:   fmt.Sprintf("%d", msg.Envelope.Timestamp),
 			Message:     msg.Envelope.DataMessage.Message,
-			Attachments: c.extractAttachmentPaths(msg.Envelope.DataMessage.Attachments),
+			Attachments: c.extractAttachmentPaths(ctx, msg.Envelope.DataMessage.Attachments),
 		}
 
 		// Handle remote deletion
@@ -241,7 +241,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	return result, nil
 }
 
-func (c *SignalClient) extractAttachmentPaths(attachments []types.RestMessageAttachment) []string {
+func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments []types.RestMessageAttachment) []string {
 	if len(attachments) == 0 {
 		return nil
 	}
@@ -269,13 +269,24 @@ func (c *SignalClient) extractAttachmentPaths(attachments []types.RestMessageAtt
 			// Use a goroutine with timeout to prevent blocking the entire polling operation
 			downloadChan := make(chan string, constants.SignalDownloadChannelSize)
 			errorChan := make(chan error, constants.SignalDownloadChannelSize)
+			downloadCtx, downloadCancel := context.WithTimeout(ctx, 15*time.Second)
+			defer downloadCancel()
 
 			go func() {
+				defer downloadCancel() // Ensure cleanup on early return
 				filePath, err := c.downloadAndSaveAttachment(att)
 				if err != nil {
-					errorChan <- err
+					select {
+					case errorChan <- err:
+					case <-downloadCtx.Done():
+						return // Context cancelled, exit gracefully
+					}
 				} else {
-					downloadChan <- filePath
+					select {
+					case downloadChan <- filePath:
+					case <-downloadCtx.Done():
+						return // Context cancelled, exit gracefully
+					}
 				}
 			}()
 
@@ -290,11 +301,11 @@ func (c *SignalClient) extractAttachmentPaths(attachments []types.RestMessageAtt
 					"error":        err,
 				}).Warn("Failed to download attachment, skipping")
 				// Don't add non-existent paths that will cause media processing to fail
-			case <-time.After(15 * time.Second):
-				// Download timeout - don't block polling
+			case <-downloadCtx.Done():
+				// Download timeout or context cancelled - don't block polling
 				c.logger.WithFields(logrus.Fields{
 					"attachmentID": att.ID,
-				}).Warn("Attachment download timed out, skipping")
+				}).Warn("Attachment download timed out or cancelled, skipping")
 				// Don't add non-existent paths that will cause media processing to fail
 			}
 		} else {

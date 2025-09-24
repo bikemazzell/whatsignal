@@ -81,7 +81,7 @@ func TestExtractAttachmentPaths(t *testing.T) {
 				attachmentsDir: tt.attachmentsDir,
 				logger:         logger,
 			}
-			result := client.extractAttachmentPaths(tt.attachments)
+			result := client.extractAttachmentPaths(context.Background(), tt.attachments)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

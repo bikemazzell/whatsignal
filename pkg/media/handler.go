@@ -40,10 +40,16 @@ func NewHandlerWithWAHA(cacheDir string, config models.MediaConfig, wahaBaseURL,
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
+	// Use configured download timeout or default
+	downloadTimeout := config.DownloadTimeout
+	if downloadTimeout <= 0 {
+		downloadTimeout = constants.DefaultMediaDownloadTimeoutSec
+	}
+
 	return &handler{
 		cacheDir:    cacheDir,
 		config:      config,
-		httpClient:  &http.Client{Timeout: time.Duration(constants.DefaultDownloadTimeoutSec) * time.Second},
+		httpClient:  &http.Client{Timeout: time.Duration(downloadTimeout) * time.Second},
 		wahaBaseURL: wahaBaseURL,
 		wahaAPIKey:  wahaAPIKey,
 	}, nil
@@ -225,7 +231,12 @@ func (h *handler) CleanupOldFiles(maxAge int64) error {
 }
 
 func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(constants.DefaultDownloadTimeoutSec)*time.Second)
+	// Use the same timeout as configured for the HTTP client
+	downloadTimeout := h.config.DownloadTimeout
+	if downloadTimeout <= 0 {
+		downloadTimeout = constants.DefaultMediaDownloadTimeoutSec
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(downloadTimeout)*time.Second)
 	defer cancel()
 
 	// Safety: validate again at download time

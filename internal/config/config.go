@@ -8,6 +8,7 @@ import (
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
+	"whatsignal/internal/validation"
 )
 
 var (
@@ -34,6 +35,10 @@ func LoadConfig(path string) (*models.Config, error) {
 	}
 
 	if err := validate(&config); err != nil {
+		return nil, err
+	}
+
+	if err := validateBounds(&config); err != nil {
 		return nil, err
 	}
 
@@ -192,6 +197,158 @@ func validateSecurity(c *models.Config) error {
 		}
 		// Signal CLI REST API typically doesn't require auth tokens
 		// Remove the warning as it's not applicable to standard Signal CLI REST API deployments
+	}
+
+	return nil
+}
+
+// validateBounds performs bounds checking on configuration values
+func validateBounds(c *models.Config) error {
+	// Validate timeout values
+	if err := validation.ValidateTimeout(c.WhatsApp.RetryCount, "WhatsApp retry count"); err != nil {
+		return models.ConfigError{Message: err.Error()}
+	}
+
+	if c.WhatsApp.Timeout > 0 {
+		// Convert nanoseconds to seconds for validation
+		timeoutSec := int(c.WhatsApp.Timeout.Seconds())
+		if timeoutSec < 1 {
+			return models.ConfigError{Message: "WhatsApp timeout must be at least 1000ms (1 second)"}
+		}
+		if err := validation.ValidateTimeout(timeoutSec, "WhatsApp timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate Signal configuration
+	if c.Signal.PollIntervalSec > 0 {
+		if err := validation.ValidateTimeout(c.Signal.PollIntervalSec, "Signal poll interval"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Signal.PollTimeoutSec > 0 {
+		if err := validation.ValidateTimeout(c.Signal.PollTimeoutSec, "Signal poll timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Signal.HTTPTimeoutSec > 0 {
+		if err := validation.ValidateTimeout(c.Signal.HTTPTimeoutSec, "Signal HTTP timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate database configuration (only if values are set)
+	if c.Database.MaxOpenConnections > 0 || c.Database.MaxIdleConnections > 0 {
+		maxOpen := c.Database.MaxOpenConnections
+		if maxOpen == 0 {
+			maxOpen = constants.DefaultDBMaxOpenConnections
+		}
+		maxIdle := c.Database.MaxIdleConnections
+		if maxIdle == 0 {
+			maxIdle = constants.DefaultDBMaxIdleConnections
+		}
+
+		if err := validation.ValidateConnectionPool(maxOpen, maxIdle); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Database.ConnMaxLifetimeSec > 0 {
+		if err := validation.ValidateTimeout(c.Database.ConnMaxLifetimeSec, "database connection max lifetime"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Database.ConnMaxIdleTimeSec > 0 {
+		if err := validation.ValidateTimeout(c.Database.ConnMaxIdleTimeSec, "database connection max idle time"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate media configuration
+	if err := validation.ValidateNumericRange(c.Media.MaxSizeMB.Image, "image max size", 1, 100); err != nil {
+		return models.ConfigError{Message: err.Error()}
+	}
+
+	if err := validation.ValidateNumericRange(c.Media.MaxSizeMB.Video, "video max size", 1, 500); err != nil {
+		return models.ConfigError{Message: err.Error()}
+	}
+
+	if err := validation.ValidateNumericRange(c.Media.MaxSizeMB.Document, "document max size", 1, 100); err != nil {
+		return models.ConfigError{Message: err.Error()}
+	}
+
+	if err := validation.ValidateNumericRange(c.Media.MaxSizeMB.Voice, "voice max size", 1, 50); err != nil {
+		return models.ConfigError{Message: err.Error()}
+	}
+
+	if c.Media.DownloadTimeout > 0 {
+		if err := validation.ValidateTimeout(c.Media.DownloadTimeout, "media download timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate server configuration
+	if c.Server.ReadTimeoutSec > 0 {
+		if err := validation.ValidateTimeout(c.Server.ReadTimeoutSec, "server read timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Server.WriteTimeoutSec > 0 {
+		if err := validation.ValidateTimeout(c.Server.WriteTimeoutSec, "server write timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Server.IdleTimeoutSec > 0 {
+		if err := validation.ValidateTimeout(c.Server.IdleTimeoutSec, "server idle timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Server.WebhookMaxSkewSec > 0 {
+		if err := validation.ValidateTimeout(c.Server.WebhookMaxSkewSec, "webhook max skew"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Server.WebhookMaxBytes > 0 {
+		if err := validation.ValidateNumericRange(c.Server.WebhookMaxBytes, "webhook max bytes", 1024, 50*1024*1024); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Server.RateLimitPerMinute > 0 {
+		if err := validation.ValidateNumericRange(c.Server.RateLimitPerMinute, "rate limit per minute", 1, 10000); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Server.RateLimitCleanupMinutes > 0 {
+		if err := validation.ValidateNumericRange(c.Server.RateLimitCleanupMinutes, "rate limit cleanup minutes", 1, 60); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate retention days
+	if c.RetentionDays > 0 {
+		if err := validation.ValidateRetentionDays(c.RetentionDays); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate channel configuration
+	for i, channel := range c.Channels {
+		if err := validation.ValidateSessionName(channel.WhatsAppSessionName); err != nil {
+			return models.ConfigError{Message: fmt.Sprintf("channel %d WhatsApp session name: %s", i, err.Error())}
+		}
+
+		if err := validation.ValidatePhoneNumber(channel.SignalDestinationPhoneNumber); err != nil {
+			return models.ConfigError{Message: fmt.Sprintf("channel %d Signal destination: %s", i, err.Error())}
+		}
 	}
 
 	return nil

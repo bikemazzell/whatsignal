@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -89,7 +90,7 @@ func run(ctx context.Context) error {
 
 	var db *database.Database
 	for attempts := 0; attempts < constants.DefaultDatabaseRetryAttempts; attempts++ {
-		db, err = database.New(cfg.Database.Path)
+		db, err = database.New(cfg.Database.Path, &cfg.Database)
 		if err == nil {
 			break
 		}
@@ -131,12 +132,21 @@ func run(ctx context.Context) error {
 		RetryCount:  cfg.WhatsApp.RetryCount,
 	})
 
+	// Use configured Signal HTTP timeout or default
+	signalHTTPTimeout := cfg.Signal.HTTPTimeoutSec
+	if signalHTTPTimeout <= 0 {
+		signalHTTPTimeout = constants.DefaultSignalHTTPTimeoutSec
+	}
+	signalHTTPClient := &http.Client{
+		Timeout: time.Duration(signalHTTPTimeout) * time.Second,
+	}
+
 	sigClient := signalapi.NewClientWithLogger(
 		cfg.Signal.RPCURL,
 		cfg.Signal.IntermediaryPhoneNumber,
 		cfg.Signal.DeviceName,
 		cfg.Signal.AttachmentsDir,
-		nil,
+		signalHTTPClient,
 		logger,
 	)
 

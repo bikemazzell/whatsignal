@@ -37,18 +37,24 @@ type SignalConfig struct {
 	PollTimeoutSec          int    `json:"pollTimeoutSec" mapstructure:"pollTimeoutSec"`
 	PollingEnabled          bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`
 	AttachmentsDir          string `json:"attachmentsDir" mapstructure:"attachmentsDir"`
+	HTTPTimeoutSec          int    `json:"httpTimeoutSec" mapstructure:"httpTimeoutSec"`
 }
 
 // DatabaseConfig holds database related configurations
 type DatabaseConfig struct {
-	Path string `json:"path"`
+	Path               string `json:"path"`
+	MaxOpenConnections int    `json:"maxOpenConnections" mapstructure:"maxOpenConnections"`
+	MaxIdleConnections int    `json:"maxIdleConnections" mapstructure:"maxIdleConnections"`
+	ConnMaxLifetimeSec int    `json:"connMaxLifetimeSec" mapstructure:"connMaxLifetimeSec"`
+	ConnMaxIdleTimeSec int    `json:"connMaxIdleTimeSec" mapstructure:"connMaxIdleTimeSec"`
 }
 
 // MediaConfig holds media related configurations
 type MediaConfig struct {
-	CacheDir     string            `json:"cache_dir"`
-	MaxSizeMB    MediaSizeLimits   `json:"maxSizeMB"`
-	AllowedTypes MediaAllowedTypes `json:"allowedTypes"`
+	CacheDir        string            `json:"cache_dir"`
+	MaxSizeMB       MediaSizeLimits   `json:"maxSizeMB"`
+	AllowedTypes    MediaAllowedTypes `json:"allowedTypes"`
+	DownloadTimeout int               `json:"downloadTimeoutSec" mapstructure:"downloadTimeoutSec"`
 }
 
 // MediaSizeLimits defines size limits for different media types in MB
@@ -76,11 +82,13 @@ type RetryConfig struct {
 
 // ServerConfig holds server related configurations
 type ServerConfig struct {
-	ReadTimeoutSec    int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
-	WriteTimeoutSec   int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
-	IdleTimeoutSec    int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
-	WebhookMaxSkewSec int `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
-	WebhookMaxBytes   int `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
+	ReadTimeoutSec          int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
+	WriteTimeoutSec         int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
+	IdleTimeoutSec          int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
+	WebhookMaxSkewSec       int `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
+	WebhookMaxBytes         int `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
+	RateLimitPerMinute      int `json:"rateLimitPerMinute" mapstructure:"rateLimitPerMinute"`
+	RateLimitCleanupMinutes int `json:"rateLimitCleanupMinutes" mapstructure:"rateLimitCleanupMinutes"`
 }
 
 // Channel represents a WhatsApp-Signal channel pairing

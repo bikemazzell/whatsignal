@@ -15,7 +15,7 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      - /mnt/data/signal-cli-waha:/home/.local/share/signal-cli
+      - ${WHATSIGNAL_DATA_DIR:-./data}/signal-cli-waha:/home/.local/share/signal-cli
       - signal_attachments:/var/lib/signal-cli-rest-api/attachments:rw
     tmpfs:
       - /tmp:size=100M,mode=1777
@@ -43,7 +43,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - /mnt/data/waha/sessions:/app/data
+      - ${WHATSIGNAL_DATA_DIR:-./data}/waha/sessions:/app/data
     tmpfs:
       - /tmp:size=200M,mode=1777
       - /var/tmp:size=50M,mode=1777
@@ -82,8 +82,8 @@ services:
       - "8083:8082"
     volumes:
       # Replace with the folder path to where your WhatSignal configuration will be stored
-      - /mnt/data/whatsignal/config.json:/app/config.json:ro
-      - /mnt/data/whatsignal/data:/app/data
+      - ${WHATSIGNAL_DATA_DIR:-./data}/whatsignal/config.json:/app/config.json:ro
+      - ${WHATSIGNAL_DATA_DIR:-./data}/whatsignal/data:/app/data
       - signal_attachments:/app/signal-attachments:rw
     tmpfs:
       - /tmp:size=100M,mode=1777
@@ -110,37 +110,37 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ./data/signal-cli
+      device: ${WHATSIGNAL_DATA_DIR:-./data}/signal-cli
   signal_attachments:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ./data/signal-attachments
+      device: ${WHATSIGNAL_DATA_DIR:-./data}/signal-attachments
   waha_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ./data/waha
+      device: ${WHATSIGNAL_DATA_DIR:-./data}/waha
   whatsignal_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ./data/whatsignal
+      device: ${WHATSIGNAL_DATA_DIR:-./data}/whatsignal
   whatsignal_cache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ./data/media-cache
+      device: ${WHATSIGNAL_DATA_DIR:-./data}/media-cache
   whatsignal_attachments:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ./data/signal-attachments
+      device: ${WHATSIGNAL_DATA_DIR:-./data}/signal-attachments
 
 
 

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
@@ -19,7 +21,7 @@ type Database struct {
 	encryptor *encryptor
 }
 
-func New(dbPath string) (*Database, error) {
+func New(dbPath string, cfg *models.DatabaseConfig) (*Database, error) {
 	if len(dbPath) == 0 || dbPath[0] == '\x00' {
 		return nil, fmt.Errorf("invalid database path")
 	}
@@ -40,6 +42,39 @@ func New(dbPath string) (*Database, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Configure connection pooling
+	if cfg != nil {
+		maxOpen := cfg.MaxOpenConnections
+		if maxOpen <= 0 {
+			maxOpen = constants.DefaultDBMaxOpenConnections
+		}
+		db.SetMaxOpenConns(maxOpen)
+
+		maxIdle := cfg.MaxIdleConnections
+		if maxIdle <= 0 {
+			maxIdle = constants.DefaultDBMaxIdleConnections
+		}
+		db.SetMaxIdleConns(maxIdle)
+
+		if cfg.ConnMaxLifetimeSec > 0 {
+			db.SetConnMaxLifetime(time.Duration(cfg.ConnMaxLifetimeSec) * time.Second)
+		} else {
+			db.SetConnMaxLifetime(time.Duration(constants.DefaultDBConnMaxLifetimeSec) * time.Second)
+		}
+
+		if cfg.ConnMaxIdleTimeSec > 0 {
+			db.SetConnMaxIdleTime(time.Duration(cfg.ConnMaxIdleTimeSec) * time.Second)
+		} else {
+			db.SetConnMaxIdleTime(time.Duration(constants.DefaultDBConnMaxIdleTimeSec) * time.Second)
+		}
+	} else {
+		// Use defaults if no config provided
+		db.SetMaxOpenConns(constants.DefaultDBMaxOpenConnections)
+		db.SetMaxIdleConns(constants.DefaultDBMaxIdleConnections)
+		db.SetConnMaxLifetime(time.Duration(constants.DefaultDBConnMaxLifetimeSec) * time.Second)
+		db.SetConnMaxIdleTime(time.Duration(constants.DefaultDBConnMaxIdleTimeSec) * time.Second)
 	}
 
 	if err := db.Ping(); err != nil {

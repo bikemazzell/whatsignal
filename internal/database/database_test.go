@@ -110,7 +110,7 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 	migrations.MigrationsDir = migrationsPath
 
 	dbPath := filepath.Join(tmpDir, "test.db")
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 
 	cleanup := func() {
@@ -206,7 +206,7 @@ func TestNewDatabase(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dbPath := tt.setupPath(t)
 
-			db, err := New(dbPath)
+			db, err := New(dbPath, nil)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -541,7 +541,7 @@ func TestClose(t *testing.T) {
 
 func TestNewDatabaseErrors(t *testing.T) {
 	// Test with invalid path
-	db, err := New("\x00invalid")
+	db, err := New("\x00invalid", nil)
 	assert.Error(t, err, "Expected error with invalid path")
 	assert.Nil(t, db)
 
@@ -560,7 +560,7 @@ func TestNewDatabaseErrors(t *testing.T) {
 	}()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
-	db, err = New(dbPath)
+	db, err = New(dbPath, nil)
 	assert.Error(t, err, "Expected error with unwritable directory")
 	assert.Nil(t, db)
 }
@@ -667,7 +667,7 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 	file.Close()
 
 	// This should fail when trying to initialize schema
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	if err != nil {
 		// Expected case - schema initialization failed
 		assert.Contains(t, err.Error(), "failed to")
@@ -1244,17 +1244,17 @@ func TestDatabase_New_ErrorCases(t *testing.T) {
 	}()
 
 	// Test with invalid database path
-	_, err := New("")
+	_, err := New("", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid database path")
 
 	// Test with null byte in path
-	_, err = New("/invalid\x00path")
+	_, err = New("/invalid\x00path", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create database file")
 
 	// Test with directory that doesn't exist
-	_, err = New("/nonexistent/dir/test.db")
+	_, err = New("/nonexistent/dir/test.db", nil)
 	assert.Error(t, err)
 }
 
@@ -1409,7 +1409,7 @@ func TestDatabase_SchemaUpgrade(t *testing.T) {
 
 	// Step 4: Initialize database through our migration system
 	// This should upgrade the schema from old to new
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer func() {
 		err := db.Close()

@@ -218,7 +218,7 @@ func TestDatabase_TransactionRollback(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "transaction_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -241,7 +241,7 @@ func TestDatabase_TransactionRollback(t *testing.T) {
 	// Force close and reopen to test persistence
 	db.Close()
 
-	db, err = New(dbPath)
+	db, err = New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -267,7 +267,7 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "large_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -327,7 +327,7 @@ func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "injection_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -382,7 +382,7 @@ func TestDatabase_FilePermissions(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "permissions_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -405,7 +405,7 @@ func TestDatabase_CorruptedDatabase(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to open should fail gracefully
-	_, err = New(dbPath)
+	_, err = New(dbPath, nil)
 	require.Error(t, err)
 }
 
@@ -421,7 +421,7 @@ func TestDatabase_VeryLongIDs(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "long_ids_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -464,7 +464,7 @@ func TestDatabase_ContactEdgeCases(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "contact_edge_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -509,7 +509,7 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "encryption_toggle_test.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 
 	// Save initial encrypted data
@@ -530,7 +530,7 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 	db.Close()
 
 	// Reopen with same secret
-	db, err = New(dbPath)
+	db, err = New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -572,7 +572,7 @@ func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "decrypt_errors_signal.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -624,7 +624,7 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testi
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "decrypt_errors_chat.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -744,7 +744,7 @@ func TestDatabase_GetLatestMessageMapping_DecryptErrors(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "decrypt_errors_latest.db")
 
-	db, err := New(dbPath)
+	db, err := New(dbPath, nil)
 	require.NoError(t, err)
 	defer db.Close()
 

@@ -3,13 +3,15 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/errors"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ContactServiceInterface defines the interface for contact operations
@@ -33,6 +35,9 @@ type ContactService struct {
 	db              ContactDatabaseService
 	waClient        types.WAClient
 	cacheValidHours int
+	logger          *errors.Logger
+	circuitBreaker  *CircuitBreaker
+	degradedMode    bool
 }
 
 // NewContactService creates a new contact service instance
@@ -41,6 +46,9 @@ func NewContactService(db ContactDatabaseService, waClient types.WAClient) *Cont
 		db:              db,
 		waClient:        waClient,
 		cacheValidHours: 24, // Default to 24 hours
+		logger:          errors.NewLogger(),
+		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", 5, 30*time.Second),
+		degradedMode:    false,
 	}
 }
 
@@ -53,6 +61,9 @@ func NewContactServiceWithConfig(db ContactDatabaseService, waClient types.WACli
 		db:              db,
 		waClient:        waClient,
 		cacheValidHours: cacheValidHours,
+		logger:          errors.NewLogger(),
+		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", 5, 30*time.Second),
+		degradedMode:    false,
 	}
 }
 
@@ -62,7 +73,11 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 	// Try to get from cache first
 	contact, err := cs.db.GetContactByPhone(ctx, phoneNumber)
 	if err != nil {
-		log.Printf("Error retrieving contact from cache: %v", err)
+		cs.logger.LogWarn(
+			errors.Wrap(err, errors.ErrCodeDatabaseQuery, "failed to retrieve contact from cache"),
+			"Contact cache lookup failed",
+			logrus.Fields{"phone_number": phoneNumber},
+		)
 	}
 
 	// If found in cache and not too old, use it
@@ -77,11 +92,36 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 		contactID = phoneNumber + "@c.us"
 	}
 
-	waContact, err := cs.waClient.GetContact(ctx, contactID)
+	// Try to fetch from WhatsApp API with circuit breaker protection
+	var waContact *types.Contact
+	err = cs.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+		var apiErr error
+		waContact, apiErr = cs.waClient.GetContact(ctx, contactID)
+		return apiErr
+	})
+
 	if err != nil {
-		log.Printf("Error fetching contact from WhatsApp API: %v", err)
-		// Fallback to cached version even if old, or phone number
+		// Check if this is a circuit breaker error (service degraded)
+		if errors.GetCode(err) == errors.ErrCodeInternalError &&
+			err.Error() == "circuit breaker is open" {
+			cs.degradedMode = true
+			cs.logger.LogWarn(err, "WhatsApp API circuit breaker open, using degraded mode",
+				logrus.Fields{"contact_id": contactID, "phone_number": phoneNumber})
+		} else {
+			cs.logger.LogWarn(
+				errors.WrapRetryable(err, errors.ErrCodeWhatsAppAPI, "failed to fetch contact from WhatsApp API"),
+				"WhatsApp API contact fetch failed",
+				logrus.Fields{"contact_id": contactID, "phone_number": phoneNumber},
+			)
+		}
+
+		// Graceful degradation: use cached version even if old, or phone number
 		if contact != nil {
+			cs.logger.WithContext(logrus.Fields{
+				"contact_id":       contactID,
+				"phone_number":     phoneNumber,
+				"cached_age_hours": time.Since(contact.CachedAt).Hours(),
+			}).Info("Using cached contact in degraded mode")
 			return contact.GetDisplayName()
 		}
 		return phoneNumber
@@ -97,7 +137,11 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 	dbContact.FromWAContact(waContact)
 
 	if err := cs.db.SaveContact(ctx, dbContact); err != nil {
-		log.Printf("Error saving contact to cache: %v", err)
+		cs.logger.LogWarn(
+			errors.Wrap(err, errors.ErrCodeDatabaseQuery, "failed to save contact to cache"),
+			"Contact cache save failed",
+			logrus.Fields{"contact_id": waContact.ID, "phone_number": phoneNumber},
+		)
 	}
 
 	return waContact.GetDisplayName()
@@ -131,14 +175,26 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 	batchSize := constants.DefaultContactSyncBatchSize
 	offset := 0
 
-	log.Printf("[%s] Starting contact sync with batch size %d", sessionName, batchSize)
+	cs.logger.WithContext(logrus.Fields{
+		"session":    sessionName,
+		"batch_size": batchSize,
+	}).Info("Starting contact sync")
 
 	for {
-		log.Printf("[%s] Fetching contacts batch at offset %d", sessionName, offset)
+		cs.logger.WithContext(logrus.Fields{
+			"session": sessionName,
+			"offset":  offset,
+			"batch":   offset/batchSize + 1,
+		}).Debug("Fetching contacts batch")
+
 		contacts, err := cs.waClient.GetAllContacts(ctx, batchSize, offset)
 		if err != nil {
-			log.Printf("[%s] Contact sync failed at offset %d: %v", sessionName, offset, err)
-			return fmt.Errorf("failed to fetch contacts batch (offset %d): %w", offset, err)
+			contactErr := errors.WrapRetryable(err, errors.ErrCodeWhatsAppAPI, "failed to fetch contacts batch")
+			cs.logger.LogError(contactErr, "Contact sync batch failed", logrus.Fields{
+				"session": sessionName,
+				"offset":  offset,
+			})
+			return contactErr
 		}
 
 		if len(contacts) == 0 {
@@ -151,12 +207,24 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 			dbContact.FromWAContact(&waContact)
 
 			if err := cs.db.SaveContact(ctx, dbContact); err != nil {
-				log.Printf("[%s] Error saving contact %s to cache: %v", sessionName, waContact.ID, err)
+				cs.logger.LogWarn(
+					errors.Wrap(err, errors.ErrCodeDatabaseQuery, "failed to save contact to cache during sync"),
+					"Contact sync save failed",
+					logrus.Fields{
+						"session":    sessionName,
+						"contact_id": waContact.ID,
+					},
+				)
 				continue
 			}
 		}
 
-		log.Printf("[%s] Synced %d contacts (batch %d)", sessionName, len(contacts), offset/batchSize+1)
+		cs.logger.WithContext(logrus.Fields{
+			"session":         sessionName,
+			"synced_count":    len(contacts),
+			"batch":           offset/batchSize + 1,
+			"total_processed": offset + len(contacts),
+		}).Info("Contact batch synced successfully")
 
 		// If we got fewer than batch size, we're done
 		if len(contacts) < batchSize {

@@ -14,7 +14,8 @@ import (
 // TestRateLimiter_BurstTraffic tests handling of burst traffic
 func TestRateLimiter_BurstTraffic(t *testing.T) {
 	// Create rate limiter with 10 requests per 100ms window
-	rl := NewRateLimiter(10, 100*time.Millisecond)
+	rl := NewRateLimiter(10, 100*time.Millisecond, 5*time.Minute)
+	defer rl.Stop()
 
 	// Send burst of requests
 	const burstSize = 20
@@ -37,7 +38,8 @@ func TestRateLimiter_BurstTraffic(t *testing.T) {
 // TestRateLimiter_WindowReset tests that the window resets properly
 func TestRateLimiter_WindowReset(t *testing.T) {
 	// Create rate limiter with 5 requests per 100ms window
-	rl := NewRateLimiter(5, 100*time.Millisecond)
+	rl := NewRateLimiter(5, 100*time.Millisecond, 5*time.Minute)
+	defer rl.Stop()
 	ip := "192.168.1.1"
 
 	// Use up the limit
@@ -57,7 +59,8 @@ func TestRateLimiter_WindowReset(t *testing.T) {
 
 // TestRateLimiter_MultipleIPs tests rate limiting per IP
 func TestRateLimiter_MultipleIPs(t *testing.T) {
-	rl := NewRateLimiter(2, 100*time.Millisecond)
+	rl := NewRateLimiter(2, 100*time.Millisecond, 5*time.Minute)
+	defer rl.Stop()
 
 	ips := []string{"192.168.1.1", "192.168.1.2", "192.168.1.3"}
 
@@ -71,7 +74,8 @@ func TestRateLimiter_MultipleIPs(t *testing.T) {
 
 // TestRateLimiter_ConcurrentAccess tests thread safety
 func TestRateLimiter_ConcurrentAccess(t *testing.T) {
-	rl := NewRateLimiter(10, 100*time.Millisecond) // Lower limit to ensure some denials
+	rl := NewRateLimiter(10, 100*time.Millisecond, 5*time.Minute) // Lower limit to ensure some denials
+	defer rl.Stop()
 
 	const numGoroutines = 50
 	const requestsPerGoroutine = 20
@@ -106,7 +110,8 @@ func TestRateLimiter_ConcurrentAccess(t *testing.T) {
 
 // TestRateLimiter_CleanupOldEntries tests memory cleanup
 func TestRateLimiter_CleanupOldEntries(t *testing.T) {
-	rl := NewRateLimiter(1, 50*time.Millisecond)
+	rl := NewRateLimiter(1, 50*time.Millisecond, 100*time.Millisecond)
+	defer rl.Stop()
 
 	// Create entries for multiple IPs
 	for i := 0; i < 100; i++ {
@@ -142,7 +147,8 @@ func TestRateLimiter_CleanupOldEntries(t *testing.T) {
 
 // TestRateLimiter_EdgeCaseTimestamps tests edge cases with timestamps
 func TestRateLimiter_EdgeCaseTimestamps(t *testing.T) {
-	rl := NewRateLimiter(3, 50*time.Millisecond) // Reduced window for faster tests
+	rl := NewRateLimiter(3, 50*time.Millisecond, 5*time.Minute) // Reduced window for faster tests
+	defer rl.Stop()
 	ip := "192.168.1.1"
 
 	// Make some requests
@@ -165,7 +171,8 @@ func TestRateLimiter_EdgeCaseTimestamps(t *testing.T) {
 
 // TestRateLimiter_ZeroLimit tests behavior with zero limit
 func TestRateLimiter_ZeroLimit(t *testing.T) {
-	rl := NewRateLimiter(0, 1*time.Second)
+	rl := NewRateLimiter(0, 1*time.Second, 5*time.Minute)
+	defer rl.Stop()
 
 	// Should block all requests
 	assert.False(t, rl.Allow("127.0.0.1"))
@@ -174,7 +181,8 @@ func TestRateLimiter_ZeroLimit(t *testing.T) {
 
 // TestRateLimiter_NegativeLimit tests behavior with negative limit
 func TestRateLimiter_NegativeLimit(t *testing.T) {
-	rl := NewRateLimiter(-1, 1*time.Second)
+	rl := NewRateLimiter(-1, 1*time.Second, 5*time.Minute)
+	defer rl.Stop()
 
 	// Should block all requests (treated as 0)
 	assert.False(t, rl.Allow("127.0.0.1"))
@@ -182,7 +190,8 @@ func TestRateLimiter_NegativeLimit(t *testing.T) {
 
 // TestRateLimiter_VeryShortWindow tests with very short time windows
 func TestRateLimiter_VeryShortWindow(t *testing.T) {
-	rl := NewRateLimiter(1000, 1*time.Nanosecond)
+	rl := NewRateLimiter(1000, 1*time.Nanosecond, 5*time.Minute)
+	defer rl.Stop()
 
 	// With such a short window, all requests should be allowed
 	// as they expire immediately
@@ -193,7 +202,8 @@ func TestRateLimiter_VeryShortWindow(t *testing.T) {
 
 // TestRateLimiter_VeryLongWindow tests with very long time windows
 func TestRateLimiter_VeryLongWindow(t *testing.T) {
-	rl := NewRateLimiter(2, 24*time.Hour)
+	rl := NewRateLimiter(2, 24*time.Hour, 5*time.Minute)
+	defer rl.Stop()
 	ip := "192.168.1.1"
 
 	// Should enforce the limit strictly
@@ -208,7 +218,8 @@ func TestRateLimiter_VeryLongWindow(t *testing.T) {
 
 // TestRateLimiter_IPNormalization tests IP address normalization
 func TestRateLimiter_IPNormalization(t *testing.T) {
-	rl := NewRateLimiter(1, 100*time.Millisecond)
+	rl := NewRateLimiter(1, 100*time.Millisecond, 5*time.Minute)
+	defer rl.Stop()
 
 	// These should be treated as the same IP
 	ips := []string{
@@ -235,7 +246,8 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 		t.Skip("Skipping memory growth test in short mode")
 	}
 
-	rl := NewRateLimiter(10, 100*time.Millisecond)
+	rl := NewRateLimiter(10, 100*time.Millisecond, 100*time.Millisecond)
+	defer rl.Stop()
 
 	// Add many unique IPs
 	const numIPs = 10000
@@ -270,7 +282,8 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 
 // TestRateLimiter_RaceCondition tests for race conditions
 func TestRateLimiter_RaceCondition(t *testing.T) {
-	rl := NewRateLimiter(100, 100*time.Millisecond)
+	rl := NewRateLimiter(100, 100*time.Millisecond, 5*time.Minute)
+	defer rl.Stop()
 
 	// Run with -race flag to detect races
 	var wg sync.WaitGroup

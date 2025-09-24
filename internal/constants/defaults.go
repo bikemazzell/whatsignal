@@ -39,6 +39,14 @@ const (
 	DefaultSessionStatusTimeoutSec    = 5
 	DefaultWebhookMaxSkewSec          = 300
 	DefaultWebhookMaxBytes            = 5 * 1024 * 1024
+	DefaultRateLimitPerMinute         = 100
+	DefaultRateLimitCleanupMinutes    = 5
+	DefaultDBMaxOpenConnections       = 25
+	DefaultDBMaxIdleConnections       = 5
+	DefaultDBConnMaxLifetimeSec       = 300 // 5 minutes
+	DefaultDBConnMaxIdleTimeSec       = 60  // 1 minute
+	DefaultMediaDownloadTimeoutSec    = 30  // 30 seconds
+	DefaultSignalHTTPTimeoutSec       = 60  // 60 seconds
 )
 
 // Privacy settings

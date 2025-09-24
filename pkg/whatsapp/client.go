@@ -15,6 +15,7 @@ import (
 
 	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
+	"whatsignal/internal/service"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/sirupsen/logrus"
@@ -28,29 +29,42 @@ const (
 )
 
 type WhatsAppClient struct {
-	baseURL       string
-	apiKey        string
-	sessionName   string
-	client        *http.Client
-	sessionMgr    types.SessionManager
-	supportsVideo *bool // Cached video support status
-	logger        *logrus.Logger
+	baseURL        string
+	apiKey         string
+	sessionName    string
+	client         *http.Client
+	sessionMgr     types.SessionManager
+	supportsVideo  *bool // Cached video support status
+	logger         *logrus.Logger
+	circuitBreaker *service.CircuitBreaker
 }
 
 func NewClient(config types.ClientConfig) types.WAClient {
 	client := &WhatsAppClient{
-		baseURL:     config.BaseURL,
-		apiKey:      config.APIKey,
-		sessionName: config.SessionName,
-		client:      &http.Client{Timeout: config.Timeout},
-		sessionMgr:  NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
-		logger:      logrus.New(),
+		baseURL:        config.BaseURL,
+		apiKey:         config.APIKey,
+		sessionName:    config.SessionName,
+		client:         &http.Client{Timeout: config.Timeout},
+		sessionMgr:     NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
+		logger:         logrus.New(),
+		circuitBreaker: service.NewCircuitBreaker("whatsapp-api", 5, 30*time.Second),
 	}
 	return client
 }
 
 func (c *WhatsAppClient) GetSessionName() string {
 	return c.sessionName
+}
+
+// doRequestWithCircuitBreaker executes an HTTP request with circuit breaker protection
+func (c *WhatsAppClient) doRequestWithCircuitBreaker(ctx context.Context, req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	err := c.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+		var httpErr error
+		resp, httpErr = c.client.Do(req)
+		return httpErr
+	})
+	return resp, err
 }
 
 func (c *WhatsAppClient) CreateSession(ctx context.Context) error {
@@ -78,7 +92,7 @@ func (c *WhatsAppClient) RestartSession(ctx context.Context) error {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to restart session: %w", err)
 	}
@@ -537,7 +551,7 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}

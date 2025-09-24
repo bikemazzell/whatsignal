@@ -79,7 +79,7 @@ func TestExtractAttachmentPaths_WithRealFiles(t *testing.T) {
 				logger:         logger,
 			}
 
-			result := client.extractAttachmentPaths(tt.attachments)
+			result := client.extractAttachmentPaths(context.Background(), tt.attachments)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -167,7 +167,7 @@ func TestExtractAttachmentPaths_WithHTTPDownloads(t *testing.T) {
 				logger:         logger,
 			}
 
-			result := client.extractAttachmentPaths(tt.attachments)
+			result := client.extractAttachmentPaths(context.Background(), tt.attachments)
 
 			assert.Len(t, result, tt.expectedCount)
 
@@ -228,7 +228,7 @@ func TestExtractAttachmentPaths_TimeoutHandling(t *testing.T) {
 	}
 
 	// This should timeout and return empty slice
-	result := client.extractAttachmentPaths(attachments)
+	result := client.extractAttachmentPaths(context.Background(), attachments)
 	assert.Empty(t, result, "Should return empty slice when download times out")
 }
 
@@ -250,7 +250,7 @@ func TestExtractAttachmentPaths_NoHTTPClient(t *testing.T) {
 		{ID: "missing", Filename: "missing.jpg", ContentType: "image/jpeg"},
 	}
 
-	result := client.extractAttachmentPaths(attachments)
+	result := client.extractAttachmentPaths(context.Background(), attachments)
 	assert.Empty(t, result, "Should return empty slice when no HTTP client and files don't exist")
 }
 

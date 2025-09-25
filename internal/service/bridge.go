@@ -290,20 +290,20 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	var sendErr error
 
 	switch {
-	case len(attachments) > 0 && b.isImageAttachment(attachments[0]):
+	case len(attachments) > 0 && b.mediaRouter.IsImageAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendImage",
 		}).Debug("Sending image to WhatsApp")
 		resp, sendErr = b.waClient.SendImageWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
-	case len(attachments) > 0 && b.isVideoAttachment(attachments[0]):
+	case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendVideo",
 		}).Debug("Sending video to WhatsApp")
 		// The WhatsApp client will automatically handle video support detection
 		resp, sendErr = b.waClient.SendVideoWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
-	case len(attachments) > 0 && b.isVoiceAttachment(attachments[0]):
+	case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID": msg.MessageID,
 			"method":    "SendVoice",
@@ -354,7 +354,7 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 
 	if len(attachments) > 0 {
 		newMapping.MediaPath = &attachments[0]
-		newMapping.MediaType = b.getMediaType(attachments[0])
+		newMapping.MediaType = b.mediaRouter.GetMediaType(attachments[0])
 	}
 
 	if err := b.db.SaveMessageMapping(ctx, newMapping); err != nil {
@@ -451,25 +451,7 @@ func (b *bridge) processSignalAttachments(attachments []string) ([]string, error
 	return processed, nil
 }
 
-func (b *bridge) isImageAttachment(path string) bool {
-	return b.mediaRouter.IsImageAttachment(path)
-}
-
-func (b *bridge) isVideoAttachment(path string) bool {
-	return b.mediaRouter.IsVideoAttachment(path)
-}
-
-func (b *bridge) isDocumentAttachment(path string) bool {
-	return b.mediaRouter.IsDocumentAttachment(path)
-}
-
-func (b *bridge) isVoiceAttachment(path string) bool {
-	return b.mediaRouter.IsVoiceAttachment(path)
-}
-
-func (b *bridge) getMediaType(path string) string {
-	return b.mediaRouter.GetMediaType(path)
-}
+// Removed wrapper methods - use b.mediaRouter directly
 
 func (b *bridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error {
 	return b.db.UpdateDeliveryStatus(ctx, msgID, string(status))

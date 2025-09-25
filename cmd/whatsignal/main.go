@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -162,49 +163,8 @@ func run(ctx context.Context) error {
 
 	syncOnStartup := cfg.WhatsApp.ContactSyncOnStartup
 	if syncOnStartup {
-		// Sync contacts for all configured sessions
-		for _, channel := range cfg.Channels {
-			sessionName := channel.WhatsAppSessionName
-			logger.WithField("session", sessionName).Info("Waiting for WhatsApp session to be ready...")
-
-			// Create a client for this specific session
-			sessionClient := whatsapp.NewClient(types.ClientConfig{
-				BaseURL:     cfg.WhatsApp.APIBaseURL,
-				APIKey:      apiKey,
-				SessionName: sessionName,
-				Timeout:     cfg.WhatsApp.Timeout,
-				RetryCount:  cfg.WhatsApp.RetryCount,
-			})
-
-			// Wait for session to be ready
-			sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
-			if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
-				logger.WithField("session", sessionName).Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
-				continue
-			}
-
-			logger.WithField("session", sessionName).Info("WhatsApp session is ready. Syncing contacts...")
-
-			// Check session status before attempting contact sync
-			sessionStatus, err := sessionClient.GetSessionStatus(ctx)
-			if err != nil {
-				logger.WithField("session", sessionName).Warnf("Failed to get session status before contact sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping contact sync.", err)
-				continue
-			}
-
-			if sessionStatus == nil || sessionStatus.Status != "WORKING" {
-				logger.WithField("session", sessionName).Warnf("Session status is %v, not WORKING. Skipping contact sync.", sessionStatus)
-				continue
-			}
-
-			// Create a contact service for this session
-			sessionContactService := service.NewContactServiceWithConfig(db, sessionClient, cacheHours)
-			if err := sessionContactService.SyncAllContacts(ctx); err != nil {
-				logger.WithField("session", sessionName).Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
-			} else {
-				logger.WithField("session", sessionName).Info("Contact sync completed successfully")
-			}
-		}
+		// Sync contacts for all configured sessions in parallel
+		syncParallelContacts(ctx, cfg, db, apiKey, cacheHours, logger)
 	} else {
 		logger.Info("Contact sync on startup is disabled")
 	}
@@ -291,4 +251,87 @@ func validateConfig(cfg *models.Config) error {
 		return fmt.Errorf("media cache directory is required")
 	}
 	return nil
+}
+
+// syncParallelContacts performs contact sync for all sessions in parallel with bounded concurrency
+func syncParallelContacts(ctx context.Context, cfg *models.Config, db *database.Database, apiKey string, cacheHours int, logger *logrus.Logger) {
+	channels := cfg.Channels
+	if len(channels) == 0 {
+		return
+	}
+
+	// Use bounded concurrency to avoid overwhelming the system
+	maxConcurrency := constants.DefaultContactSyncBatchSize / 10 // Conservative limit based on batch size
+	if maxConcurrency < 1 {
+		maxConcurrency = 1
+	}
+	if maxConcurrency > 5 {
+		maxConcurrency = 5 // Cap at 5 concurrent sessions
+	}
+
+	semaphore := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	logger.WithField("sessions", len(channels)).WithField("max_concurrent", maxConcurrency).Info("Starting parallel contact sync")
+
+	for _, channel := range channels {
+		wg.Add(1)
+		go func(sessionName string) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			syncSessionContacts(ctx, cfg, db, apiKey, sessionName, cacheHours, logger)
+		}(channel.WhatsAppSessionName)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	logger.Info("Parallel contact sync completed")
+}
+
+// syncSessionContacts handles contact sync for a single session
+func syncSessionContacts(ctx context.Context, cfg *models.Config, db *database.Database, apiKey, sessionName string, cacheHours int, logger *logrus.Logger) {
+	sessionLogger := logger.WithField("session", sessionName)
+	sessionLogger.Info("Waiting for WhatsApp session to be ready...")
+
+	// Create a client for this specific session
+	sessionClient := whatsapp.NewClient(types.ClientConfig{
+		BaseURL:     cfg.WhatsApp.APIBaseURL,
+		APIKey:      apiKey,
+		SessionName: sessionName,
+		Timeout:     cfg.WhatsApp.Timeout,
+		RetryCount:  cfg.WhatsApp.RetryCount,
+	})
+
+	// Wait for session to be ready
+	sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
+	if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
+		sessionLogger.Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
+		return
+	}
+
+	sessionLogger.Info("WhatsApp session is ready. Syncing contacts...")
+
+	// Check session status before attempting contact sync
+	sessionStatus, err := sessionClient.GetSessionStatus(ctx)
+	if err != nil {
+		sessionLogger.Warnf("Failed to get session status before contact sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping contact sync.", err)
+		return
+	}
+
+	if sessionStatus == nil || sessionStatus.Status != "WORKING" {
+		sessionLogger.Warnf("Session status is %v, not WORKING. Skipping contact sync.", sessionStatus)
+		return
+	}
+
+	// Create a contact service for this session
+	sessionContactService := service.NewContactServiceWithConfig(db, sessionClient, cacheHours)
+	if err := sessionContactService.SyncAllContacts(ctx); err != nil {
+		sessionLogger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
+	} else {
+		sessionLogger.Info("Contact sync completed successfully")
+	}
 }

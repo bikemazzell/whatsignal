@@ -108,6 +108,12 @@ func (d *Database) Close() error {
 }
 
 func (d *Database) SaveMessageMapping(ctx context.Context, mapping *models.MessageMapping) error {
+	return retryableDBOperationNoReturn(ctx, func() error {
+		return d.saveMessageMappingInternal(ctx, mapping)
+	}, "SaveMessageMapping")
+}
+
+func (d *Database) saveMessageMappingInternal(ctx context.Context, mapping *models.MessageMapping) error {
 	// Encrypt fields with randomized AEAD for storage
 	encryptedChatID, err := d.encryptor.EncryptIfEnabled(mapping.WhatsAppChatID)
 	if err != nil {
@@ -363,6 +369,12 @@ func (d *Database) UpdateDeliveryStatusBySignalID(ctx context.Context, signalID 
 }
 
 func (d *Database) UpdateDeliveryStatus(ctx context.Context, id string, status string) error {
+	return retryableDBOperationNoReturn(ctx, func() error {
+		return d.updateDeliveryStatusInternal(ctx, id, status)
+	}, "UpdateDeliveryStatus")
+}
+
+func (d *Database) updateDeliveryStatusInternal(ctx context.Context, id string, status string) error {
 	// Try WhatsApp ID first
 	err := d.UpdateDeliveryStatusByWhatsAppID(ctx, id, status)
 	if err == nil {

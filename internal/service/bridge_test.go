@@ -698,11 +698,11 @@ func TestMediaTypeDetection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.isImage, bridge.isImageAttachment(tt.path))
-			assert.Equal(t, tt.isVideo, bridge.isVideoAttachment(tt.path))
-			assert.Equal(t, tt.isVoice, bridge.isVoiceAttachment(tt.path))
-			assert.Equal(t, tt.isDoc, bridge.isDocumentAttachment(tt.path))
-			assert.Equal(t, tt.mediaType, bridge.getMediaType(tt.path))
+			assert.Equal(t, tt.isImage, bridge.mediaRouter.IsImageAttachment(tt.path))
+			assert.Equal(t, tt.isVideo, bridge.mediaRouter.IsVideoAttachment(tt.path))
+			assert.Equal(t, tt.isVoice, bridge.mediaRouter.IsVoiceAttachment(tt.path))
+			assert.Equal(t, tt.isDoc, bridge.mediaRouter.IsDocumentAttachment(tt.path))
+			assert.Equal(t, tt.mediaType, bridge.mediaRouter.GetMediaType(tt.path))
 		})
 	}
 }

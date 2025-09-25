@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standardized logging patterns and field names across the codebase
 - Added comprehensive configuration validation for numeric ranges and retry settings
 - Made encryption salts configurable via environment variables (backward compatible)
+- Eliminated duplicate media processing wrapper methods in bridge service
+- Implemented parallel contact sync with bounded concurrency for faster startup
+- Added retry logic for database operations with exponential backoff and smart error detection
 
 ### Changed
 - File permissions and PBKDF2 iterations now use named constants instead of magic numbers

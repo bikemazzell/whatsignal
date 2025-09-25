@@ -27,7 +27,7 @@ const (
 
 // ValidationError represents a validation error that should return HTTP 400
 type ValidationError struct {
-	Message string
+	Message string `json:"message"`
 }
 
 func (e ValidationError) Error() string {
@@ -148,8 +148,20 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Rate limiting
 		clientIP := GetClientIP(r)
-		if !s.rateLimiter.Allow(clientIP) {
+		rateLimitInfo := s.rateLimiter.AllowWithInfo(clientIP)
+
+		// Add rate limit headers
+		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", rateLimitInfo.Limit))
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitInfo.Remaining))
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitInfo.ResetTime.Unix()))
+
+		if !rateLimitInfo.Allowed {
 			s.logger.WithField("remote_ip", clientIP).Warn("Rate limit exceeded")
+			// Add Retry-After header indicating when they can try again
+			retryAfter := int(time.Until(rateLimitInfo.ResetTime).Seconds())
+			if retryAfter > 0 {
+				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+			}
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -160,23 +172,27 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-		// Content-Type validation and size limit for POST requests
-		if r.Method == http.MethodPost {
-			contentType := r.Header.Get("Content-Type")
-			if !strings.Contains(contentType, "application/json") {
-				s.logger.WithFields(logrus.Fields{
-					"remote_ip":    clientIP,
-					"content_type": contentType,
-				}).Warn("Invalid content type for webhook")
-				http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
-				return
-			}
-			// Enforce max request size
+		// Content-Type validation and size limit for requests with bodies
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
+			// Enforce max request size for all endpoints with bodies
 			maxBytes := s.cfg.Server.WebhookMaxBytes
 			if maxBytes <= 0 {
 				maxBytes = constants.DefaultWebhookMaxBytes
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
+
+			// Additional validation for webhook endpoints (POST to webhook paths)
+			if r.Method == http.MethodPost && (strings.Contains(r.URL.Path, "webhook") || strings.Contains(r.URL.Path, "whatsapp") || strings.Contains(r.URL.Path, "signal")) {
+				contentType := r.Header.Get("Content-Type")
+				if !strings.Contains(contentType, "application/json") {
+					s.logger.WithFields(logrus.Fields{
+						"remote_ip":    clientIP,
+						"content_type": contentType,
+					}).Warn("Invalid content type for webhook")
+					http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+					return
+				}
+			}
 		}
 
 		// Log security-relevant information

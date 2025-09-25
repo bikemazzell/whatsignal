@@ -38,6 +38,43 @@ type ReactionRequest struct {
 	Reaction  string `json:"reaction"`
 }
 
+// SeenRequest represents the request to mark messages as seen
+type SeenRequest struct {
+	ChatID  string `json:"chatId"`
+	Session string `json:"session"`
+}
+
+// TypingRequest represents the request to start/stop typing indicator
+type TypingRequest struct {
+	ChatID  string `json:"chatId"`
+	Session string `json:"session"`
+}
+
+// SendMessageRequest represents the base request for sending messages
+type SendMessageRequest struct {
+	ChatID  string `json:"chatId"`
+	Text    string `json:"text"`
+	Session string `json:"session"`
+}
+
+// FileData represents file information for media messages
+type FileData struct {
+	Mimetype string `json:"mimetype"`
+	Filename string `json:"filename"`
+	Data     string `json:"data"`
+}
+
+// MediaMessageRequest represents the request for sending media messages
+type MediaMessageRequest struct {
+	ChatID  string   `json:"chatId"`
+	File    FileData `json:"file"`
+	Caption string   `json:"caption,omitempty"`
+	Session string   `json:"session"`
+	ReplyTo string   `json:"reply_to,omitempty"`
+	Convert *bool    `json:"convert,omitempty"` // For video conversion
+	AsNote  *bool    `json:"asNote,omitempty"`  // For video notes (rounded videos)
+}
+
 // MessagePayload represents a message payload in a webhook
 type MessagePayload struct {
 	ID        string    `json:"id"`
@@ -114,11 +151,11 @@ type ContactsResponse struct {
 
 // ClientConfig represents the configuration for WhatsApp client
 type ClientConfig struct {
-	BaseURL     string
-	APIKey      string
-	SessionName string
-	Timeout     time.Duration
-	RetryCount  int
+	BaseURL     string        `json:"base_url" validate:"required,url"`
+	APIKey      string        `json:"api_key" validate:"required"`
+	SessionName string        `json:"session_name" validate:"required"`
+	Timeout     time.Duration `json:"timeout" validate:"required"`
+	RetryCount  int           `json:"retry_count" validate:"min=1,max=10"`
 }
 
 // ServerVersion represents WAHA server version info from /api/server/version

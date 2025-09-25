@@ -128,6 +128,27 @@ func validate(c *models.Config) error {
 	if c.WhatsApp.PollIntervalSec <= 0 {
 		c.WhatsApp.PollIntervalSec = constants.DefaultWhatsAppPollIntervalSec
 	}
+
+	// Set default tracing configuration if not provided
+	if c.Tracing.ServiceName == "" {
+		c.Tracing.ServiceName = "whatsignal"
+	}
+	if c.Tracing.ServiceVersion == "" {
+		c.Tracing.ServiceVersion = "dev"
+	}
+	if c.Tracing.Environment == "" {
+		c.Tracing.Environment = "development"
+	}
+	if c.Tracing.JaegerEndpoint == "" {
+		c.Tracing.JaegerEndpoint = "http://localhost:14268/api/traces"
+	}
+	if c.Tracing.SampleRate == 0 {
+		c.Tracing.SampleRate = 0.1 // 10% sampling
+	}
+	// UseStdout defaults to true if Jaeger endpoint is default and tracing is enabled
+	if !c.Tracing.Enabled {
+		c.Tracing.UseStdout = true
+	}
 	// Set default timeout if not provided
 	if c.WhatsApp.Timeout == 0 {
 		c.WhatsApp.Timeout = time.Duration(constants.DefaultWhatsAppTimeoutMs) * time.Millisecond

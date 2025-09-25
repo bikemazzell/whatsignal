@@ -60,8 +60,8 @@ func TestObservabilityMiddleware(t *testing.T) {
 
 	// Verify metrics were recorded
 	allMetrics := metrics.GetAllMetrics()
-	counters := allMetrics["counters"].(map[string]*metrics.Metric)
-	timers := allMetrics["timers"].(map[string]*metrics.TimerMetric)
+	counters := allMetrics.Counters
+	timers := allMetrics.Timers
 
 	// Check for HTTP request metrics
 	found := false
@@ -178,8 +178,8 @@ func TestWebhookObservabilityMiddleware(t *testing.T) {
 
 	// Verify webhook-specific metrics
 	allMetrics := metrics.GetAllMetrics()
-	counters := allMetrics["counters"].(map[string]*metrics.Metric)
-	timers := allMetrics["timers"].(map[string]*metrics.TimerMetric)
+	counters := allMetrics.Counters
+	timers := allMetrics.Timers
 
 	// Check for webhook request metrics
 	found := false
@@ -263,7 +263,7 @@ func TestWebhookObservabilityMiddleware_Error(t *testing.T) {
 
 	// Verify webhook error metrics
 	allMetrics := metrics.GetAllMetrics()
-	counters := allMetrics["counters"].(map[string]*metrics.Metric)
+	counters := allMetrics.Counters
 
 	// Check for webhook error metrics
 	found := false
@@ -414,7 +414,7 @@ func TestMiddleware_MetricsAccumulation(t *testing.T) {
 
 	// Verify metrics accumulation
 	allMetrics := metrics.GetAllMetrics()
-	counters := allMetrics["counters"].(map[string]*metrics.Metric)
+	counters := allMetrics.Counters
 
 	// Find the total requests counter
 	var totalRequests float64
@@ -463,7 +463,7 @@ func TestMiddleware_ConcurrentRequests(t *testing.T) {
 
 	// Verify that requests were tracked
 	allMetrics := metrics.GetAllMetrics()
-	counters := allMetrics["counters"].(map[string]*metrics.Metric)
+	counters := allMetrics.Counters
 
 	var totalRequests float64
 	for key, counter := range counters {

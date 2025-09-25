@@ -168,8 +168,22 @@ func (rl *RateLimiter) cleanup() {
 	rl.lastCleanup = now
 }
 
+// RateLimitInfo contains information about rate limit status
+type RateLimitInfo struct {
+	Allowed   bool
+	Limit     int
+	Remaining int
+	ResetTime time.Time
+}
+
 // Allow checks if a request from the given IP is allowed
 func (rl *RateLimiter) Allow(ip string) bool {
+	info := rl.AllowWithInfo(ip)
+	return info.Allowed
+}
+
+// AllowWithInfo checks if a request from the given IP is allowed and returns detailed info
+func (rl *RateLimiter) AllowWithInfo(ip string) RateLimitInfo {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -191,17 +205,43 @@ func (rl *RateLimiter) Allow(ip string) bool {
 		}
 	}
 
+	currentCount := len(rl.requests[ip])
+
+	// Calculate reset time (when oldest request will expire)
+	resetTime := now.Add(rl.window)
+	if currentCount > 0 {
+		oldestRequest := rl.requests[ip][0]
+		resetTime = oldestRequest.Add(rl.window)
+	}
+
 	// Check if limit exceeded
 	if rl.limit <= 0 {
-		return false
+		return RateLimitInfo{
+			Allowed:   false,
+			Limit:     rl.limit,
+			Remaining: 0,
+			ResetTime: resetTime,
+		}
 	}
-	if len(rl.requests[ip]) >= rl.limit {
-		return false
+
+	if currentCount >= rl.limit {
+		return RateLimitInfo{
+			Allowed:   false,
+			Limit:     rl.limit,
+			Remaining: 0,
+			ResetTime: resetTime,
+		}
 	}
 
 	// Add current request
 	rl.requests[ip] = append(rl.requests[ip], now)
-	return true
+
+	return RateLimitInfo{
+		Allowed:   true,
+		Limit:     rl.limit,
+		Remaining: rl.limit - currentCount - 1,
+		ResetTime: resetTime,
+	}
 }
 
 // GetClientIP extracts the real client IP from the request

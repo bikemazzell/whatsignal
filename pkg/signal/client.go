@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
+	"whatsignal/pkg/constants"
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"

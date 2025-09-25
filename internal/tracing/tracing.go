@@ -24,10 +24,10 @@ const (
 
 // RequestInfo contains tracing information for a request
 type RequestInfo struct {
-	RequestID string
-	TraceID   string
-	SpanID    string
-	StartTime time.Time
+	RequestID string    `json:"request_id"`
+	TraceID   string    `json:"trace_id"`
+	SpanID    string    `json:"span_id"`
+	StartTime time.Time `json:"start_time"`
 }
 
 // GenerateRequestID generates a unique request ID

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,15 +13,35 @@ import (
 	"whatsignal/internal/tracing"
 
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // ObservabilityMiddleware adds metrics collection and tracing to HTTP requests
 func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Add tracing information to request context
-			ctx := tracing.WithFullTracing(r.Context())
+			// Add tracing information to request context (legacy + OpenTelemetry)
+			ctx, span := tracing.WithOtelTracing(r.Context(), "http_request")
+			defer span.End()
+
+			// Generate and add request ID for legacy tracing
+			requestID := tracing.GenerateRequestID()
+			ctx = tracing.WithRequestID(ctx, requestID)
+			ctx = tracing.WithStartTime(ctx, time.Now())
+
 			r = r.WithContext(ctx)
+
+			// Add HTTP-specific OpenTelemetry attributes
+			tracing.AddSpanAttributes(ctx,
+				attribute.String("http.method", r.Method),
+				attribute.String("http.url", r.URL.String()),
+				attribute.String("http.scheme", r.URL.Scheme),
+				attribute.String("http.host", r.Host),
+				attribute.String("http.route", r.URL.Path),
+				attribute.String("user_agent.original", r.Header.Get("User-Agent")),
+				attribute.String("client.address", GetClientIP(r)),
+			)
 
 			// Get tracing info for logging
 			requestInfo := tracing.GetRequestInfo(ctx)
@@ -60,6 +81,20 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 
 			// Calculate request duration
 			duration := tracing.Duration(ctx)
+
+			// Add final OpenTelemetry attributes
+			tracing.AddSpanAttributes(ctx,
+				attribute.Int("http.response.status_code", wrapper.statusCode),
+				attribute.Int64("http.response.size", wrapper.responseSize),
+				attribute.Int64("http.request.duration_ms", duration.Milliseconds()),
+			)
+
+			// Set OpenTelemetry span status based on HTTP status
+			if wrapper.statusCode >= 400 {
+				tracing.SetSpanStatus(ctx, codes.Error, fmt.Sprintf("HTTP %d", wrapper.statusCode))
+			} else {
+				tracing.SetSpanStatus(ctx, codes.Ok, "")
+			}
 
 			// Record timing metrics
 			metrics.RecordTimer("http_request_duration", duration, map[string]string{
@@ -112,6 +147,21 @@ func WebhookObservabilityMiddleware(logger *logrus.Logger, webhookType string) f
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			startTime := time.Now()
 
+			// Start OpenTelemetry span for webhook
+			ctx, span := tracing.WithOtelTracing(r.Context(), "webhook_request")
+			defer span.End()
+			r = r.WithContext(ctx)
+
+			// Add webhook-specific OpenTelemetry attributes
+			tracing.AddSpanAttributes(ctx,
+				attribute.String("webhook.type", webhookType),
+				attribute.String("http.method", r.Method),
+				attribute.String("http.url", r.URL.String()),
+				attribute.String("client.address", GetClientIP(r)),
+				attribute.String("http.request.header.content-type", r.Header.Get("Content-Type")),
+				attribute.Int64("http.request.content_length", r.ContentLength),
+			)
+
 			// Increment webhook-specific metrics
 			metrics.IncrementCounter("webhook_requests_total", map[string]string{
 				"type": webhookType,
@@ -150,6 +200,20 @@ func WebhookObservabilityMiddleware(logger *logrus.Logger, webhookType string) f
 
 			// Calculate processing time
 			processingTime := time.Since(startTime)
+
+			// Add final OpenTelemetry attributes for webhook
+			tracing.AddSpanAttributes(ctx,
+				attribute.Int("http.response.status_code", wrapper.statusCode),
+				attribute.Int64("http.response.size", wrapper.responseSize),
+				attribute.Int64("webhook.processing_duration_ms", processingTime.Milliseconds()),
+			)
+
+			// Set OpenTelemetry span status for webhook
+			if wrapper.statusCode >= 400 {
+				tracing.SetSpanStatus(ctx, codes.Error, fmt.Sprintf("Webhook failed with HTTP %d", wrapper.statusCode))
+			} else {
+				tracing.SetSpanStatus(ctx, codes.Ok, "Webhook processed successfully")
+			}
 
 			// Record webhook timing
 			metrics.RecordTimer("webhook_processing_duration", processingTime, map[string]string{

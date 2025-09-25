@@ -39,6 +39,15 @@ type TimerMetric struct {
 	samples []float64
 }
 
+// MetricsSnapshot represents a snapshot of all metrics
+type MetricsSnapshot struct {
+	Counters  map[string]*Metric      `json:"counters"`
+	Timers    map[string]*TimerMetric `json:"timers"`
+	Gauges    map[string]*Metric      `json:"gauges"`
+	UptimeMs  int64                   `json:"uptime_ms"`
+	Timestamp int64                   `json:"timestamp"`
+}
+
 // Registry manages all metrics in memory
 type Registry struct {
 	mu        sync.RWMutex
@@ -153,31 +162,31 @@ func (r *Registry) SetGauge(name string, value float64, labels map[string]string
 }
 
 // GetAllMetrics returns all metrics in a structured format
-func (r *Registry) GetAllMetrics() map[string]interface{} {
+func (r *Registry) GetAllMetrics() *MetricsSnapshot {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := map[string]interface{}{
-		"counters":  make(map[string]*Metric),
-		"timers":    make(map[string]*TimerMetric),
-		"gauges":    make(map[string]*Metric),
-		"uptime_ms": time.Since(r.startTime).Milliseconds(),
-		"timestamp": time.Now().Unix(),
+	result := &MetricsSnapshot{
+		Counters:  make(map[string]*Metric),
+		Timers:    make(map[string]*TimerMetric),
+		Gauges:    make(map[string]*Metric),
+		UptimeMs:  time.Since(r.startTime).Milliseconds(),
+		Timestamp: time.Now().Unix(),
 	}
 
 	// Copy counters
 	for key, counter := range r.counters {
-		result["counters"].(map[string]*Metric)[key] = counter
+		result.Counters[key] = counter
 	}
 
 	// Copy timers
 	for key, timer := range r.timers {
-		result["timers"].(map[string]*TimerMetric)[key] = timer
+		result.Timers[key] = timer
 	}
 
 	// Copy gauges
 	for key, gauge := range r.gauges {
-		result["gauges"].(map[string]*Metric)[key] = gauge
+		result.Gauges[key] = gauge
 	}
 
 	return result
@@ -259,6 +268,6 @@ func SetGauge(name string, value float64, labels map[string]string, description 
 }
 
 // GetAllMetrics returns all metrics from the global registry
-func GetAllMetrics() map[string]interface{} {
+func GetAllMetrics() *MetricsSnapshot {
 	return globalRegistry.GetAllMetrics()
 }

@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"whatsignal/internal/constants"
 	"whatsignal/internal/media"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
+	"whatsignal/pkg/constants"
 )
 
 type Handler interface {
@@ -236,7 +236,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	// Copy response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		_ = os.Remove(tempFile.Name())
+		_ = os.Remove(tempFile.Name()) // Best effort cleanup after copy failure
 		return "", "", fmt.Errorf("failed to save downloaded file: %w", err)
 	}
 

@@ -15,7 +15,9 @@ import (
 	"whatsignal/internal/constants"
 	"whatsignal/internal/database"
 	"whatsignal/internal/models"
+	"whatsignal/internal/retry"
 	"whatsignal/internal/service"
+	"whatsignal/internal/tracing"
 	"whatsignal/pkg/media"
 	signalapi "whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp"
@@ -89,15 +91,45 @@ func run(ctx context.Context) error {
 		logger.SetLevel(logrus.InfoLevel)
 	}
 
-	var db *database.Database
-	for attempts := 0; attempts < constants.DefaultDatabaseRetryAttempts; attempts++ {
-		db, err = database.New(cfg.Database.Path, &cfg.Database)
-		if err == nil {
-			break
-		}
-		logger.Warnf("Failed to initialize database (attempt %d/%d): %v", attempts+1, constants.DefaultDatabaseRetryAttempts, err)
-		time.Sleep(time.Second * time.Duration(attempts+1))
+	// Initialize OpenTelemetry tracing
+	tracingManager := tracing.NewTracingManager(tracing.TracingConfig{
+		ServiceName:    cfg.Tracing.ServiceName,
+		ServiceVersion: cfg.Tracing.ServiceVersion,
+		Environment:    cfg.Tracing.Environment,
+		JaegerEndpoint: cfg.Tracing.JaegerEndpoint,
+		SampleRate:     cfg.Tracing.SampleRate,
+		Enabled:        cfg.Tracing.Enabled,
+		UseStdout:      cfg.Tracing.UseStdout,
+	}, logger)
+
+	if err := tracingManager.Initialize(ctx); err != nil {
+		logger.Warnf("Failed to initialize tracing: %v", err)
 	}
+	defer func() {
+		if err := tracingManager.Shutdown(context.Background()); err != nil {
+			logger.Warnf("Failed to shutdown tracing: %v", err)
+		}
+	}()
+
+	// Initialize database with exponential backoff retry
+	var db *database.Database
+	backoffConfig := retry.BackoffConfig{
+		InitialDelay: time.Duration(cfg.Retry.InitialBackoffMs) * time.Millisecond,
+		MaxDelay:     time.Duration(cfg.Retry.MaxBackoffMs) * time.Millisecond,
+		Multiplier:   2.0,
+		MaxAttempts:  constants.DefaultDatabaseRetryAttempts,
+		Jitter:       true,
+	}
+	backoff := retry.NewBackoff(backoffConfig)
+
+	err = backoff.Retry(ctx, func() error {
+		var initErr error
+		db, initErr = database.New(cfg.Database.Path, &cfg.Database)
+		if initErr != nil {
+			logger.Warnf("Failed to initialize database: %v", initErr)
+		}
+		return initErr
+	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize database after retries: %w", err)
 	}

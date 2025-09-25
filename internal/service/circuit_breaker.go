@@ -77,7 +77,7 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, fn func(ctx context.Conte
 		)
 	} else {
 		cb.recordSuccess()
-		cb.logger.WithContext(logrus.Fields{
+		cb.logger.WithFields(logrus.Fields{
 			"service":     cb.name,
 			"duration_ms": duration.Milliseconds(),
 		}).Debug("Circuit breaker success recorded")
@@ -99,7 +99,7 @@ func (cb *CircuitBreaker) allowRequest() bool {
 		if time.Since(cb.lastFailureTime) > cb.timeout {
 			cb.state = StateHalfOpen
 			cb.halfOpenCalls = 0
-			cb.logger.WithContext(logrus.Fields{
+			cb.logger.WithFields(logrus.Fields{
 				"service": cb.name,
 			}).Info("Circuit breaker transitioning to half-open")
 			return true
@@ -126,7 +126,7 @@ func (cb *CircuitBreaker) recordFailure() {
 	case StateClosed:
 		if cb.failures >= cb.maxFailures {
 			cb.state = StateOpen
-			cb.logger.WithContext(logrus.Fields{
+			cb.logger.WithFields(logrus.Fields{
 				"service":      cb.name,
 				"failures":     cb.failures,
 				"max_failures": cb.maxFailures,
@@ -134,7 +134,7 @@ func (cb *CircuitBreaker) recordFailure() {
 		}
 	case StateHalfOpen:
 		cb.state = StateOpen
-		cb.logger.WithContext(logrus.Fields{
+		cb.logger.WithFields(logrus.Fields{
 			"service": cb.name,
 		}).Warn("Circuit breaker reopened from half-open state")
 	}
@@ -154,7 +154,7 @@ func (cb *CircuitBreaker) recordSuccess() {
 		if cb.halfOpenCalls >= cb.halfOpenMaxCalls {
 			cb.state = StateClosed
 			cb.failures = 0
-			cb.logger.WithContext(logrus.Fields{
+			cb.logger.WithFields(logrus.Fields{
 				"service": cb.name,
 			}).Info("Circuit breaker closed after successful half-open tests")
 		}
@@ -199,7 +199,7 @@ func (cb *CircuitBreaker) Reset() {
 	atomic.StoreUint32(&cb.successCount, 0)
 	atomic.StoreUint32(&cb.requestCount, 0)
 
-	cb.logger.WithContext(logrus.Fields{
+	cb.logger.WithFields(logrus.Fields{
 		"service": cb.name,
 	}).Info("Circuit breaker manually reset")
 }

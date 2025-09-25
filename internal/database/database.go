@@ -31,7 +31,7 @@ func New(dbPath string, cfg *models.DatabaseConfig) (*Database, error) {
 		return nil, fmt.Errorf("invalid database path: %w", err)
 	}
 
-	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600) // #nosec G304 - Path validated by security.ValidateFilePath above
+	file, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, constants.DefaultFilePermissions) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database file: %w", err)
 	}

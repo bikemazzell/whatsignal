@@ -103,8 +103,23 @@ const (
 	MaxSessionNameLength = 64  // Maximum allowed session name length
 )
 
-// Encryption constants
+// File permission constants
 const (
-	EncryptionSalt       = "whatsignal-salt-v1"
-	EncryptionLookupSalt = "whatsignal-lookup-salt-v1"
+	DefaultFilePermissions      = 0600 // Read/write for owner only
+	DefaultDirectoryPermissions = 0750 // Read/write/execute for owner, read/execute for group
+)
+
+// Encryption constants
+// DEPRECATED: These default salts are retained for backward compatibility only.
+// New deployments should set WHATSIGNAL_ENCRYPTION_SALT and WHATSIGNAL_ENCRYPTION_LOOKUP_SALT
+// environment variables with unique, randomly generated salts.
+const (
+	EncryptionSalt       = "whatsignal-salt-v1"        // Default salt for backward compatibility
+	EncryptionLookupSalt = "whatsignal-lookup-salt-v1" // Default lookup salt for backward compatibility
+	PBKDF2Iterations     = 100000                      // PBKDF2 iterations for key derivation
+)
+
+// Validation limits
+const (
+	MaxRateLimitPerMinute = 10000 // Maximum allowed rate limit per minute
 )

@@ -3,11 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"whatsignal/internal/constants"
+	intmedia "whatsignal/internal/media"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
@@ -48,6 +48,7 @@ type bridge struct {
 	media          media.Handler
 	retryConfig    models.RetryConfig
 	mediaConfig    models.MediaConfig
+	mediaRouter    intmedia.Router
 	logger         *logrus.Logger
 	contactService ContactServiceInterface
 	channelManager *ChannelManager
@@ -62,6 +63,7 @@ func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseServ
 		media:          mh,
 		retryConfig:    rc,
 		mediaConfig:    mc,
+		mediaRouter:    intmedia.NewRouter(mc),
 		logger:         logrus.New(),
 		contactService: contactService,
 		channelManager: channelManager,
@@ -450,56 +452,23 @@ func (b *bridge) processSignalAttachments(attachments []string) ([]string, error
 }
 
 func (b *bridge) isImageAttachment(path string) bool {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
-	for _, allowedExt := range b.mediaConfig.AllowedTypes.Image {
-		if ext == strings.ToLower(allowedExt) {
-			return true
-		}
-	}
-	return false
+	return b.mediaRouter.IsImageAttachment(path)
 }
 
 func (b *bridge) isVideoAttachment(path string) bool {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
-	for _, allowedExt := range b.mediaConfig.AllowedTypes.Video {
-		if ext == strings.ToLower(allowedExt) {
-			return true
-		}
-	}
-	return false
+	return b.mediaRouter.IsVideoAttachment(path)
 }
 
 func (b *bridge) isDocumentAttachment(path string) bool {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
-	for _, allowedExt := range b.mediaConfig.AllowedTypes.Document {
-		if ext == strings.ToLower(allowedExt) {
-			return true
-		}
-	}
-	return false
+	return b.mediaRouter.IsDocumentAttachment(path)
 }
 
 func (b *bridge) isVoiceAttachment(path string) bool {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
-	for _, allowedExt := range b.mediaConfig.AllowedTypes.Voice {
-		if ext == strings.ToLower(allowedExt) {
-			return true
-		}
-	}
-	return false
+	return b.mediaRouter.IsVoiceAttachment(path)
 }
 
 func (b *bridge) getMediaType(path string) string {
-	switch {
-	case b.isImageAttachment(path):
-		return "image"
-	case b.isVideoAttachment(path):
-		return "video"
-	case b.isVoiceAttachment(path):
-		return "voice"
-	default:
-		return "document" // Default everything else to document
-	}
+	return b.mediaRouter.GetMediaType(path)
 }
 
 func (b *bridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error {

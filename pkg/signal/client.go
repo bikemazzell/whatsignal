@@ -365,7 +365,7 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 	// Ensure attachments directory exists
 	if c.attachmentsDir != "" {
 		// Use more restrictive permissions for security
-		if err := os.MkdirAll(c.attachmentsDir, 0750); err != nil {
+		if err := os.MkdirAll(c.attachmentsDir, constants.DefaultDirectoryPermissions); err != nil {
 			return "", fmt.Errorf("failed to create attachments directory: %w", err)
 		}
 	}
@@ -383,7 +383,7 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 	}
 
 	// Write attachment data to file with secure permissions
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	if err := os.WriteFile(filePath, data, constants.DefaultFilePermissions); err != nil {
 		return "", fmt.Errorf("failed to save attachment: %w", err)
 	}
 

@@ -56,7 +56,8 @@ func deriveHMACKey() ([]byte, error) {
 		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
 	}
 	// Use separate salt for HMAC key derivation to avoid key reuse
-	salt := []byte(constants.EncryptionLookupSalt)
+	// Allow configurable salt via environment variable, fallback to default for compatibility
+	salt := getEncryptionLookupSalt()
 	key := pbkdf2.Key([]byte(secret), salt, models.Iterations, models.KeySize, sha256.New)
 	return key, nil
 }
@@ -121,7 +122,8 @@ func deriveKey() ([]byte, error) {
 		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
 	}
 
-	salt := []byte(constants.EncryptionSalt)
+	// Allow configurable salt via environment variable, fallback to default for compatibility
+	salt := getEncryptionSalt()
 
 	key := pbkdf2.Key([]byte(secret), salt, models.Iterations, models.KeySize, sha256.New)
 	return key, nil
@@ -138,7 +140,7 @@ func (e *encryptor) EncryptForLookup(plaintext string) (string, error) {
 
 	// Create deterministic nonce from plaintext hash with application-specific salt
 	// This ensures the same plaintext always produces the same ciphertext for database lookups
-	lookupSalt := constants.EncryptionLookupSalt
+	lookupSalt := string(getEncryptionLookupSalt())
 	hash := sha256.Sum256([]byte(plaintext + lookupSalt))
 	nonce := hash[:models.NonceSize]
 
@@ -158,3 +160,21 @@ func (e *encryptor) DecryptIfEnabled(ciphertext string) (string, error) { return
 
 // DecryptAuto defers to full decryption; no plaintext compatibility
 func (e *encryptor) DecryptAuto(value string) (string, error) { return e.Decrypt(value) }
+
+// getEncryptionSalt returns the encryption salt from environment or default
+func getEncryptionSalt() []byte {
+	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT"); salt != "" && len(salt) >= 16 {
+		return []byte(salt)
+	}
+	// Fallback to default for backward compatibility
+	return []byte(constants.EncryptionSalt)
+}
+
+// getEncryptionLookupSalt returns the lookup salt from environment or default
+func getEncryptionLookupSalt() []byte {
+	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT"); salt != "" && len(salt) >= 16 {
+		return []byte(salt)
+	}
+	// Fallback to default for backward compatibility
+	return []byte(constants.EncryptionLookupSalt)
+}

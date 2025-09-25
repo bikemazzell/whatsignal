@@ -210,3 +210,94 @@ func TestIsEncryptionEnabled(t *testing.T) {
 	// Always-on encryption: no environment toggle
 	assert.True(t, true)
 }
+
+func TestEncryptionSaltConfiguration(t *testing.T) {
+	// Store original values
+	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	originalSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT")
+	originalLookupSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+
+	defer func() {
+		// Restore original values
+		if originalSecret != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+		}
+		if originalSalt != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		}
+		if originalLookupSalt != "" {
+			os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
+		} else {
+			os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+		}
+	}()
+
+	t.Run("default salts", func(t *testing.T) {
+		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+
+		// Should use default salts from constants
+		salt := getEncryptionSalt()
+		lookupSalt := getEncryptionLookupSalt()
+
+		assert.Equal(t, "whatsignal-salt-v1", string(salt))
+		assert.Equal(t, "whatsignal-lookup-salt-v1", string(lookupSalt))
+	})
+
+	t.Run("custom salts", func(t *testing.T) {
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "custom-salt-value-with-min-length")
+		os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "custom-lookup-salt-with-min-length")
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+
+		// Should use custom salts from environment
+		salt := getEncryptionSalt()
+		lookupSalt := getEncryptionLookupSalt()
+
+		assert.Equal(t, "custom-salt-value-with-min-length", string(salt))
+		assert.Equal(t, "custom-lookup-salt-with-min-length", string(lookupSalt))
+	})
+
+	t.Run("salt too short fallback", func(t *testing.T) {
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "short")
+		os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "short")
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+
+		// Should fall back to defaults when salts are too short
+		salt := getEncryptionSalt()
+		lookupSalt := getEncryptionLookupSalt()
+
+		assert.Equal(t, "whatsignal-salt-v1", string(salt))
+		assert.Equal(t, "whatsignal-lookup-salt-v1", string(lookupSalt))
+	})
+
+	t.Run("key derivation with custom salts", func(t *testing.T) {
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+
+		// Get keys with default salts
+		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+
+		key1, err := deriveKey()
+		require.NoError(t, err)
+		hmacKey1, err := deriveHMACKey()
+		require.NoError(t, err)
+
+		// Get keys with custom salts
+		os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "custom-salt-value-with-min-length")
+		os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "custom-lookup-salt-with-min-length")
+
+		key2, err := deriveKey()
+		require.NoError(t, err)
+		hmacKey2, err := deriveHMACKey()
+		require.NoError(t, err)
+
+		// Keys should be different with different salts
+		assert.NotEqual(t, key1, key2, "Different salts should produce different encryption keys")
+		assert.NotEqual(t, hmacKey1, hmacKey2, "Different salts should produce different HMAC keys")
+	})
+}

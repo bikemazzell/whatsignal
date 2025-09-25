@@ -143,7 +143,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		// Rate limiting
 		clientIP := GetClientIP(r)
 		if !s.rateLimiter.Allow(clientIP) {
-			s.logger.WithField("ip", clientIP).Warn("Rate limit exceeded")
+			s.logger.WithField("remote_ip", clientIP).Warn("Rate limit exceeded")
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -159,7 +159,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 			contentType := r.Header.Get("Content-Type")
 			if !strings.Contains(contentType, "application/json") {
 				s.logger.WithFields(logrus.Fields{
-					"ip":           clientIP,
+					"remote_ip":    clientIP,
 					"content_type": contentType,
 				}).Warn("Invalid content type for webhook")
 				http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
@@ -175,7 +175,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 
 		// Log security-relevant information
 		s.logger.WithFields(logrus.Fields{
-			"ip":         clientIP,
+			"remote_ip":  clientIP,
 			"method":     r.Method,
 			"path":       r.URL.Path,
 			"user_agent": r.Header.Get("User-Agent"),

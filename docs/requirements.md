@@ -174,7 +174,7 @@ WhatSignal is a one-to-one chat bridge between WhatsApp and Signal. It listens f
       "api_base_url": "http://localhost:3000",
       "api_key": "your-waha-api-key",
       "session_name": "default",
-      "timeout_ms": 10000,
+      "timeout_ms": 10000000000,
       "retry_count": 3,
       "webhook_secret": "your-whatsapp-webhook-secret"
     },

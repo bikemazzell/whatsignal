@@ -322,7 +322,7 @@ func validateBounds(c *models.Config) error {
 	}
 
 	if c.Server.RateLimitPerMinute > 0 {
-		if err := validation.ValidateNumericRange(c.Server.RateLimitPerMinute, "rate limit per minute", 1, 10000); err != nil {
+		if err := validation.ValidateNumericRange(c.Server.RateLimitPerMinute, "rate limit per minute", 1, constants.MaxRateLimitPerMinute); err != nil {
 			return models.ConfigError{Message: err.Error()}
 		}
 	}
@@ -336,6 +336,51 @@ func validateBounds(c *models.Config) error {
 	// Validate retention days
 	if c.RetentionDays > 0 {
 		if err := validation.ValidateRetentionDays(c.RetentionDays); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate WhatsApp contact cache hours
+	if c.WhatsApp.ContactCacheHours > 0 {
+		if err := validation.ValidateNumericRange(c.WhatsApp.ContactCacheHours, "contact cache hours", 1, 168); err != nil { // Max 1 week
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate WhatsApp session health check interval
+	if c.WhatsApp.SessionHealthCheckSec > 0 {
+		if err := validation.ValidateTimeout(c.WhatsApp.SessionHealthCheckSec, "session health check interval"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate WhatsApp poll interval
+	if c.WhatsApp.PollIntervalSec > 0 {
+		if err := validation.ValidateTimeout(c.WhatsApp.PollIntervalSec, "WhatsApp poll interval"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate retry configuration
+	if c.Retry.InitialBackoffMs > 0 {
+		if err := validation.ValidateNumericRange(c.Retry.InitialBackoffMs, "initial backoff milliseconds", 10, 10000); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	if c.Retry.MaxBackoffMs > 0 {
+		if err := validation.ValidateNumericRange(c.Retry.MaxBackoffMs, "max backoff milliseconds", 100, 60000); err != nil { // Max 1 minute
+			return models.ConfigError{Message: err.Error()}
+		}
+
+		// Ensure max backoff is greater than or equal to initial backoff
+		if c.Retry.InitialBackoffMs > 0 && c.Retry.MaxBackoffMs < c.Retry.InitialBackoffMs {
+			return models.ConfigError{Message: "max backoff must be greater than or equal to initial backoff"}
+		}
+	}
+
+	if c.Retry.MaxAttempts > 0 {
+		if err := validation.ValidateNumericRange(c.Retry.MaxAttempts, "max retry attempts", 1, 10); err != nil {
 			return models.ConfigError{Message: err.Error()}
 		}
 	}

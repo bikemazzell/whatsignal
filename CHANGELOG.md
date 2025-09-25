@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.8] - 2025-09-24
+
+### Code Quality
+- Consolidated hard-coded default values into centralized constants
+- Eliminated code duplication in media type detection with shared MediaRouter abstraction
+- Standardized logging patterns and field names across the codebase
+- Added comprehensive configuration validation for numeric ranges and retry settings
+- Made encryption salts configurable via environment variables (backward compatible)
+
+### Changed
+- File permissions and PBKDF2 iterations now use named constants instead of magic numbers
+- Media type detection logic centralized in `internal/media/router.go` 
+- Logging field names standardized (e.g., `ip` → `remote_ip`) with documented standards
+- Encryption salts can now be set via `WHATSIGNAL_ENCRYPTION_SALT` and `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`
+
 ## [1.1.7] - 2025-09-24
 
 ### Fixed

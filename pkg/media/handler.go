@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/media"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
 )
@@ -26,6 +27,7 @@ type Handler interface {
 type handler struct {
 	cacheDir    string
 	config      models.MediaConfig
+	mediaRouter media.Router
 	httpClient  *http.Client
 	wahaBaseURL string // For URL rewriting
 	wahaAPIKey  string // For WAHA authentication
@@ -36,7 +38,7 @@ func NewHandler(cacheDir string, config models.MediaConfig) (Handler, error) {
 }
 
 func NewHandlerWithWAHA(cacheDir string, config models.MediaConfig, wahaBaseURL, wahaAPIKey string) (Handler, error) {
-	if err := os.MkdirAll(cacheDir, 0750); err != nil {
+	if err := os.MkdirAll(cacheDir, constants.DefaultDirectoryPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -49,6 +51,7 @@ func NewHandlerWithWAHA(cacheDir string, config models.MediaConfig, wahaBaseURL,
 	return &handler{
 		cacheDir:    cacheDir,
 		config:      config,
+		mediaRouter: media.NewRouter(config),
 		httpClient:  &http.Client{Timeout: time.Duration(downloadTimeout) * time.Second},
 		wahaBaseURL: wahaBaseURL,
 		wahaAPIKey:  wahaAPIKey,
@@ -149,55 +152,11 @@ func (h *handler) processMediaFromFile(path string) (string, error) {
 }
 
 func (h *handler) validateMedia(ext string, size int64) error {
-	// Check if extension is allowed for any media type
-	var maxSizeMB int
-	var mediaType string
+	// Create a fake path with the extension to use MediaRouter
+	fakePath := "file." + ext
+	mediaType := h.mediaRouter.GetMediaType(fakePath)
 
-	for _, allowedExt := range h.config.AllowedTypes.Image {
-		if ext == allowedExt {
-			maxSizeMB = h.config.MaxSizeMB.Image
-			mediaType = "image"
-			break
-		}
-	}
-
-	if maxSizeMB == 0 {
-		for _, allowedExt := range h.config.AllowedTypes.Video {
-			if ext == allowedExt {
-				maxSizeMB = h.config.MaxSizeMB.Video
-				mediaType = "video"
-				break
-			}
-		}
-	}
-
-	if maxSizeMB == 0 {
-		for _, allowedExt := range h.config.AllowedTypes.Document {
-			if ext == allowedExt {
-				maxSizeMB = h.config.MaxSizeMB.Document
-				mediaType = "document"
-				break
-			}
-		}
-	}
-
-	if maxSizeMB == 0 {
-		for _, allowedExt := range h.config.AllowedTypes.Voice {
-			if ext == allowedExt {
-				maxSizeMB = h.config.MaxSizeMB.Voice
-				mediaType = "voice"
-				break
-			}
-		}
-	}
-
-	// If no extension or unknown extension, default to document (following bridge strategy)
-	if maxSizeMB == 0 {
-		maxSizeMB = h.config.MaxSizeMB.Document
-		mediaType = "document"
-	}
-
-	maxSizeBytes := int64(maxSizeMB) * constants.BytesPerMegabyte
+	maxSizeBytes := h.mediaRouter.GetMaxSizeForMediaType(mediaType)
 	if size > maxSizeBytes {
 		return fmt.Errorf("%s too large: %d > %d bytes", mediaType, size, maxSizeBytes)
 	}

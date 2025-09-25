@@ -187,6 +187,261 @@ func TestValidateDefaults(t *testing.T) {
 	assert.Equal(t, 30, config.WhatsApp.PollIntervalSec) // Default value
 }
 
+func TestValidateBounds(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      *models.Config
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid retry configuration",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Retry: models.RetryConfig{
+					InitialBackoffMs: 100,
+					MaxBackoffMs:     5000,
+					MaxAttempts:      3,
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "initial backoff too small",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Retry: models.RetryConfig{
+					InitialBackoffMs: 5, // Too small
+					MaxBackoffMs:     5000,
+					MaxAttempts:      3,
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "initial backoff milliseconds too small",
+		},
+		{
+			name: "max backoff too large",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Retry: models.RetryConfig{
+					InitialBackoffMs: 100,
+					MaxBackoffMs:     70000, // Too large
+					MaxAttempts:      3,
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "max backoff milliseconds too large",
+		},
+		{
+			name: "max backoff less than initial backoff",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Retry: models.RetryConfig{
+					InitialBackoffMs: 5000,
+					MaxBackoffMs:     1000, // Less than initial
+					MaxAttempts:      3,
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "max backoff must be greater than or equal to initial backoff",
+		},
+		{
+			name: "retry attempts too many",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Retry: models.RetryConfig{
+					InitialBackoffMs: 100,
+					MaxBackoffMs:     5000,
+					MaxAttempts:      15, // Too many
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "max retry attempts too large",
+		},
+		{
+			name: "contact cache hours too large",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL:        "https://whatsapp.example.com",
+					ContactCacheHours: 200, // Too large
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "contact cache hours too large",
+		},
+		{
+			name: "session health check too large",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL:            "https://whatsapp.example.com",
+					SessionHealthCheckSec: 5000, // Too large
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "session health check interval too large",
+		},
+		{
+			name: "whatsapp poll interval too large",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL:      "https://whatsapp.example.com",
+					PollIntervalSec: 5000, // Too large
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "WhatsApp poll interval too large",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// First validate basic config
+			err := validate(tt.config)
+			require.NoError(t, err)
+
+			// Then test bounds validation
+			err = validateBounds(tt.config)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestValidateSecurity(t *testing.T) {
 	// Store original environment value
 	originalEnv := os.Getenv("WHATSIGNAL_ENV")

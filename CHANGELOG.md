@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [1.1.8] - 2025-09-24
+## [1.1.8] - 2025-09-25
 
 ### Code Quality
 - Consolidated hard-coded default values into centralized constants
@@ -18,11 +18,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implemented parallel contact sync with bounded concurrency for faster startup
 - Added retry logic for database operations with exponential backoff and smart error detection
 
+### Observability and Monitoring
+- **Comprehensive metrics collection system** with counters, timers, and gauges for operational insights
+- **Request tracing and correlation IDs** for debugging multi-session deployments and request flows
+- **Privacy-aware structured logging** with automatic masking of sensitive data (phone numbers, chat IDs, message IDs)
+- **HTTP middleware for automatic instrumentation** of all API endpoints with timing and status metrics
+- **Webhook-specific observability** with dedicated metrics for processing time, success/failure rates
+- **Signal polling metrics** with retry attempts, success rates, and timing measurements
+- **Metrics endpoint** (`/metrics`) exposing operational data in JSON format for monitoring systems
+- **Enhanced message processing logging** with tracing context and privacy-compliant field masking
+
+### Added
+- `internal/metrics/` - Lightweight embedded metrics system with counters, timers, and percentiles
+- `internal/tracing/` - Request correlation and distributed tracing support
+- `internal/privacy/` - Privacy-aware data masking utilities for sensitive information
+- `internal/middleware/` - HTTP observability middleware for automatic request instrumentation
+- Metrics for webhook requests, failures, Signal polls, and message processing operations
+- Request tracing with unique correlation IDs propagated through all operations
+- Privacy masking for phone numbers, chat IDs, message IDs, and session names in logs
+
 ### Changed
 - File permissions and PBKDF2 iterations now use named constants instead of magic numbers
 - Media type detection logic centralized in `internal/media/router.go` 
-- Logging field names standardized (e.g., `ip` → `remote_ip`) with documented standards
+- Logging field names standardized (e.g., `ip` → `remote_ip`) with documented standards in `internal/service/logging_standards.go`
 - Encryption salts can now be set via `WHATSIGNAL_ENCRYPTION_SALT` and `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`
+- HTTP endpoints now include observability middleware for automatic metrics collection and request tracing
+- Bridge service message processing enhanced with structured logging and performance metrics
 
 ## [1.1.7] - 2025-09-24
 

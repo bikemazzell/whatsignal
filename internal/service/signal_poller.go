@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
 
@@ -120,21 +121,45 @@ func (sp *SignalPoller) pollWithRetry() {
 	ctx, cancel := context.WithTimeout(sp.ctx, time.Duration(constants.DefaultSignalPollingTimeoutSec)*time.Second)
 	defer cancel()
 
+	startTime := time.Now()
+
+	// Record polling attempt
+	metrics.IncrementCounter("signal_poll_attempts_total", nil, "Total Signal polling attempts")
+
 	backoff := time.Duration(sp.retryConfig.InitialBackoffMs) * time.Millisecond
 	maxBackoff := time.Duration(sp.retryConfig.MaxBackoffMs) * time.Millisecond
 
 	for attempt := 0; attempt < sp.retryConfig.MaxAttempts; attempt++ {
+		attemptStart := time.Now()
 		err := sp.messageService.PollSignalMessages(ctx)
+		attemptDuration := time.Since(attemptStart)
+
+		// Record timing for this attempt
+		metrics.RecordTimer("signal_poll_attempt_duration", attemptDuration, map[string]string{
+			"attempt": fmt.Sprintf("%d", attempt+1),
+		}, "Signal polling attempt duration")
+
 		if err == nil {
-			// Success - reset for next poll cycle
+			// Success - record success metrics
+			totalDuration := time.Since(startTime)
+			metrics.IncrementCounter("signal_poll_success_total", nil, "Successful Signal polling operations")
+			metrics.RecordTimer("signal_poll_total_duration", totalDuration, map[string]string{
+				"status": "success",
+			}, "Total Signal polling operation duration")
 			return
 		}
 
+		// Record attempt failure
+		metrics.IncrementCounter("signal_poll_attempt_failures_total", map[string]string{
+			"attempt": fmt.Sprintf("%d", attempt+1),
+		}, "Failed Signal polling attempts")
+
 		if IsVerboseLogging(ctx) {
 			sp.logger.WithFields(logrus.Fields{
-				"attempt": attempt + 1,
-				"error":   err,
-				"backoff": backoff,
+				LogFieldAttempt:  attempt + 1,
+				"error":          err,
+				"backoff_ms":     backoff.Milliseconds(),
+				LogFieldDuration: attemptDuration.Milliseconds(),
 			}).Warn("Signal polling failed, retrying with backoff")
 		} else {
 			sp.logger.Warn("Signal polling failed, retrying")
@@ -154,6 +179,13 @@ func (sp *SignalPoller) pollWithRetry() {
 			}
 		}
 	}
+
+	// Record final failure after all retries exhausted
+	totalDuration := time.Since(startTime)
+	metrics.IncrementCounter("signal_poll_failures_total", nil, "Failed Signal polling operations (all retries exhausted)")
+	metrics.RecordTimer("signal_poll_total_duration", totalDuration, map[string]string{
+		"status": "failure",
+	}, "Total Signal polling operation duration")
 
 	sp.logger.Error("Signal polling failed after all retry attempts")
 }

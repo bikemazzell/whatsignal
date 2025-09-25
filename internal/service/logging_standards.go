@@ -14,6 +14,8 @@ const (
 	LogFieldChatID    = "chat_id"
 	LogFieldUserID    = "user_id"
 	LogFieldContactID = "contact_id"
+	LogFieldRequestID = "request_id"
+	LogFieldTraceID   = "trace_id"
 
 	// Service and operation fields
 	LogFieldService   = "service"
@@ -37,6 +39,7 @@ const (
 	LogFieldEndpoint   = "endpoint"
 	LogFieldStatusCode = "status_code"
 	LogFieldRemoteIP   = "remote_ip"
+	LogFieldUserAgent  = "user_agent"
 
 	// File and media
 	LogFieldFilePath  = "file_path"

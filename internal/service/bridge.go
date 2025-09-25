@@ -8,7 +8,10 @@ import (
 
 	"whatsignal/internal/constants"
 	intmedia "whatsignal/internal/media"
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
+	"whatsignal/internal/privacy"
+	"whatsignal/internal/tracing"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
@@ -99,6 +102,36 @@ func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 }
 
 func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
+	startTime := time.Now()
+	requestInfo := tracing.GetRequestInfo(ctx)
+
+	// Record message processing attempt
+	metrics.IncrementCounter("message_processing_total", map[string]string{
+		"direction": "whatsapp_to_signal",
+		"session":   sessionName,
+		"has_media": fmt.Sprintf("%t", mediaPath != ""),
+	}, "Total message processing attempts")
+
+	// Structured logging with privacy masking
+	logFields := privacy.MaskSensitiveFields(map[string]interface{}{
+		LogFieldRequestID: requestInfo.RequestID,
+		LogFieldTraceID:   requestInfo.TraceID,
+		LogFieldSession:   sessionName,
+		LogFieldChatID:    chatID,
+		LogFieldMessageID: msgID,
+		LogFieldPlatform:  "whatsapp",
+		LogFieldDirection: "incoming",
+		"sender":          sender,
+		"has_media":       mediaPath != "",
+	})
+
+	logrusFields := make(logrus.Fields)
+	for k, v := range logFields {
+		logrusFields[k] = v
+	}
+
+	b.logger.WithFields(logrusFields).Info("Processing WhatsApp message")
+
 	senderPhone := sender
 	if strings.HasSuffix(sender, "@c.us") {
 		senderPhone = strings.TrimSuffix(sender, "@c.us")
@@ -147,8 +180,47 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 	}
 
 	if err := b.db.SaveMessageMapping(ctx, mapping); err != nil {
+		// Record failure metrics
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction": "whatsapp_to_signal",
+			"session":   sessionName,
+			"stage":     "save_mapping",
+		}, "Message processing failures by stage")
+
 		return fmt.Errorf("failed to save message mapping: %w", err)
 	}
+
+	// Record success metrics and timing
+	processingDuration := time.Since(startTime)
+	metrics.IncrementCounter("message_processing_success", map[string]string{
+		"direction": "whatsapp_to_signal",
+		"session":   sessionName,
+		"has_media": fmt.Sprintf("%t", mediaPath != ""),
+	}, "Successful message processing operations")
+
+	metrics.RecordTimer("message_processing_duration", processingDuration, map[string]string{
+		"direction": "whatsapp_to_signal",
+		"session":   sessionName,
+	}, "Message processing duration")
+
+	// Log successful completion
+	completionFields := privacy.MaskSensitiveFields(map[string]interface{}{
+		LogFieldRequestID: requestInfo.RequestID,
+		LogFieldTraceID:   requestInfo.TraceID,
+		LogFieldSession:   sessionName,
+		LogFieldChatID:    chatID,
+		LogFieldMessageID: msgID,
+		LogFieldPlatform:  "whatsapp",
+		LogFieldDirection: "incoming",
+		LogFieldDuration:  processingDuration.Milliseconds(),
+	})
+
+	completionLogrusFields := make(logrus.Fields)
+	for k, v := range completionFields {
+		completionLogrusFields[k] = v
+	}
+
+	b.logger.WithFields(completionLogrusFields).Info("WhatsApp message processing completed successfully")
 
 	return nil
 }

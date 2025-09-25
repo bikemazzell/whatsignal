@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/middleware"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
 	"whatsignal/pkg/whatsapp/types"
@@ -75,13 +76,18 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 }
 
 func (s *Server) setupRoutes() {
+	// Add global observability middleware for all routes
+	s.router.Use(middleware.ObservabilityMiddleware(s.logger))
+
 	// Public endpoints (no rate limiting for health checks)
 	s.router.HandleFunc("/health", s.handleHealth()).Methods(http.MethodGet)
 	s.router.HandleFunc("/session/status", s.handleSessionStatus()).Methods(http.MethodGet)
+	s.router.HandleFunc("/metrics", s.handleMetrics()).Methods(http.MethodGet)
 
-	// Webhook endpoints with security middleware
+	// Webhook endpoints with security middleware and webhook-specific observability
 	whatsapp := s.router.PathPrefix("/webhook/whatsapp").Subrouter()
 	whatsapp.Use(s.securityMiddleware)
+	whatsapp.Use(middleware.WebhookObservabilityMiddleware(s.logger, "whatsapp"))
 	whatsapp.HandleFunc("", s.handleWhatsAppWebhook()).Methods(http.MethodPost)
 
 }

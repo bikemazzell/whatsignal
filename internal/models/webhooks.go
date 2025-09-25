@@ -9,6 +9,20 @@ const (
 	EventMessageWaiting  = "message.waiting"
 )
 
+// WhatsApp webhook JSON field names
+const (
+	FieldID        = "id"
+	FieldEvent     = "event"
+	FieldPayload   = "payload"
+	FieldSession   = "session"
+	FieldTimestamp = "timestamp"
+	FieldFrom      = "from"
+	FieldTo        = "to"
+	FieldBody      = "body"
+	FieldMedia     = "media"
+	FieldReaction  = "reaction"
+)
+
 // WhatsApp message ACK statuses
 const (
 	ACKError   = -1

@@ -15,7 +15,7 @@ func TestScheduler_RunCleanup(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	scheduler := NewScheduler(mockBridge, 30, logger)
+	scheduler := NewScheduler(mockBridge, 30, 24, logger)
 
 	ctx := context.Background()
 
@@ -31,7 +31,7 @@ func TestScheduler_RunCleanupError(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	scheduler := NewScheduler(mockBridge, 30, logger)
+	scheduler := NewScheduler(mockBridge, 30, 24, logger)
 
 	ctx := context.Background()
 
@@ -47,7 +47,7 @@ func TestScheduler_StartStop(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	scheduler := NewScheduler(mockBridge, 30, logger)
+	scheduler := NewScheduler(mockBridge, 30, 24, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -75,7 +75,7 @@ func TestScheduler_StopSignal(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	scheduler := NewScheduler(mockBridge, 30, logger)
+	scheduler := NewScheduler(mockBridge, 30, 24, logger)
 
 	ctx := context.Background()
 

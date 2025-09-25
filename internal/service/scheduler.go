@@ -12,21 +12,26 @@ import (
 type Scheduler struct {
 	bridge        MessageBridge
 	retentionDays int
+	intervalHours int
 	logger        *logrus.Logger
 	stopCh        chan struct{}
 }
 
-func NewScheduler(bridge MessageBridge, retentionDays int, logger *logrus.Logger) *Scheduler {
+func NewScheduler(bridge MessageBridge, retentionDays, intervalHours int, logger *logrus.Logger) *Scheduler {
+	if intervalHours <= 0 {
+		intervalHours = constants.CleanupSchedulerIntervalHours
+	}
 	return &Scheduler{
 		bridge:        bridge,
 		retentionDays: retentionDays,
+		intervalHours: intervalHours,
 		logger:        logger,
 		stopCh:        make(chan struct{}),
 	}
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
-	ticker := time.NewTicker(time.Duration(constants.CleanupSchedulerIntervalHours) * time.Hour)
+	ticker := time.NewTicker(time.Duration(s.intervalHours) * time.Hour)
 	defer ticker.Stop()
 
 	s.logger.Info("Starting cleanup scheduler")

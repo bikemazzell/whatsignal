@@ -333,6 +333,12 @@ func validateBounds(c *models.Config) error {
 		}
 	}
 
+	if c.Server.CleanupIntervalHours > 0 {
+		if err := validation.ValidateNumericRange(c.Server.CleanupIntervalHours, "cleanup interval hours", 1, 168); err != nil { // Max 1 week
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
 	// Validate retention days
 	if c.RetentionDays > 0 {
 		if err := validation.ValidateRetentionDays(c.RetentionDays); err != nil {

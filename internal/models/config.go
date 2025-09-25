@@ -89,6 +89,7 @@ type ServerConfig struct {
 	WebhookMaxBytes         int `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
 	RateLimitPerMinute      int `json:"rateLimitPerMinute" mapstructure:"rateLimitPerMinute"`
 	RateLimitCleanupMinutes int `json:"rateLimitCleanupMinutes" mapstructure:"rateLimitCleanupMinutes"`
+	CleanupIntervalHours    int `json:"cleanupIntervalHours" mapstructure:"cleanupIntervalHours"`
 }
 
 // Channel represents a WhatsApp-Signal channel pairing

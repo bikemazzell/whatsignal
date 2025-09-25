@@ -181,7 +181,7 @@ func run(ctx context.Context) error {
 
 	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal, channelManager)
 
-	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, logger)
+	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, cfg.Server.CleanupIntervalHours, logger)
 	go scheduler.Start(ctx)
 
 	// Start session monitor if auto-restart is enabled

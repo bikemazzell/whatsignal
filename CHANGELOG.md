@@ -17,8 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Eliminated duplicate media processing wrapper methods in bridge service
 - Implemented parallel contact sync with bounded concurrency for faster startup
 - Added retry logic for database operations with exponential backoff and smart error detection
+- **Configurable cleanup intervals** - Database cleanup scheduler interval now configurable via `server.cleanupIntervalHours`
+- **Configuration hot-reload capability** - Added polling-based configuration watcher for runtime config changes
+- **Extracted webhook JSON field constants** - Centralized hardcoded JSON field names in webhook processing
 
-### Observability and Monitoring
+### Observability and Monitoring  
 - **Comprehensive metrics collection system** with counters, timers, and gauges for operational insights
 - **Request tracing and correlation IDs** for debugging multi-session deployments and request flows
 - **Privacy-aware structured logging** with automatic masking of sensitive data (phone numbers, chat IDs, message IDs)
@@ -33,9 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `internal/tracing/` - Request correlation and distributed tracing support
 - `internal/privacy/` - Privacy-aware data masking utilities for sensitive information
 - `internal/middleware/` - HTTP observability middleware for automatic request instrumentation
+- `internal/config/watcher.go` - Configuration hot-reload capability with polling-based file watching
 - Metrics for webhook requests, failures, Signal polls, and message processing operations
 - Request tracing with unique correlation IDs propagated through all operations
 - Privacy masking for phone numbers, chat IDs, message IDs, and session names in logs
+- Configurable cleanup scheduler interval via `server.cleanupIntervalHours` configuration
+- Webhook JSON field name constants in `internal/models/webhooks.go`
 
 ### Changed
 - File permissions and PBKDF2 iterations now use named constants instead of magic numbers
@@ -44,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Encryption salts can now be set via `WHATSIGNAL_ENCRYPTION_SALT` and `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`
 - HTTP endpoints now include observability middleware for automatic metrics collection and request tracing
 - Bridge service message processing enhanced with structured logging and performance metrics
+- Cleanup scheduler constructor now accepts configurable interval hours parameter
+- Scheduler service updated to use configurable cleanup intervals instead of hardcoded constants
 
 ## [1.1.7] - 2025-09-24
 

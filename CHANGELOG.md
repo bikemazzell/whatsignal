@@ -6,6 +6,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.9] - 2025-09-25
+
+- **Exponential backoff retry logic** - Implemented configurable exponential backoff utility with jitter support
+  - Added `internal/retry/backoff.go` with comprehensive retry logic including context cancellation and custom retry predicates
+  - Replaced linear database connection backoff with exponential backoff in main.go
+  - Supports configurable initial delay, max delay, multiplier, max attempts, and jitter options
+  - Full test coverage with 9 test cases validating all backoff scenarios
+- **Enhanced request/response logging middleware** - Created detailed debugging middleware with privacy protection
+  - Added `internal/middleware/detailed_logging.go` with configurable request/response capture
+  - Privacy-aware logging with configurable body size limits and sensitive header masking
+  - Supports selective endpoint skipping and comprehensive debugging capabilities
+- **OpenTelemetry distributed tracing support** - Full integration with Jaeger and stdout exporters
+  - Added `internal/tracing/opentelemetry.go` with TracingManager for centralized trace management
+  - Integration with existing legacy tracing system for backward compatibility
+  - Configurable exporters (jaeger, stdout, console) with proper resource attribution
+  - Context propagation and span management throughout the application
+- **Package structure violations fixed** - Resolved architectural import violations
+  - Created `pkg/constants/` package with shared defaults and MIME types to eliminate internal imports
+  - Moved CircuitBreaker from internal to `pkg/circuitbreaker/` for proper architectural layering
+  - Fixed pkg->internal import violations while maintaining clean architecture boundaries
+- **Comprehensive performance benchmarks** - Added benchmark coverage for all critical components
+  - Created `internal/retry/backoff_bench_test.go` with 8 backoff performance benchmarks
+  - Created `internal/database/database_bench_test.go` with 9 database operation benchmarks
+  - Created `pkg/circuitbreaker/circuit_breaker_bench_test.go` with 10 circuit breaker benchmarks
+  - Benchmarks cover success/failure scenarios, concurrent access, state transitions, and mixed operations
+
+### Code Quality and Type Safety Improvements (Go-Specific Issues G1-G5, G16-G17)
+- **Reduced interface{} usage** by ~75% to improve type safety
+  - Replaced `map[string]interface{}` with proper struct types in metrics system (`MetricsSnapshot`)
+  - Created concrete request types for WhatsApp API (`SeenRequest`, `TypingRequest`, `SendMessageRequest`, `MediaMessageRequest`)
+  - Eliminated unsafe map indexing patterns in test code
+- **Fixed ignored error handling** - Added proper error logging for previously ignored errors
+  - Fixed file cleanup errors in media handler with proper error logging
+  - Added error logging for HTTP response body Close() failures
+  - Improved error handling in typing cleanup operations
+- **Added missing struct field tags** for better serialization and validation
+  - Added JSON and validation tags to `ClientConfig` struct with proper validation rules
+  - Added JSON tags to `RequestInfo` struct for debugging/logging support
+  - Added JSON tags to error types (`ValidationError`, `ConfigError`) for API responses
+- **Enhanced rate limiting with client feedback headers**
+  - Added standard rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+  - Added `Retry-After` header for rate-limited requests
+  - Implemented `RateLimitInfo` struct for detailed rate limit status
+- **Improved request/response size limits** for better DoS protection
+  - Extended size limits to all request methods with bodies (POST, PUT, PATCH)
+  - Enhanced content-type validation for webhook endpoints
+  - Improved error messages and logging for oversized requests
+
+### Security
+- Enhanced rate limiting feedback improves client behavior and debugging
+- Extended request size limits provide better protection against DoS attacks
+- Improved error handling reduces silent failures and potential security issues
+
+### Changed
+- Metrics API now returns structured `MetricsSnapshot` instead of `map[string]interface{}`
+- WhatsApp client uses typed request structs instead of generic maps
+- Rate limiter provides detailed limit information through `AllowWithInfo()` method
+- Security middleware validates content-type for more endpoint types
+
 ## [1.1.8] - 2025-09-25
 
 ### Code Quality

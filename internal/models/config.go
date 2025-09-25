@@ -10,6 +10,7 @@ type Config struct {
 	Media         MediaConfig    `json:"media" mapstructure:"media"`
 	Retry         RetryConfig    `json:"retry" mapstructure:"retry"`
 	Server        ServerConfig   `json:"server" mapstructure:"server"`
+	Tracing       TracingConfig  `json:"tracing" mapstructure:"tracing"`
 	LogLevel      string         `json:"log_level" mapstructure:"log_level"`
 	RetentionDays int            `json:"retentionDays"`
 	Channels      []Channel      `json:"channels" mapstructure:"channels"` // Multi-channel support
@@ -92,6 +93,17 @@ type ServerConfig struct {
 	CleanupIntervalHours    int `json:"cleanupIntervalHours" mapstructure:"cleanupIntervalHours"`
 }
 
+// TracingConfig holds OpenTelemetry tracing configurations
+type TracingConfig struct {
+	ServiceName    string  `json:"service_name" mapstructure:"service_name"`
+	ServiceVersion string  `json:"service_version" mapstructure:"service_version"`
+	Environment    string  `json:"environment" mapstructure:"environment"`
+	JaegerEndpoint string  `json:"jaeger_endpoint" mapstructure:"jaeger_endpoint"`
+	SampleRate     float64 `json:"sample_rate" mapstructure:"sample_rate"`
+	Enabled        bool    `json:"enabled" mapstructure:"enabled"`
+	UseStdout      bool    `json:"use_stdout" mapstructure:"use_stdout"`
+}
+
 // Channel represents a WhatsApp-Signal channel pairing
 type Channel struct {
 	WhatsAppSessionName          string `json:"whatsappSessionName" mapstructure:"whatsappSessionName"`
@@ -99,7 +111,7 @@ type Channel struct {
 }
 
 type ConfigError struct {
-	Message string
+	Message string `json:"message"`
 }
 
 func (e ConfigError) Error() string {

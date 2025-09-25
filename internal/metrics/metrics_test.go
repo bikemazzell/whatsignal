@@ -12,7 +12,7 @@ func TestRegistry_IncrementCounter(t *testing.T) {
 	registry.IncrementCounter("test_counter", nil, "Test counter")
 
 	metrics := registry.GetAllMetrics()
-	counters := metrics["counters"].(map[string]*Metric)
+	counters := metrics.Counters
 
 	if counter, exists := counters["test_counter"]; !exists {
 		t.Fatal("Expected counter 'test_counter' to exist")
@@ -25,7 +25,7 @@ func TestRegistry_IncrementCounter(t *testing.T) {
 	registry.IncrementCounter("test_counter", labels, "Test counter")
 
 	metrics = registry.GetAllMetrics()
-	counters = metrics["counters"].(map[string]*Metric)
+	counters = metrics.Counters
 
 	labeledKey := "test_counter_status:success"
 	if counter, exists := counters[labeledKey]; !exists {
@@ -38,7 +38,7 @@ func TestRegistry_IncrementCounter(t *testing.T) {
 	registry.IncrementCounter("test_counter", labels, "Test counter")
 
 	metrics = registry.GetAllMetrics()
-	counters = metrics["counters"].(map[string]*Metric)
+	counters = metrics.Counters
 
 	if counter, exists := counters[labeledKey]; !exists {
 		t.Fatal("Expected labeled counter to exist")
@@ -54,7 +54,7 @@ func TestRegistry_AddToCounter(t *testing.T) {
 	registry.AddToCounter("test_add_counter", 5.5, nil, "Test add counter")
 
 	metrics := registry.GetAllMetrics()
-	counters := metrics["counters"].(map[string]*Metric)
+	counters := metrics.Counters
 
 	if counter, exists := counters["test_add_counter"]; !exists {
 		t.Fatal("Expected counter 'test_add_counter' to exist")
@@ -66,7 +66,7 @@ func TestRegistry_AddToCounter(t *testing.T) {
 	registry.AddToCounter("test_add_counter", 2.3, nil, "Test add counter")
 
 	metrics = registry.GetAllMetrics()
-	counters = metrics["counters"].(map[string]*Metric)
+	counters = metrics.Counters
 
 	if counter, exists := counters["test_add_counter"]; !exists {
 		t.Fatal("Expected counter to exist")
@@ -83,7 +83,7 @@ func TestRegistry_RecordTimer(t *testing.T) {
 	registry.RecordTimer("test_timer", duration, nil, "Test timer")
 
 	metrics := registry.GetAllMetrics()
-	timers := metrics["timers"].(map[string]*TimerMetric)
+	timers := metrics.Timers
 
 	if timer, exists := timers["test_timer"]; !exists {
 		t.Fatal("Expected timer 'test_timer' to exist")
@@ -111,7 +111,7 @@ func TestRegistry_RecordTimer(t *testing.T) {
 	registry.RecordTimer("test_timer", duration2, nil, "Test timer")
 
 	metrics = registry.GetAllMetrics()
-	timers = metrics["timers"].(map[string]*TimerMetric)
+	timers = metrics.Timers
 
 	if timer, exists := timers["test_timer"]; !exists {
 		t.Fatal("Expected timer to exist")
@@ -147,7 +147,7 @@ func TestRegistry_SetGauge(t *testing.T) {
 	registry.SetGauge("test_gauge", 42.5, nil, "Test gauge")
 
 	metrics := registry.GetAllMetrics()
-	gauges := metrics["gauges"].(map[string]*Metric)
+	gauges := metrics.Gauges
 
 	if gauge, exists := gauges["test_gauge"]; !exists {
 		t.Fatal("Expected gauge 'test_gauge' to exist")
@@ -159,7 +159,7 @@ func TestRegistry_SetGauge(t *testing.T) {
 	registry.SetGauge("test_gauge", 100.0, nil, "Test gauge")
 
 	metrics = registry.GetAllMetrics()
-	gauges = metrics["gauges"].(map[string]*Metric)
+	gauges = metrics.Gauges
 
 	if gauge, exists := gauges["test_gauge"]; !exists {
 		t.Fatal("Expected gauge to exist")
@@ -212,7 +212,7 @@ func TestRegistry_PercentileCalculation(t *testing.T) {
 	}
 
 	metrics := registry.GetAllMetrics()
-	timers := metrics["timers"].(map[string]*TimerMetric)
+	timers := metrics.Timers
 
 	if timer, exists := timers["percentile_test"]; !exists {
 		t.Fatal("Expected timer to exist")
@@ -247,9 +247,9 @@ func TestGlobalRegistry(t *testing.T) {
 	metrics := GetAllMetrics()
 
 	// Check that all metrics were recorded
-	counters := metrics["counters"].(map[string]*Metric)
-	timers := metrics["timers"].(map[string]*TimerMetric)
-	gauges := metrics["gauges"].(map[string]*Metric)
+	counters := metrics.Counters
+	timers := metrics.Timers
+	gauges := metrics.Gauges
 
 	if _, exists := counters["global_test"]; !exists {
 		t.Fatal("Expected global counter to exist")
@@ -265,10 +265,10 @@ func TestGlobalRegistry(t *testing.T) {
 	}
 
 	// Check metadata
-	if metrics["uptime_ms"] == nil {
-		t.Fatal("Expected uptime_ms to be present")
+	if metrics.UptimeMs < 0 {
+		t.Fatal("Expected uptime_ms to be non-negative")
 	}
-	if metrics["timestamp"] == nil {
+	if metrics.Timestamp == 0 {
 		t.Fatal("Expected timestamp to be present")
 	}
 }

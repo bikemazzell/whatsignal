@@ -18,7 +18,7 @@ func TestDefaultTracingConfig(t *testing.T) {
 	assert.Equal(t, "whatsignal", config.ServiceName)
 	assert.Equal(t, "dev", config.ServiceVersion)
 	assert.Equal(t, "development", config.Environment)
-	assert.Equal(t, "http://localhost:14268/api/traces", config.JaegerEndpoint)
+	assert.Equal(t, "http://localhost:4318/v1/traces", config.OTLPEndpoint)
 	assert.Equal(t, 0.1, config.SampleRate)
 	assert.False(t, config.Enabled)
 	assert.True(t, config.UseStdout)

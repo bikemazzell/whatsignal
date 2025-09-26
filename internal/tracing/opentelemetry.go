@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/exporters/jaeger" // nolint:staticcheck // deprecated but still functional
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -23,7 +23,7 @@ type TracingConfig struct {
 	ServiceName    string  `json:"service_name"`
 	ServiceVersion string  `json:"service_version"`
 	Environment    string  `json:"environment"`
-	JaegerEndpoint string  `json:"jaeger_endpoint"`
+	OTLPEndpoint   string  `json:"otlp_endpoint"`
 	SampleRate     float64 `json:"sample_rate"`
 	Enabled        bool    `json:"enabled"`
 	UseStdout      bool    `json:"use_stdout"`
@@ -35,7 +35,7 @@ func DefaultTracingConfig() TracingConfig {
 		ServiceName:    "whatsignal",
 		ServiceVersion: "dev",
 		Environment:    "development",
-		JaegerEndpoint: "http://localhost:14268/api/traces",
+		OTLPEndpoint:   "http://localhost:4318/v1/traces",
 		SampleRate:     0.1, // 10% sampling
 		Enabled:        false,
 		UseStdout:      true,
@@ -87,13 +87,14 @@ func (tm *TracingManager) Initialize(ctx context.Context) error {
 		}
 		tm.logger.Info("Using stdout trace exporter")
 	} else {
-		exporter, err = jaeger.New(jaeger.WithCollectorEndpoint(
-			jaeger.WithEndpoint(tm.config.JaegerEndpoint),
-		))
+		exporter, err = otlptracehttp.New(ctx,
+			otlptracehttp.WithEndpoint(tm.config.OTLPEndpoint),
+			otlptracehttp.WithInsecure(), // Use HTTP instead of HTTPS for local development
+		)
 		if err != nil {
-			return fmt.Errorf("failed to create Jaeger exporter: %w", err)
+			return fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
 		}
-		tm.logger.WithField("endpoint", tm.config.JaegerEndpoint).Info("Using Jaeger trace exporter")
+		tm.logger.WithField("endpoint", tm.config.OTLPEndpoint).Info("Using OTLP HTTP trace exporter")
 	}
 
 	// Create tracer provider

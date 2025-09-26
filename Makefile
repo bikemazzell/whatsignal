@@ -61,11 +61,12 @@ help:
 	@echo "  fmt            - Format code (gofmt -s -w)"
 	@echo "  format-check   - Check formatting (fails if files need formatting)"
 	@echo "  vet            - Run go vet"
+	@echo "  staticcheck    - Run staticcheck (requires staticcheck)"
 	@echo "  security       - Run security scans (gosec, govulncheck)"
 	@echo "  deps           - Download dependencies"
 	@echo "  tidy           - Tidy go modules"
 	@echo "  install-tools  - Install development and CI tools"
-	@echo "  ci             - Run all CI checks (fmt, vet, lint, security, test-race, coverage)"
+	@echo "  ci             - Run all CI checks (fmt, vet, lint, staticcheck, security, test-race, coverage)"
 	@echo ""
 	@echo "Run targets:"
 	@echo "  run        - Run debug version"
@@ -241,9 +242,22 @@ install-tools:
 	@go install github.com/securego/gosec/v2/cmd/gosec@latest
 	@go install golang.org/x/vuln/cmd/govulncheck@latest
 
+# Run staticcheck
+.PHONY: staticcheck
+staticcheck:
+	@echo "Running staticcheck..."
+	@if [ -x "$$(go env GOPATH)/bin/staticcheck" ]; then \
+		PATH="$$(go env GOPATH)/bin:$$PATH" staticcheck ./...; \
+	elif command -v staticcheck >/dev/null 2>&1; then \
+		staticcheck ./...; \
+	else \
+		echo "staticcheck not installed. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"; \
+		exit 1; \
+	fi
+
 # Run all CI checks
 .PHONY: ci
-ci: fmt vet lint security test-race coverage
+ci: fmt vet lint staticcheck security test-race coverage
 	@echo "All CI checks passed!"
 
 # Download dependencies

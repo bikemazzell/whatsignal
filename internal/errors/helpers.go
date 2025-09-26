@@ -5,6 +5,15 @@ import (
 	"fmt"
 )
 
+type contextKey string
+
+const (
+	requestIDKey   contextKey = "request_id"
+	traceIDKey     contextKey = "trace_id"
+	userIDKey      contextKey = "user_id"
+	sessionNameKey contextKey = "session_name"
+)
+
 // Common error creators for frequent use cases
 
 // NewValidationError creates a validation error with field context
@@ -108,16 +117,16 @@ func FromContext(ctx context.Context) map[string]interface{} {
 	errorCtx := make(map[string]interface{})
 
 	// Extract common context values
-	if requestID := ctx.Value("request_id"); requestID != nil {
+	if requestID := ctx.Value(requestIDKey); requestID != nil {
 		errorCtx["request_id"] = requestID
 	}
-	if traceID := ctx.Value("trace_id"); traceID != nil {
+	if traceID := ctx.Value(traceIDKey); traceID != nil {
 		errorCtx["trace_id"] = traceID
 	}
-	if userID := ctx.Value("user_id"); userID != nil {
+	if userID := ctx.Value(userIDKey); userID != nil {
 		errorCtx["user_id"] = userID
 	}
-	if sessionName := ctx.Value("session_name"); sessionName != nil {
+	if sessionName := ctx.Value(sessionNameKey); sessionName != nil {
 		errorCtx["session_name"] = sessionName
 	}
 

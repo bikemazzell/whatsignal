@@ -96,7 +96,7 @@ func run(ctx context.Context) error {
 		ServiceName:    cfg.Tracing.ServiceName,
 		ServiceVersion: cfg.Tracing.ServiceVersion,
 		Environment:    cfg.Tracing.Environment,
-		JaegerEndpoint: cfg.Tracing.JaegerEndpoint,
+		OTLPEndpoint:   cfg.Tracing.OTLPEndpoint,
 		SampleRate:     cfg.Tracing.SampleRate,
 		Enabled:        cfg.Tracing.Enabled,
 		UseStdout:      cfg.Tracing.UseStdout,

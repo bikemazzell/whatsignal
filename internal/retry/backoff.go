@@ -2,7 +2,9 @@ package retry
 
 import (
 	"context"
-	"math/rand"
+	"crypto/rand"
+	"math"
+	"math/big"
 	"time"
 )
 
@@ -29,14 +31,12 @@ func DefaultBackoffConfig() BackoffConfig {
 // Backoff implements exponential backoff with optional jitter
 type Backoff struct {
 	config BackoffConfig
-	random *rand.Rand
 }
 
 // NewBackoff creates a new exponential backoff instance
 func NewBackoff(config BackoffConfig) *Backoff {
 	return &Backoff{
 		config: config,
-		random: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -96,7 +96,9 @@ func (b *Backoff) calculateDelay(attempt int) time.Duration {
 	// Add jitter if enabled (±25% randomness)
 	if b.config.Jitter {
 		jitter := delay * 0.25
-		delay += (b.random.Float64() - 0.5) * 2 * jitter
+		// Use cryptographically secure random number generator
+		randomValue := secureFloat64()
+		delay += (randomValue - 0.5) * 2 * jitter
 
 		// Ensure delay doesn't go negative or exceed max
 		if delay < 0 {
@@ -158,4 +160,19 @@ func (b *Backoff) RetryWithPredicate(ctx context.Context, operation func() error
 // GetNextDelay returns the delay that would be used for the given attempt (for testing/monitoring)
 func (b *Backoff) GetNextDelay(attempt int) time.Duration {
 	return b.calculateDelay(attempt)
+}
+
+// secureFloat64 generates a cryptographically secure float64 between 0 and 1
+func secureFloat64() float64 {
+	// Generate a random 64-bit integer
+	max := big.NewInt(0).SetUint64(math.MaxUint64)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		// Fallback to time-based value if crypto/rand fails
+		// This is extremely unlikely but provides a safety net
+		return float64(time.Now().UnixNano()%1000000) / 1000000.0
+	}
+
+	// Convert to float64 in range [0, 1)
+	return float64(n.Uint64()) / float64(math.MaxUint64)
 }

@@ -98,7 +98,7 @@ type TracingConfig struct {
 	ServiceName    string  `json:"service_name" mapstructure:"service_name"`
 	ServiceVersion string  `json:"service_version" mapstructure:"service_version"`
 	Environment    string  `json:"environment" mapstructure:"environment"`
-	JaegerEndpoint string  `json:"jaeger_endpoint" mapstructure:"jaeger_endpoint"`
+	OTLPEndpoint   string  `json:"otlp_endpoint" mapstructure:"otlp_endpoint"`
 	SampleRate     float64 `json:"sample_rate" mapstructure:"sample_rate"`
 	Enabled        bool    `json:"enabled" mapstructure:"enabled"`
 	UseStdout      bool    `json:"use_stdout" mapstructure:"use_stdout"`

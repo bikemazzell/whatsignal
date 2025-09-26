@@ -139,8 +139,8 @@ func validate(c *models.Config) error {
 	if c.Tracing.Environment == "" {
 		c.Tracing.Environment = "development"
 	}
-	if c.Tracing.JaegerEndpoint == "" {
-		c.Tracing.JaegerEndpoint = "http://localhost:14268/api/traces"
+	if c.Tracing.OTLPEndpoint == "" {
+		c.Tracing.OTLPEndpoint = "http://localhost:4318/v1/traces"
 	}
 	if c.Tracing.SampleRate == 0 {
 		c.Tracing.SampleRate = 0.1 // 10% sampling

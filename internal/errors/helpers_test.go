@@ -161,9 +161,9 @@ func TestFromContext(t *testing.T) {
 			name: "context with values",
 			ctx: func() context.Context {
 				ctx := context.Background()
-				ctx = context.WithValue(ctx, "request_id", "req_123") //nolint:staticcheck
-				ctx = context.WithValue(ctx, "trace_id", "trace_456") //nolint:staticcheck
-				ctx = context.WithValue(ctx, "user_id", "user_789")   //nolint:staticcheck
+				ctx = context.WithValue(ctx, requestIDKey, "req_123")
+				ctx = context.WithValue(ctx, traceIDKey, "trace_456")
+				ctx = context.WithValue(ctx, userIDKey, "user_789")
 				return ctx
 			}(),
 			expected: map[string]interface{}{
@@ -184,8 +184,8 @@ func TestFromContext(t *testing.T) {
 
 func TestWithContextFromRequest(t *testing.T) {
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "request_id", "req_123")        //nolint:staticcheck
-	ctx = context.WithValue(ctx, "session_name", "test-session") //nolint:staticcheck
+	ctx = context.WithValue(ctx, requestIDKey, "req_123")
+	ctx = context.WithValue(ctx, sessionNameKey, "test-session")
 
 	err := New(ErrCodeValidationFailed, "validation failed")
 	result := WithContextFromRequest(err, ctx)

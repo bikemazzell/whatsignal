@@ -6,7 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [1.1.9] - 2025-09-25
+## [1.1.9] - 2025-09-26
+
+### Go-Specific Issues
+- **Structured error handling system** - Comprehensive error management with codes and context
+  - Added `internal/errors/types.go` with `AppError` type supporting error codes, causes, context, and retry flags
+  - Added `internal/errors/helpers.go` with convenience functions for common error scenarios (API, database, validation, etc.)
+  - Added HTTP status code mapping and standardized JSON error responses
+  - Full test coverage with 15+ test cases validating error creation, context handling, and serialization
+- **Feature flags system** - Runtime feature toggling for safer deployments
+  - Added `internal/features/flags.go` with thread-safe flag management and 16 predefined flags
+  - Added `internal/features/config.go` supporting environment variables with `WHATSIGNAL_FEATURE_` prefix
+  - Categories: core, API, security, and experimental features with global enable/disable overrides
+  - Full test coverage with 10+ test cases validating flag operations, configuration loading, and concurrency safety
+- **API versioning strategy** - Semantic versioning with backward compatibility
+  - Added `internal/versioning/version.go` with `APIVersion` struct supporting semantic versioning and feature tracking
+  - Added `internal/versioning/middleware.go` with HTTP middleware for version negotiation via headers and URL paths
+  - Support for version compatibility checking, feature gates, and deprecation warnings
+  - Full test coverage with 25+ test cases validating version parsing, compatibility, and middleware behavior
+
+## [1.1.8] - 2025-09-25
 
 - **Exponential backoff retry logic** - Implemented configurable exponential backoff utility with jitter support
   - Added `internal/retry/backoff.go` with comprehensive retry logic including context cancellation and custom retry predicates

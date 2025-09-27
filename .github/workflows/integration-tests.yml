@@ -1,0 +1,308 @@
+name: Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      use_docker:
+        description: 'Run tests with Docker services'
+        required: false
+        default: 'false'
+        type: boolean
+      test_pattern:
+        description: 'Specific test pattern to run (optional)'
+        required: false
+        default: ''
+        type: string
+
+env:
+  GO_VERSION: '1.24.6'
+  TEST_TIMEOUT: '20m'
+  WHATSIGNAL_TEST_MODE: 'true'
+
+jobs:
+  # Fast integration tests without Docker (mock mode)
+  integration-tests-mock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build project
+        run: go build -v ./...
+
+      - name: Create required directories
+        run: |
+          mkdir -p /tmp/whatsignal-test
+          chmod 755 /tmp/whatsignal-test
+
+      - name: Run integration tests (mock mode)
+        run: |
+          ./integration_test/run-tests.sh \
+            --timeout ${{ env.TEST_TIMEOUT }} \
+            ${{ github.event.inputs.test_pattern || '' }}
+        env:
+          WHATSIGNAL_LOG_LEVEL: info
+          WHATSIGNAL_INTEGRATION_USE_DOCKER: false
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-artifacts-mock
+          path: |
+            /tmp/whatsignal-test-*
+            integration_test/test-results.xml
+          retention-days: 3
+
+  # Comprehensive integration tests with Docker services
+  integration-tests-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only run Docker tests on main branch, develop, or when explicitly requested
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event.inputs.use_docker == 'true'
+    
+    services:
+      # Basic services that tests might need
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build project
+        run: go build -v ./...
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af
+
+      - name: Create required directories with proper permissions
+        run: |
+          mkdir -p /tmp/whatsignal-test
+          chmod 755 /tmp/whatsignal-test
+          
+          # Create Docker volume directories
+          mkdir -p /tmp/docker-volumes/signal
+          mkdir -p /tmp/docker-volumes/waha
+          mkdir -p /tmp/docker-volumes/postgres
+          chmod -R 755 /tmp/docker-volumes
+
+      - name: Start Docker services
+        run: |
+          cd integration_test
+          # Use Docker Compose to start services
+          docker-compose up -d --wait
+        env:
+          COMPOSE_PROJECT_NAME: whatsignal_integration_test
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for services to be healthy..."
+          timeout 300 bash -c '
+            until docker-compose -f integration_test/docker-compose.yml ps | grep -q "Up (healthy)"; do
+              echo "Waiting for services to start..."
+              sleep 5
+            done
+          ' || {
+            echo "Services failed to start properly"
+            docker-compose -f integration_test/docker-compose.yml logs
+            exit 1
+          }
+
+      - name: Run integration tests (Docker mode)
+        run: |
+          ./integration_test/run-tests.sh \
+            --docker \
+            --timeout ${{ env.TEST_TIMEOUT }} \
+            --verbose \
+            ${{ github.event.inputs.test_pattern || '' }}
+        env:
+          WHATSIGNAL_LOG_LEVEL: debug
+          WHATSIGNAL_INTEGRATION_USE_DOCKER: true
+          WHATSIGNAL_INTEGRATION_VERBOSE: true
+
+      - name: Collect service logs
+        if: always()
+        run: |
+          mkdir -p integration-test-logs
+          cd integration_test
+          docker-compose logs --no-color > ../integration-test-logs/docker-services.log
+          docker-compose ps > ../integration-test-logs/docker-status.log
+
+      - name: Stop Docker services
+        if: always()
+        run: |
+          cd integration_test
+          docker-compose down -v --remove-orphans
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-artifacts-docker
+          path: |
+            integration-test-logs/
+            /tmp/whatsignal-test-*
+            integration_test/test-results.xml
+          retention-days: 7
+
+  # Performance and load testing
+  integration-tests-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Only run performance tests on main branch or when explicitly requested
+    if: github.ref == 'refs/heads/main' || github.event.inputs.use_docker == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build project
+        run: go build -v ./...
+
+      - name: Run performance benchmarks
+        run: |
+          go test -bench=. -benchmem -timeout=20m ./integration_test/... \
+            | tee benchmark-results.txt
+
+      - name: Run load tests with mock services
+        run: |
+          ./integration_test/run-tests.sh \
+            --timeout 15m \
+            --parallel \
+            TestHighVolume TestConcurrent
+        env:
+          WHATSIGNAL_TEST_MODE: true
+          WHATSIGNAL_LOG_LEVEL: warn
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-results
+          path: |
+            benchmark-results.txt
+          retention-days: 14
+
+  # Security testing in integration context
+  integration-security-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run security-focused integration tests
+        run: |
+          ./integration_test/run-tests.sh \
+            --timeout 10m \
+            TestSecurity TestAuth TestWebhook
+        env:
+          WHATSIGNAL_TEST_MODE: true
+          WHATSIGNAL_LOG_LEVEL: debug
+
+      - name: Check for secrets in test artifacts
+        run: |
+          echo "Scanning for potential secrets in test artifacts..."
+          # Basic check for common secret patterns
+          find /tmp -name "*whatsignal*" -type f 2>/dev/null | xargs grep -l "password\|secret\|key\|token" | head -10 || true
+          echo "Security scan completed"
+
+  # Test results summary
+  integration-test-summary:
+    runs-on: ubuntu-latest
+    needs: [integration-tests-mock, integration-tests-docker, integration-tests-performance, integration-security-tests]
+    if: always()
+    
+    steps:
+      - name: Check test results
+        run: |
+          echo "Integration Test Results Summary:"
+          echo "================================="
+          echo "Mock Tests: ${{ needs.integration-tests-mock.result }}"
+          echo "Docker Tests: ${{ needs.integration-tests-docker.result }}"
+          echo "Performance Tests: ${{ needs.integration-tests-performance.result }}"
+          echo "Security Tests: ${{ needs.integration-security-tests.result }}"
+          
+          # Fail if any critical tests failed
+          if [[ "${{ needs.integration-tests-mock.result }}" == "failure" ]]; then
+            echo "❌ Mock integration tests failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.integration-security-tests.result }}" == "failure" ]]; then
+            echo "❌ Security integration tests failed"
+            exit 1
+          fi
+          
+          # Docker and performance tests are less critical
+          if [[ "${{ needs.integration-tests-docker.result }}" == "failure" ]]; then
+            echo "⚠️  Docker integration tests failed (non-critical)"
+          fi
+          
+          if [[ "${{ needs.integration-tests-performance.result }}" == "failure" ]]; then
+            echo "⚠️  Performance tests failed (non-critical)"
+          fi
+          
+          echo "✅ Integration test suite completed"

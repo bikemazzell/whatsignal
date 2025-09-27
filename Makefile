@@ -53,10 +53,17 @@ help:
 	@echo "  clean      - Clean build artifacts"
 	@echo ""
 	@echo "Development targets:"
-	@echo "  test           - Run tests"
-	@echo "  test-race      - Run tests with race detection"
-	@echo "  coverage       - Run tests with coverage report"
-	@echo "  lint           - Run linter (requires golangci-lint)"
+	@echo "  test                    - Run unit tests"
+	@echo "  test-race               - Run unit tests with race detection"
+	@echo "  test-all                - Run all tests (unit + integration)"
+	@echo "  coverage                - Run unit tests with coverage report"
+	@echo "  test-integration        - Run integration tests (mock mode)"
+	@echo "  test-integration-docker - Run integration tests (with Docker services)"
+	@echo "  test-integration-verbose - Run integration tests (verbose output)"
+	@echo "  test-integration-pattern - Run integration tests matching pattern (PATTERN=TestName)"
+	@echo "  test-integration-perf   - Run performance integration tests"
+	@echo "  clean-integration       - Clean integration test artifacts"
+	@echo "  lint                    - Run linter (requires golangci-lint)"
 	@echo "  lint-fix       - Run linter with --fix (requires golangci-lint)"
 	@echo "  fmt            - Format code (gofmt -s -w)"
 	@echo "  format-check   - Check formatting (fails if files need formatting)"
@@ -141,26 +148,90 @@ clean:
 	@find . -type f -name '*.out' -print -delete
 	@echo "Clean completed"
 
-# Run tests
+# Run unit tests (excluding integration tests)
 .PHONY: test
 test:
-	@echo "Running tests..."
-	CGO_ENABLED=$(CGO_ENABLED) go test -v ./...
+	@echo "Running unit tests..."
+	CGO_ENABLED=$(CGO_ENABLED) go test -v $$(go list ./... | grep -v '/integration_test')
 
-# Run tests with race detection
+# Run unit tests with race detection
 .PHONY: test-race
 test-race:
-	@echo "Running tests with race detection..."
-	CGO_ENABLED=$(CGO_ENABLED) go test -race -v ./...
+	@echo "Running unit tests with race detection..."
+	CGO_ENABLED=$(CGO_ENABLED) go test -race -v $$(go list ./... | grep -v '/integration_test')
 
-# Run tests with coverage
+# Run unit tests with coverage
 .PHONY: coverage
 coverage:
-	@echo "Running tests with coverage..."
-	@CGO_ENABLED=$(CGO_ENABLED) go test -coverprofile=coverage.out -covermode=atomic ./...
+	@echo "Running unit tests with coverage..."
+	@CGO_ENABLED=$(CGO_ENABLED) go test -coverprofile=coverage.out -covermode=atomic $$(go list ./... | grep -v '/integration_test')
 	@echo "Coverage report:"
 	@go tool cover -func=coverage.out
 	@echo "To view HTML coverage report, run: go tool cover -html=coverage.out"
+
+# Run all tests (unit + integration)
+.PHONY: test-all
+test-all:
+	@echo "Running all tests (unit + integration)..."
+	CGO_ENABLED=$(CGO_ENABLED) go test -v ./...
+
+# Run integration tests with mock services
+.PHONY: test-integration
+test-integration:
+	@echo "Running integration tests (mock mode)..."
+	@if [ ! -x "./integration_test/run-tests.sh" ]; then \
+		echo "Integration test runner not found or not executable"; \
+		exit 1; \
+	fi
+	@./integration_test/run-tests.sh --timeout 15m
+
+# Run integration tests with Docker services
+.PHONY: test-integration-docker
+test-integration-docker:
+	@echo "Running integration tests (Docker mode)..."
+	@if [ ! -x "./integration_test/run-tests.sh" ]; then \
+		echo "Integration test runner not found or not executable"; \
+		exit 1; \
+	fi
+	@if ! command -v docker >/dev/null 2>&1; then \
+		echo "Docker is required for integration tests with Docker services"; \
+		exit 1; \
+	fi
+	@./integration_test/run-tests.sh --docker --timeout 20m
+
+# Run integration tests with verbose output
+.PHONY: test-integration-verbose
+test-integration-verbose:
+	@echo "Running integration tests (verbose mode)..."
+	@if [ ! -x "./integration_test/run-tests.sh" ]; then \
+		echo "Integration test runner not found or not executable"; \
+		exit 1; \
+	fi
+	@./integration_test/run-tests.sh --verbose --timeout 15m
+
+# Run specific integration test pattern
+.PHONY: test-integration-pattern
+test-integration-pattern:
+	@if [ -z "$(PATTERN)" ]; then \
+		echo "Usage: make test-integration-pattern PATTERN=TestName"; \
+		exit 1; \
+	fi
+	@echo "Running integration tests matching pattern: $(PATTERN)"
+	@./integration_test/run-tests.sh --timeout 10m $(PATTERN)
+
+# Run performance integration tests
+.PHONY: test-integration-perf
+test-integration-perf:
+	@echo "Running performance integration tests..."
+	@CGO_ENABLED=$(CGO_ENABLED) go test -bench=. -benchmem -timeout=20m ./integration_test/...
+
+# Clean integration test artifacts
+.PHONY: clean-integration
+clean-integration:
+	@echo "Cleaning integration test artifacts..."
+	@rm -rf /tmp/whatsignal-test-* /tmp/whatsignal-integration-*
+	@find ./integration_test -name "*.log" -type f -delete 2>/dev/null || true
+	@echo "Integration test cleanup completed"
 
 # Run linter (requires golangci-lint)
 .PHONY: lint

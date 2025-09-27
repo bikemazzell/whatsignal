@@ -776,3 +776,36 @@ func (c *WhatsAppClient) checkVideoSupport(ctx context.Context) bool {
 	c.supportsVideo = &supportsVideo
 	return supportsVideo
 }
+
+// HealthCheck performs a health check on the WhatsApp API
+func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
+	// Try to get session status as a health check
+	endpoint := fmt.Sprintf("%s/api/sessions/%s", c.baseURL, c.sessionName)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create health check request: %w", err)
+	}
+
+	req.Header.Set("X-Api-Key", c.apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("WhatsApp API health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check if we got a successful response (2xx) or 404 (session doesn't exist is ok for health)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	if resp.StatusCode == 404 {
+		// Session not found is ok - API is responding
+		return nil
+	}
+
+	// Read the response body for error details
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("WhatsApp API health check returned status %d: %s", resp.StatusCode, string(body))
+}

@@ -176,6 +176,11 @@ func (m *MockWAClient) GetSessionName() string {
 	return "test-session"
 }
 
+func (m *MockWAClient) HealthCheck(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 // MockSessionManager is a mock implementation of the SessionManager interface
 type MockSessionManager struct {
 	mock.Mock
@@ -381,6 +386,11 @@ func TestMockWAClientSessionOperations(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expectedSession, session)
 
+	// Test HealthCheck
+	mockClient.On("HealthCheck", ctx).Return(nil)
+	err = mockClient.HealthCheck(ctx)
+	assert.NoError(t, err)
+
 	mockClient.AssertExpectations(t)
 }
 
@@ -465,6 +475,10 @@ func TestWAClientErrorHandling(t *testing.T) {
 
 	mockClient.On("CreateSession", ctx).Return(assert.AnError)
 	err = mockClient.CreateSession(ctx)
+	assert.Error(t, err)
+
+	mockClient.On("HealthCheck", ctx).Return(assert.AnError)
+	err = mockClient.HealthCheck(ctx)
 	assert.Error(t, err)
 
 	mockClient.AssertExpectations(t)

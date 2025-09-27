@@ -375,6 +375,10 @@ func (m *mockMultiSessionWAClient) GetContact(ctx context.Context, contactID str
 	return nil, nil
 }
 
+func (m *mockMultiSessionWAClient) HealthCheck(ctx context.Context) error {
+	return nil
+}
+
 // TestMultiSessionContactSync tests that contact sync works correctly across multiple sessions
 func TestMultiSessionContactSync(t *testing.T) {
 	ctx := context.Background()

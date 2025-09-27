@@ -31,6 +31,9 @@ type WAClient interface {
 	// Contact methods
 	GetContact(ctx context.Context, contactID string) (*Contact, error)
 	GetAllContacts(ctx context.Context, limit, offset int) ([]Contact, error)
+
+	// Health check
+	HealthCheck(ctx context.Context) error
 }
 
 type SessionManager interface {

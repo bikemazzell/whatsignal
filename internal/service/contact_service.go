@@ -8,6 +8,7 @@ import (
 
 	"whatsignal/internal/constants"
 	"whatsignal/internal/errors"
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
 
@@ -83,8 +84,13 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 	// If found in cache and not too old, use it
 	cacheValidDuration := time.Duration(cs.cacheValidHours) * time.Hour
 	if contact != nil && time.Since(contact.CachedAt) < cacheValidDuration {
+		// Record cache hit
+		metrics.IncrementCounter("contact_cache_hits_total", nil, "Total contact cache hits")
 		return contact.GetDisplayName()
 	}
+
+	// Record cache miss - need to fetch from API
+	metrics.IncrementCounter("contact_cache_misses_total", nil, "Total contact cache misses")
 
 	// Fetch from WhatsApp API
 	contactID := phoneNumber
@@ -142,6 +148,9 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 			"Contact cache save failed",
 			logrus.Fields{"contact_id": waContact.ID, "phone_number": phoneNumber},
 		)
+	} else {
+		// Record successful cache refresh
+		metrics.IncrementCounter("contact_cache_refreshes_total", nil, "Total contact cache refreshes")
 	}
 
 	return waContact.GetDisplayName()

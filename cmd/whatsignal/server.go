@@ -15,6 +15,7 @@ import (
 	"whatsignal/internal/middleware"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
+	"whatsignal/pkg/signal"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/gorilla/mux"
@@ -24,6 +25,14 @@ import (
 const (
 	XWahaSignatureHeader = "X-Webhook-Hmac"
 )
+
+// DatabaseInterface defines the minimal interface needed for health checks
+type DatabaseInterface interface {
+	HealthCheck(ctx context.Context) error
+}
+
+// SignalClientInterface defines the minimal interface needed for health checks
+type SignalClientInterface = *signal.SignalClient
 
 // ValidationError represents a validation error that should return HTTP 400
 type ValidationError struct {
@@ -45,9 +54,11 @@ type Server struct {
 	waClient       types.WAClient
 	channelManager *service.ChannelManager
 	rateLimiter    *RateLimiter
+	db             DatabaseInterface
+	sigClient      SignalClientInterface
 }
 
-func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient, channelManager *service.ChannelManager) *Server {
+func NewServer(cfg *models.Config, msgService service.MessageService, logger *logrus.Logger, waClient types.WAClient, channelManager *service.ChannelManager, db DatabaseInterface, sigClient SignalClientInterface) *Server {
 	// Use configured rate limit or default
 	rateLimit := cfg.Server.RateLimitPerMinute
 	if rateLimit <= 0 {
@@ -68,6 +79,8 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 		waClient:       waClient,
 		channelManager: channelManager,
 		rateLimiter:    NewRateLimiter(rateLimit, time.Minute, time.Duration(cleanupMinutes)*time.Minute),
+		db:             db,
+		sigClient:      sigClient,
 	}
 
 	s.setupRoutes()
@@ -209,9 +222,64 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// Check all dependencies
+		dependencies := map[string]interface{}{
+			"database": map[string]interface{}{
+				"status": "healthy",
+			},
+			"whatsapp_api": map[string]interface{}{
+				"status": "healthy",
+			},
+			"signal_api": map[string]interface{}{
+				"status": "healthy",
+			},
+		}
+
+		overallStatus := "healthy"
+
+		// Check database health
+		if s.db != nil {
+			if err := s.db.HealthCheck(ctx); err != nil {
+				dependencies["database"] = map[string]interface{}{
+					"status": "unhealthy",
+					"error":  err.Error(),
+				}
+				overallStatus = "unhealthy"
+			}
+		}
+
+		// Check WhatsApp API health
+		if s.waClient != nil {
+			if err := s.waClient.HealthCheck(ctx); err != nil {
+				dependencies["whatsapp_api"] = map[string]interface{}{
+					"status": "unhealthy",
+					"error":  err.Error(),
+				}
+				if overallStatus == "healthy" {
+					overallStatus = "degraded"
+				}
+			}
+		}
+
+		// Check Signal API health
+		if s.sigClient != nil {
+			if err := s.sigClient.HealthCheck(ctx); err != nil {
+				dependencies["signal_api"] = map[string]interface{}{
+					"status": "unhealthy",
+					"error":  err.Error(),
+				}
+				if overallStatus == "healthy" {
+					overallStatus = "degraded"
+				}
+			}
+		}
+
 		health := map[string]interface{}{
-			"status":  "healthy",
-			"version": Version,
+			"status":       overallStatus,
+			"version":      Version,
+			"dependencies": dependencies,
 			"build": map[string]string{
 				"time":   BuildTime,
 				"commit": GitCommit,
@@ -219,7 +287,17 @@ func (s *Server) handleHealth() http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+
+		// Return appropriate HTTP status based on health
+		switch overallStatus {
+		case "healthy":
+			w.WriteHeader(http.StatusOK)
+		case "degraded":
+			w.WriteHeader(http.StatusOK) // 200 but with warnings
+		case "unhealthy":
+			w.WriteHeader(http.StatusServiceUnavailable) // 503
+		}
+
 		if err := json.NewEncoder(w).Encode(health); err != nil {
 			s.logger.WithError(err).Error("Failed to write health check response")
 		}

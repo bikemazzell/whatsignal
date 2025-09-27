@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.9] - 2025-09-26
 
+### Health Monitoring & Metrics
+- **Enhanced health check endpoints** - Comprehensive dependency health monitoring (G12)
+  - Added health check methods to database, WhatsApp API, and Signal API clients
+  - Enhanced `/health` endpoint with individual dependency status reporting
+  - Returns structured JSON with overall health status and individual service states
+  - Proper HTTP status codes (200 for healthy, 503 for unhealthy dependencies)
+  - Full test coverage for all health check scenarios including mock implementations
+- **Cache performance metrics** - Advanced cache monitoring and observability (G15)
+  - Added contact cache hit/miss/refresh metrics using internal metrics system
+  - Metrics: `contact_cache_hits_total`, `contact_cache_misses_total`, `contact_cache_refreshes_total`
+  - Integrated with existing metrics registry for centralized collection
+  - Full test coverage with comprehensive cache behavior validation
+
 ### Go-Specific Issues
 - **Structured error handling system** - Comprehensive error management with codes and context
   - Added `internal/errors/types.go` with `AppError` type supporting error codes, causes, context, and retry flags

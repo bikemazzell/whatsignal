@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.9] - 2025-09-27
+
+### Testing Infrastructure
+- **Comprehensive integration test suite** - Complete end-to-end testing framework with real components
+  - Added `integration_test/` directory with test environment management, fixtures, and utilities
+  - Multiple testing modes: mock services (fast), Docker services (comprehensive), performance benchmarks
+  - Real component testing: SQLite databases, HTTP servers, file systems, network operations
+  - CI/CD integration with dedicated GitHub Actions workflow for integration tests
+  - Makefile targets: `test-integration`, `test-integration-docker`, `test-integration-perf`
+  - Comprehensive test data fixtures and scenarios for multi-channel message routing
+  - Docker Compose setup for external services (Signal-CLI, WAHA, PostgreSQL, Redis, Prometheus)
+  - Proper resource isolation, cleanup, and artifact collection for debugging
+  - **Fixed database migration handling** - Robust migration path resolution for test environments
+  - **Security hardening** - Fixed file permissions (0750 for dirs, 0600 for files) and error handling
+
 ## [1.1.9] - 2025-09-26
 
 ### Health Monitoring & Metrics

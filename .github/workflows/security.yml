@@ -34,11 +34,11 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-      - name: Run tests with race detector
-        run: go test -race -v ./...
+      - name: Run unit tests with race detector
+        run: go test -race -v $(go list ./... | grep -v '/integration_test')
 
-      - name: Run tests with coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Run unit tests with coverage
+        run: go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/integration_test')
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

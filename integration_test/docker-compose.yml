@@ -1,0 +1,160 @@
+# Docker Compose for WhatsSignal Integration Testing
+# Optional external dependencies for comprehensive integration testing
+
+version: '3.8'
+
+services:
+  # Signal-CLI service for real Signal integration testing
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - MODE=json-rpc
+      - SIGNAL_CLI_CONFIG_DIR=/home/.local/share/signal-cli
+    volumes:
+      - signal_data:/home/.local/share/signal-cli
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/about"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - whatsignal-test
+
+  # WAHA (WhatsApp HTTP API) for real WhatsApp integration testing
+  waha:
+    image: devlikeapro/waha:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - WHATSAPP_HOOK_URL=http://host.docker.internal:8082/webhook/whatsapp
+      - WHATSAPP_HOOK_EVENTS=message,message.any,session.status
+      - WHATSAPP_START_SESSION=default
+    volumes:
+      - waha_data:/app/.sessions
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - whatsignal-test
+
+  # PostgreSQL for database integration testing (alternative to SQLite)
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=whatsignal_test
+      - POSTGRES_USER=whatsignal
+      - POSTGRES_PASSWORD=test_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./test-data/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsignal -d whatsignal_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - whatsignal-test
+
+  # Redis for caching and session management testing
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass test_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - whatsignal-test
+
+  # Prometheus for metrics testing
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./test-data/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=1h'
+      - '--web.enable-lifecycle'
+    networks:
+      - whatsignal-test
+
+  # Jaeger for tracing testing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - whatsignal-test
+
+  # MinIO for S3-compatible storage testing
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ACCESS_KEY=whatsignal
+      - MINIO_SECRET_KEY=test_password
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - whatsignal-test
+
+  # Nginx for reverse proxy and load balancing testing
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./test-data/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - waha
+      - signal-cli
+    networks:
+      - whatsignal-test
+
+volumes:
+  signal_data:
+    driver: local
+  waha_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  whatsignal-test:
+    driver: bridge

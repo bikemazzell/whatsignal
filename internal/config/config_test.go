@@ -557,3 +557,399 @@ func TestValidateSecurity(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_EdgeCases(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "whatsignal-config-edge-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	tests := []struct {
+		name        string
+		configJSON  string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "empty file",
+			configJSON:  "",
+			expectError: true,
+			errorMsg:    "unexpected end of JSON input",
+		},
+		{
+			name:        "invalid JSON syntax",
+			configJSON:  `{"whatsapp": {`,
+			expectError: true,
+			errorMsg:    "unexpected end of JSON input",
+		},
+		{
+			name: "missing required whatsapp config",
+			configJSON: `{
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": [{"whatsappSessionName": "default", "signalDestinationPhoneNumber": "+1234567890"}]
+			}`,
+			expectError: true,
+			errorMsg:    "missing WhatsApp API URL",
+		},
+		{
+			name: "missing required signal config",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": [{"whatsappSessionName": "default", "signalDestinationPhoneNumber": "+1234567890"}]
+			}`,
+			expectError: true,
+			errorMsg:    "missing Signal RPC URL",
+		},
+		{
+			name: "missing required database config",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": [{"whatsappSessionName": "default", "signalDestinationPhoneNumber": "+1234567890"}]
+			}`,
+			expectError: true,
+			errorMsg:    "missing database path",
+		},
+		{
+			name: "missing required media config",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"channels": [{"whatsappSessionName": "default", "signalDestinationPhoneNumber": "+1234567890"}]
+			}`,
+			expectError: true,
+			errorMsg:    "missing media cache directory",
+		},
+		{
+			name: "empty channels array",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": []
+			}`,
+			expectError: true,
+			errorMsg:    "channels array is required",
+		},
+		{
+			name: "invalid channel - missing whatsapp session",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": [{"signalDestinationPhoneNumber": "+1234567890"}]
+			}`,
+			expectError: true,
+			errorMsg:    "empty WhatsApp session name",
+		},
+		{
+			name: "invalid channel - missing signal phone",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": [{"whatsappSessionName": "default"}]
+			}`,
+			expectError: true,
+			errorMsg:    "empty Signal destination",
+		},
+		{
+			name: "valid minimal config with defaults",
+			configJSON: `{
+				"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+				"signal": {"rpc_url": "https://signal.example.com"},
+				"database": {"path": "/path/to/db.sqlite"},
+				"media": {"cache_dir": "/path/to/cache"},
+				"channels": [{"whatsappSessionName": "default", "signalDestinationPhoneNumber": "+1234567890"}]
+			}`,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(tmpDir, tt.name+".json")
+			err = os.WriteFile(configPath, []byte(tt.configJSON), 0644)
+			require.NoError(t, err)
+
+			config, err := LoadConfig(configPath)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+				assert.Nil(t, config)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, config)
+
+				// Verify defaults were applied
+				assert.Equal(t, 30, config.RetentionDays)
+				assert.Equal(t, 30, config.WhatsApp.PollIntervalSec)
+			}
+		})
+	}
+}
+
+func TestValidateAppliesDefaults(t *testing.T) {
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL: "https://whatsapp.example.com",
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://signal.example.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/path/to/cache",
+		},
+		Channels: []models.Channel{
+			{
+				WhatsAppSessionName:          "default",
+				SignalDestinationPhoneNumber: "+1234567890",
+			},
+		},
+	}
+
+	err := validate(config)
+	require.NoError(t, err)
+
+	// Test that defaults are applied by validate function
+	assert.Equal(t, 30, config.RetentionDays)
+	assert.Equal(t, 30, config.WhatsApp.PollIntervalSec)
+	assert.Equal(t, 5, config.Media.MaxSizeMB.Image)
+	assert.Equal(t, 100, config.Media.MaxSizeMB.Video)
+	assert.Equal(t, 100, config.Media.MaxSizeMB.Document)
+	assert.Equal(t, 16, config.Media.MaxSizeMB.Voice)
+	assert.Equal(t, "whatsignal", config.Tracing.ServiceName)
+	assert.Equal(t, "dev", config.Tracing.ServiceVersion)
+	assert.Equal(t, "development", config.Tracing.Environment)
+	assert.Equal(t, 0.1, config.Tracing.SampleRate)
+	assert.True(t, config.Tracing.UseStdout)
+}
+
+func TestValidateDoesNotOverrideExisting(t *testing.T) {
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL:      "https://whatsapp.example.com",
+			PollIntervalSec: 15,
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://signal.example.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/path/to/cache",
+			MaxSizeMB: models.MediaSizeLimits{
+				Image: 10,
+			},
+		},
+		Channels: []models.Channel{
+			{
+				WhatsAppSessionName:          "default",
+				SignalDestinationPhoneNumber: "+1234567890",
+			},
+		},
+		RetentionDays: 60,
+		Tracing: models.TracingConfig{
+			ServiceName: "custom-service",
+		},
+	}
+
+	err := validate(config)
+	require.NoError(t, err)
+
+	// Existing values should not be overridden
+	assert.Equal(t, 60, config.RetentionDays)
+	assert.Equal(t, 15, config.WhatsApp.PollIntervalSec)
+	assert.Equal(t, 10, config.Media.MaxSizeMB.Image)
+	assert.Equal(t, "custom-service", config.Tracing.ServiceName)
+
+	// But missing values should get defaults
+	assert.Equal(t, 100, config.Media.MaxSizeMB.Video)
+	assert.Equal(t, "dev", config.Tracing.ServiceVersion)
+}
+
+func TestLoadConfig_FilePermissions(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "whatsignal-config-perm-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	configContent := `{
+		"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
+		"signal": {"rpc_url": "https://signal.example.com"},
+		"database": {"path": "/path/to/db.sqlite"},
+		"media": {"cache_dir": "/path/to/cache"},
+		"channels": [{"whatsappSessionName": "default", "signalDestinationPhoneNumber": "+1234567890"}]
+	}`
+
+	configPath := filepath.Join(tmpDir, "config.json")
+	err = os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Make file unreadable
+	err = os.Chmod(configPath, 0000)
+	require.NoError(t, err)
+
+	// Restore permissions for cleanup
+	defer func() { _ = os.Chmod(configPath, 0644) }()
+
+	_, err = LoadConfig(configPath)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "permission denied")
+}
+
+func TestApplyEnvironmentOverrides(t *testing.T) {
+	// Store original environment values
+	originalWhatsAppURL := os.Getenv("WHATSAPP_API_URL")
+	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+	originalSignalURL := os.Getenv("SIGNAL_RPC_URL")
+	originalDBPath := os.Getenv("DB_PATH")
+	originalMediaDir := os.Getenv("MEDIA_DIR")
+
+	defer func() {
+		// Restore original environment
+		if originalWhatsAppURL != "" {
+			os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
+		} else {
+			os.Unsetenv("WHATSAPP_API_URL")
+		}
+		if originalWebhookSecret != "" {
+			os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+		}
+		if originalSignalURL != "" {
+			os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
+		} else {
+			os.Unsetenv("SIGNAL_RPC_URL")
+		}
+		if originalDBPath != "" {
+			os.Setenv("DB_PATH", originalDBPath)
+		} else {
+			os.Unsetenv("DB_PATH")
+		}
+		if originalMediaDir != "" {
+			os.Setenv("MEDIA_DIR", originalMediaDir)
+		} else {
+			os.Unsetenv("MEDIA_DIR")
+		}
+	}()
+
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL:    "https://original-whatsapp.com",
+			WebhookSecret: "original-secret",
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://original-signal.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/original/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/original/path/to/cache",
+		},
+	}
+
+	// Set environment variables
+	os.Setenv("WHATSAPP_API_URL", "https://env-whatsapp.com")
+	os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "env-webhook-secret")
+	os.Setenv("SIGNAL_RPC_URL", "https://env-signal.com")
+	os.Setenv("DB_PATH", "/env/path/to/db.sqlite")
+	os.Setenv("MEDIA_DIR", "/env/path/to/cache")
+
+	applyEnvironmentOverrides(config)
+
+	// Verify environment variables override config values
+	assert.Equal(t, "https://env-whatsapp.com", config.WhatsApp.APIBaseURL)
+	assert.Equal(t, "env-webhook-secret", config.WhatsApp.WebhookSecret)
+	assert.Equal(t, "https://env-signal.com", config.Signal.RPCURL)
+	assert.Equal(t, "/env/path/to/db.sqlite", config.Database.Path)
+	assert.Equal(t, "/env/path/to/cache", config.Media.CacheDir)
+}
+
+func TestApplyEnvironmentOverrides_EmptyEnv(t *testing.T) {
+	// Store original environment values
+	originalWhatsAppURL := os.Getenv("WHATSAPP_API_URL")
+	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+	originalSignalURL := os.Getenv("SIGNAL_RPC_URL")
+	originalDBPath := os.Getenv("DB_PATH")
+	originalMediaDir := os.Getenv("MEDIA_DIR")
+
+	defer func() {
+		// Restore original environment
+		if originalWhatsAppURL != "" {
+			os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
+		} else {
+			os.Unsetenv("WHATSAPP_API_URL")
+		}
+		if originalWebhookSecret != "" {
+			os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+		}
+		if originalSignalURL != "" {
+			os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
+		} else {
+			os.Unsetenv("SIGNAL_RPC_URL")
+		}
+		if originalDBPath != "" {
+			os.Setenv("DB_PATH", originalDBPath)
+		} else {
+			os.Unsetenv("DB_PATH")
+		}
+		if originalMediaDir != "" {
+			os.Setenv("MEDIA_DIR", originalMediaDir)
+		} else {
+			os.Unsetenv("MEDIA_DIR")
+		}
+	}()
+
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL:    "https://original-whatsapp.com",
+			WebhookSecret: "original-secret",
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://original-signal.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/original/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/original/path/to/cache",
+		},
+	}
+
+	// Unset all environment variables
+	os.Unsetenv("WHATSAPP_API_URL")
+	os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+	os.Unsetenv("SIGNAL_RPC_URL")
+	os.Unsetenv("DB_PATH")
+	os.Unsetenv("MEDIA_DIR")
+
+	applyEnvironmentOverrides(config)
+
+	// Verify config values remain unchanged when environment variables are not set
+	assert.Equal(t, "https://original-whatsapp.com", config.WhatsApp.APIBaseURL)
+	assert.Equal(t, "original-secret", config.WhatsApp.WebhookSecret)
+	assert.Equal(t, "https://original-signal.com", config.Signal.RPCURL)
+	assert.Equal(t, "/original/path/to/db.sqlite", config.Database.Path)
+	assert.Equal(t, "/original/path/to/cache", config.Media.CacheDir)
+}

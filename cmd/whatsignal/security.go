@@ -253,7 +253,9 @@ func GetClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		// Take the first IP in the chain
 		if ips := strings.Split(xff, ","); len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
+			if ip := strings.TrimSpace(ips[0]); ip != "" {
+				return ip
+			}
 		}
 	}
 

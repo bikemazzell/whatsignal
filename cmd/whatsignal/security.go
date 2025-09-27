@@ -94,6 +94,7 @@ type RateLimiter struct {
 	cleanupTicker *time.Ticker
 	cleanupStop   chan bool
 	cleanupPeriod time.Duration
+	stopOnce      sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -136,10 +137,12 @@ func (rl *RateLimiter) startBackgroundCleanup() {
 
 // Stop stops the background cleanup goroutine
 func (rl *RateLimiter) Stop() {
-	if rl.cleanupTicker != nil {
-		rl.cleanupTicker.Stop()
-	}
-	close(rl.cleanupStop)
+	rl.stopOnce.Do(func() {
+		if rl.cleanupTicker != nil {
+			rl.cleanupTicker.Stop()
+		}
+		close(rl.cleanupStop)
+	})
 }
 
 // cleanup removes old entries from the request map

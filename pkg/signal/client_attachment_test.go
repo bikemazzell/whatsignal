@@ -205,10 +205,16 @@ func TestExtractAttachmentPaths_TimeoutHandling(t *testing.T) {
 	// Create server that delays response to trigger timeout
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Sleep longer than the 15-second timeout in extractAttachmentPaths
-		time.Sleep(20 * time.Second)
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("too late")); err != nil {
-			t.Logf("Failed to write response: %v", err)
+		// But use a select to allow the test to finish when connection closes
+		select {
+		case <-time.After(16 * time.Second):
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte("too late")); err != nil {
+				t.Logf("Failed to write response: %v", err)
+			}
+		case <-r.Context().Done():
+			// Request cancelled, exit immediately
+			return
 		}
 	}))
 	defer server.Close()

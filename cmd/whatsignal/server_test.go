@@ -28,6 +28,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockDatabase implements DatabaseInterface for testing
+type mockDatabase struct {
+	mock.Mock
+}
+
+func (m *mockDatabase) HealthCheck(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+// For tests, we'll use nil for signal client since the code has nil checks
+
 // Helper function to create a test channel manager
 func createTestChannelManager() *service.ChannelManager {
 	channels := []models.Channel{
@@ -227,6 +239,11 @@ func (m *mockWAClient) DeleteMessage(ctx context.Context, chatID, messageID stri
 
 func (m *mockWAClient) GetSessionName() string {
 	return "test-session"
+}
+
+func (m *mockWAClient) HealthCheck(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
 }
 
 func (m *mockMessageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
@@ -479,7 +496,13 @@ func TestServer_Health(t *testing.T) {
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+
+	// Setup mock expectations for health checks
+	mockDB.On("HealthCheck", mock.Anything).Return(nil)
+	mockWAClient.On("HealthCheck", mock.Anything).Return(nil)
+
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -488,6 +511,9 @@ func TestServer_Health(t *testing.T) {
 
 	resp := w.Result()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	mockDB.AssertExpectations(t)
+	mockWAClient.AssertExpectations(t)
 }
 
 func TestServer_SessionStatus(t *testing.T) {
@@ -542,7 +568,8 @@ func TestServer_SessionStatus(t *testing.T) {
 			mockWAClient.On("GetSessionStatus", mock.Anything).Return(tt.sessionStatus, tt.sessionError).Once()
 
 			channelManager := createTestChannelManager()
-			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+			mockDB := &mockDatabase{}
+			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/session/status", nil)
 			w := httptest.NewRecorder()
@@ -593,7 +620,8 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 	}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	tests := []struct {
 		name         string
@@ -1096,7 +1124,8 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 	}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	tests := []struct {
 		name    string
@@ -1251,7 +1280,13 @@ func TestServer_StartAndShutdown(t *testing.T) {
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+
+	// Set up mock expectations for health check
+	mockDB.On("HealthCheck", mock.Anything).Return(nil)
+	mockWAClient.On("HealthCheck", mock.Anything).Return(nil)
+
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	// Find an available port
 	listener, err := net.Listen("tcp", ":0")
@@ -1301,7 +1336,8 @@ func TestServer_ShutdownNilServer(t *testing.T) {
 	cfg := &models.Config{}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	// Test shutdown without starting server
 	ctx := context.Background()
@@ -1333,7 +1369,8 @@ func TestNewServer(t *testing.T) {
 
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	assert.NotNil(t, server)
 	assert.NotNil(t, server.router)
@@ -1396,7 +1433,8 @@ func TestRequestSizeLimit(t *testing.T) {
 
 			mockWAClient := &mockWAClient{}
 			channelManager := createTestChannelManager()
-			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+			mockDB := &mockDatabase{}
+			server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 			// Create request with body of specific size
 			body := make([]byte, tt.bodySize)
@@ -1448,7 +1486,8 @@ func TestRequestSizeLimit_NoLimit(t *testing.T) {
 
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	// Create a request larger than typical default (5MB)
 	bodySize := 3 * 1024 * 1024 // 3MB (should be within default 5MB limit)
@@ -1488,7 +1527,8 @@ func TestServer_RequireSessionName(t *testing.T) {
 	}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	tests := []struct {
 		name       string
@@ -1609,7 +1649,8 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 	mockWAClient := &mockWAClient{}
 	// Channel manager only has "default" session configured
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	tests := []struct {
 		name          string
@@ -1765,7 +1806,8 @@ func TestWhatsAppWebhook_InvalidJSON_NoRawBodyLogged(t *testing.T) {
 	}
 	mockWAClient := &mockWAClient{}
 	channelManager := createTestChannelManager()
-	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager)
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
 	// Craft invalid JSON payload that contains a sensitive token
 	payload := []byte("{\"event\":\"message\",\"payload\":{\"id\":\"msg\",\"from\":\"+10000000000\",\"fromMe\":false,\"body\":\"supersecret-token") // missing closing quotes/braces

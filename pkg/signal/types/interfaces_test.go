@@ -34,6 +34,11 @@ func (m *MockClient) InitializeDevice(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *MockClient) HealthCheck(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func TestClientInterface(t *testing.T) {
 	// Test that MockClient implements Client interface
 	var client Client = &MockClient{}

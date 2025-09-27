@@ -241,7 +241,7 @@ func run(ctx context.Context) error {
 	}
 	defer signalPoller.Stop()
 
-	server := NewServer(cfg, messageService, logger, waClient, channelManager)
+	server := NewServer(cfg, messageService, logger, waClient, channelManager, db, sigClient.(*signalapi.SignalClient))
 	serverErrCh := make(chan error, constants.ServerErrorChannelSize)
 	go func() {
 		if err := server.Start(); err != nil {

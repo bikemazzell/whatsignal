@@ -173,6 +173,11 @@ func (m *mockWhatsAppClient) GetSessionName() string {
 	return "test-session"
 }
 
+func (m *mockWhatsAppClient) HealthCheck(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 // Mock Signal client
 type mockSignalClient struct {
 	mock.Mock

@@ -553,3 +553,31 @@ func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {
 
 	return attachments, nil
 }
+
+// HealthCheck performs a health check on the Signal API
+func (c *SignalClient) HealthCheck(ctx context.Context) error {
+	// Try to receive messages as a health check (this is a lightweight operation)
+	endpoint := fmt.Sprintf("%s/v1/receive/%s", c.baseURL, c.phoneNumber)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Signal health check request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("signal API health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check if we got a successful response (2xx)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+
+	// Read the response body for error details
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("signal API health check returned status %d: %s", resp.StatusCode, string(body))
+}

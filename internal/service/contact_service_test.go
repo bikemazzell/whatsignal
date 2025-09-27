@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
 
@@ -170,6 +171,11 @@ func (m *mockWAClient) DeleteMessage(ctx context.Context, chatID, messageID stri
 func (m *mockWAClient) GetSessionName() string {
 	args := m.Called()
 	return args.String(0)
+}
+
+func (m *mockWAClient) HealthCheck(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
 }
 
 func TestNewContactService(t *testing.T) {
@@ -658,5 +664,195 @@ func TestContactService_CleanupOldContacts(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "database error")
 		mockDB.AssertExpectations(t)
+	})
+}
+
+// TestContactService_CacheMetrics tests that cache hit/miss metrics are recorded correctly
+func TestContactService_CacheMetrics(t *testing.T) {
+	t.Run("cache hit metric", func(t *testing.T) {
+		mockDB := &mockContactDatabaseService{}
+		mockWA := &mockWAClient{}
+		service := NewContactService(mockDB, mockWA)
+
+		ctx := context.Background()
+		phoneNumber := "+1234567890"
+
+		// Create a fresh contact that should be in cache
+		cachedContact := &models.Contact{
+			ID:          1,
+			ContactID:   phoneNumber + "@c.us",
+			PhoneNumber: phoneNumber,
+			Name:        "Test Contact",
+			CachedAt:    time.Now(), // Fresh cache entry
+		}
+
+		// Mock database to return cached contact
+		mockDB.On("GetContactByPhone", ctx, phoneNumber).Return(cachedContact, nil)
+
+		// Get initial metrics count
+		initialMetrics := metrics.GetAllMetrics()
+		initialHits := float64(0)
+		if hitMetric, exists := initialMetrics.Counters["contact_cache_hits_total"]; exists {
+			initialHits = hitMetric.Value
+		}
+
+		// Call GetContactDisplayName which should hit cache
+		displayName := service.GetContactDisplayName(ctx, phoneNumber)
+
+		// Verify cache hit
+		assert.Equal(t, "Test Contact", displayName)
+
+		// Verify cache hit metric was incremented
+		finalMetrics := metrics.GetAllMetrics()
+		if hitMetric, exists := finalMetrics.Counters["contact_cache_hits_total"]; exists {
+			assert.Equal(t, initialHits+1, hitMetric.Value, "Cache hit metric should be incremented")
+		} else {
+			t.Fatal("Expected contact_cache_hits_total metric to exist")
+		}
+
+		mockDB.AssertExpectations(t)
+	})
+
+	t.Run("cache miss metric", func(t *testing.T) {
+		mockDB := &mockContactDatabaseService{}
+		mockWA := &mockWAClient{}
+		service := NewContactService(mockDB, mockWA)
+
+		ctx := context.Background()
+		phoneNumber := "+1234567891"
+		contactID := phoneNumber + "@c.us"
+
+		// Mock database to return no cached contact (cache miss)
+		mockDB.On("GetContactByPhone", ctx, phoneNumber).Return((*models.Contact)(nil), errors.New("not found"))
+
+		// Mock WhatsApp API to return contact
+		waContact := &types.Contact{
+			ID:   contactID,
+			Name: "New Contact",
+		}
+		mockWA.On("GetContact", ctx, contactID).Return(waContact, nil)
+
+		// Mock database save for the new contact
+		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(nil)
+
+		// Get initial metrics count
+		initialMetrics := metrics.GetAllMetrics()
+		initialMisses := float64(0)
+		if missMetric, exists := initialMetrics.Counters["contact_cache_misses_total"]; exists {
+			initialMisses = missMetric.Value
+		}
+
+		// Call GetContactDisplayName which should miss cache
+		displayName := service.GetContactDisplayName(ctx, phoneNumber)
+
+		// Verify result
+		assert.Equal(t, "New Contact", displayName)
+
+		// Verify cache miss metric was incremented
+		finalMetrics := metrics.GetAllMetrics()
+		if missMetric, exists := finalMetrics.Counters["contact_cache_misses_total"]; exists {
+			assert.Equal(t, initialMisses+1, missMetric.Value, "Cache miss metric should be incremented")
+		} else {
+			t.Fatal("Expected contact_cache_misses_total metric to exist")
+		}
+
+		mockDB.AssertExpectations(t)
+		mockWA.AssertExpectations(t)
+	})
+
+	t.Run("cache refresh metric", func(t *testing.T) {
+		mockDB := &mockContactDatabaseService{}
+		mockWA := &mockWAClient{}
+		service := NewContactService(mockDB, mockWA)
+
+		ctx := context.Background()
+		phoneNumber := "+1234567892"
+		contactID := phoneNumber + "@c.us"
+
+		// Create an old cached contact that needs refresh
+		oldContact := &models.Contact{
+			ID:          2,
+			ContactID:   contactID,
+			PhoneNumber: phoneNumber,
+			Name:        "Old Contact",
+			CachedAt:    time.Now().Add(-25 * time.Hour), // Older than 24 hours
+		}
+
+		// Mock database to return old cached contact
+		mockDB.On("GetContactByPhone", ctx, phoneNumber).Return(oldContact, nil)
+
+		// Mock WhatsApp API to return updated contact
+		waContact := &types.Contact{
+			ID:   contactID,
+			Name: "Updated Contact",
+		}
+		mockWA.On("GetContact", ctx, contactID).Return(waContact, nil)
+
+		// Mock database save for the refreshed contact
+		mockDB.On("SaveContact", ctx, mock.AnythingOfType("*models.Contact")).Return(nil)
+
+		// Get initial metrics count
+		initialMetrics := metrics.GetAllMetrics()
+		initialRefreshes := float64(0)
+		if refreshMetric, exists := initialMetrics.Counters["contact_cache_refreshes_total"]; exists {
+			initialRefreshes = refreshMetric.Value
+		}
+
+		// Call GetContactDisplayName which should refresh cache
+		displayName := service.GetContactDisplayName(ctx, phoneNumber)
+
+		// Verify result
+		assert.Equal(t, "Updated Contact", displayName)
+
+		// Verify cache refresh metric was incremented
+		finalMetrics := metrics.GetAllMetrics()
+		if refreshMetric, exists := finalMetrics.Counters["contact_cache_refreshes_total"]; exists {
+			assert.Equal(t, initialRefreshes+1, refreshMetric.Value, "Cache refresh metric should be incremented")
+		} else {
+			t.Fatal("Expected contact_cache_refreshes_total metric to exist")
+		}
+
+		mockDB.AssertExpectations(t)
+		mockWA.AssertExpectations(t)
+	})
+
+	t.Run("cache miss metric with API error", func(t *testing.T) {
+		mockDB := &mockContactDatabaseService{}
+		mockWA := &mockWAClient{}
+		service := NewContactService(mockDB, mockWA)
+
+		ctx := context.Background()
+		phoneNumber := "+1234567893"
+		contactID := phoneNumber + "@c.us"
+
+		// Mock database to return no cached contact (cache miss)
+		mockDB.On("GetContactByPhone", ctx, phoneNumber).Return((*models.Contact)(nil), errors.New("not found"))
+
+		// Mock WhatsApp API to return error
+		mockWA.On("GetContact", ctx, contactID).Return((*types.Contact)(nil), errors.New("API error"))
+
+		// Get initial metrics count
+		initialMetrics := metrics.GetAllMetrics()
+		initialMisses := float64(0)
+		if missMetric, exists := initialMetrics.Counters["contact_cache_misses_total"]; exists {
+			initialMisses = missMetric.Value
+		}
+
+		// Call GetContactDisplayName which should miss cache and fail API call
+		displayName := service.GetContactDisplayName(ctx, phoneNumber)
+
+		// Should fallback to phone number
+		assert.Equal(t, phoneNumber, displayName)
+
+		// Verify cache miss metric was still incremented even though API failed
+		finalMetrics := metrics.GetAllMetrics()
+		if missMetric, exists := finalMetrics.Counters["contact_cache_misses_total"]; exists {
+			assert.Equal(t, initialMisses+1, missMetric.Value, "Cache miss metric should be incremented even on API error")
+		} else {
+			t.Fatal("Expected contact_cache_misses_total metric to exist")
+		}
+
+		mockDB.AssertExpectations(t)
+		mockWA.AssertExpectations(t)
 	})
 }

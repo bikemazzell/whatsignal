@@ -724,3 +724,27 @@ func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, si
 
 	return count > 0, nil
 }
+
+// HealthCheck performs a database health check by pinging the database connection
+func (d *Database) HealthCheck(ctx context.Context) error {
+	if d.db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
+	// Use PingContext to check if the database is reachable
+	if err := d.db.PingContext(ctx); err != nil {
+		return fmt.Errorf("database ping failed: %w", err)
+	}
+
+	// Optional: run a simple query to ensure read access
+	var result int
+	if err := d.db.QueryRowContext(ctx, "SELECT 1").Scan(&result); err != nil {
+		return fmt.Errorf("database query failed: %w", err)
+	}
+
+	if result != 1 {
+		return fmt.Errorf("unexpected database query result: %d", result)
+	}
+
+	return nil
+}

@@ -375,6 +375,10 @@ func (m *mockMultiSessionWAClient) GetContact(ctx context.Context, contactID str
 	return nil, nil
 }
 
+func (m *mockMultiSessionWAClient) AckMessage(ctx context.Context, chatID, sessionName string) error {
+	return nil
+}
+
 func (m *mockMultiSessionWAClient) HealthCheck(ctx context.Context) error {
 	return nil
 }

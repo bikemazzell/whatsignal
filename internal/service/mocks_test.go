@@ -178,6 +178,11 @@ func (m *mockWhatsAppClient) HealthCheck(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockWhatsAppClient) AckMessage(ctx context.Context, chatID, sessionName string) error {
+	args := m.Called(ctx, chatID, sessionName)
+	return args.Error(0)
+}
+
 // Mock Signal client
 type mockSignalClient struct {
 	mock.Mock
@@ -191,9 +196,6 @@ func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message s
 		return m.sendMessageResp, m.sendMessageErr
 	}
 	args := m.Called(ctx, recipient, message, attachments)
-	if args.Get(0) == nil && args.Error(1) == nil {
-		return nil, nil
-	}
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

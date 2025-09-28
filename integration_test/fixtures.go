@@ -113,7 +113,7 @@ func (f *TestFixtures) MessageMappings() map[string]models.MessageMapping {
 	now := time.Now()
 	return map[string]models.MessageMapping{
 		"text_message": {
-			WhatsAppChatID:  "1234567890@c.us",
+			WhatsAppChatID:  "+1111111111@c.us", // Signal sender as WhatsApp chat
 			WhatsAppMsgID:   "wamid.test123",
 			SignalMsgID:     "signal-msg-123",
 			SessionName:     "personal",
@@ -138,7 +138,7 @@ func (f *TestFixtures) MessageMappings() map[string]models.MessageMapping {
 			UpdatedAt:       now.Add(-4 * time.Minute),
 		},
 		"failed_message": {
-			WhatsAppChatID:  "1234567890@c.us",
+			WhatsAppChatID:  "+1111111111@c.us", // Signal sender as WhatsApp chat
 			WhatsAppMsgID:   "wamid.failed789",
 			SignalMsgID:     "signal-failed-789",
 			SessionName:     "personal",
@@ -148,6 +148,18 @@ func (f *TestFixtures) MessageMappings() map[string]models.MessageMapping {
 			ForwardedAt:     now.Add(-59 * time.Minute),
 			CreatedAt:       now.Add(-1 * time.Hour),
 			UpdatedAt:       now.Add(-58 * time.Minute),
+		},
+		"signal_bidirectional": {
+			WhatsAppChatID:  "+2222222222@c.us", // Different Signal sender for bidirectional test
+			WhatsAppMsgID:   "wamid.bidir123",
+			SignalMsgID:     "signal-bidir-123",
+			SessionName:     "personal",
+			DeliveryStatus:  models.DeliveryStatusDelivered,
+			MediaType:       "",
+			SignalTimestamp: now.Add(-30 * time.Minute),
+			ForwardedAt:     now.Add(-29 * time.Minute),
+			CreatedAt:       now.Add(-30 * time.Minute),
+			UpdatedAt:       now.Add(-29 * time.Minute),
 		},
 	}
 }
@@ -180,7 +192,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			}{
 				ID:        "wamid.test123",
 				Timestamp: time.Now().Unix(),
-				From:      "1234567890@c.us",
+				From:      "+1111111111@c.us",
 				FromMe:    false,
 				To:        "personal@c.us",
 				Body:      "Hello from Alice!",
@@ -253,7 +265,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			}{
 				ID:        "wamid.test123",
 				Timestamp: time.Now().Unix(),
-				From:      "1234567890@c.us",
+				From:      "+1111111111@c.us",
 				FromMe:    true,
 				To:        "personal@c.us",
 				Body:      "",
@@ -286,7 +298,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			}{
 				ID:        "wamid.reaction789",
 				Timestamp: time.Now().Unix(),
-				From:      "1234567890@c.us",
+				From:      "+1111111111@c.us",
 				FromMe:    false,
 				To:        "personal@c.us",
 				Body:      "",
@@ -505,7 +517,7 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 			Description: "Signal to WhatsApp text message flow",
 			Config:      configs["minimal"],
 			Contacts:    []models.Contact{contacts["alice"]},
-			Mappings:    []models.MessageMapping{mappings["text_message"]},
+			Mappings:    []models.MessageMapping{mappings["signal_bidirectional"]},
 			SignalWebhook: SignalWebhookPayload{
 				Envelope: struct {
 					Source      string `json:"source"`
@@ -519,7 +531,7 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 						ViewOnce  bool   `json:"viewOnce"`
 					} `json:"dataMessage"`
 				}{
-					Source:     "+1111111111",
+					Source:     "+2222222222",
 					SourceName: "Test User",
 					SourceUuid: "test-uuid-123",
 					Timestamp:  time.Now().UnixMilli(),
@@ -535,7 +547,7 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 						ViewOnce:  false,
 					},
 				},
-				Account: "+1234567890",
+				Account: "+1111111111",
 			},
 			ExpectedFlow: "Signal message → Database → WhatsApp delivery",
 		},
@@ -544,7 +556,7 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 			Description: "Reply from Signal to WhatsApp",
 			Config:      configs["minimal"],
 			Contacts:    []models.Contact{contacts["alice"]},
-			Mappings:    []models.MessageMapping{mappings["text_message"]},
+			Mappings:    []models.MessageMapping{mappings["signal_bidirectional"]},
 			SignalWebhook: SignalWebhookPayload{
 				Envelope: struct {
 					Source      string `json:"source"`
@@ -574,7 +586,7 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 						ViewOnce:  false,
 					},
 				},
-				Account: "+1234567890",
+				Account: "+1111111111",
 			},
 			ExpectedFlow: "Signal reply → Database → WhatsApp delivery",
 		},

@@ -2,19 +2,30 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"whatsignal/internal/database"
 	"whatsignal/internal/models"
+	"whatsignal/internal/service"
+	"whatsignal/pkg/media"
+	signalapi "whatsignal/pkg/signal"
+	signaltypes "whatsignal/pkg/signal/types"
+	"whatsignal/pkg/whatsapp"
+	"whatsignal/pkg/whatsapp/types"
 
+	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,20 +102,23 @@ func (em *EnvironmentManager) AddGlobalCleanup(cleanup func()) {
 
 // Enhanced TestEnvironment with additional features
 type TestEnvironment struct {
-	t               *testing.T
-	name            string
-	dbPath          string
-	db              *database.Database
-	mediaDir        string
-	httpServer      *httptest.Server
-	fixtures        *TestFixtures
-	mediaSamples    *MediaSamples
-	cleanup         []func()
-	isolationMode   IsolationMode
-	startTime       time.Time
-	mockAPIRequests map[string]int
-	mockAPIFailures map[string]int
-	mockAPILock     sync.RWMutex
+	t                *testing.T
+	name             string
+	dbPath           string
+	db               *database.Database
+	mediaDir         string
+	httpServer       *httptest.Server
+	fixtures         *TestFixtures
+	mediaSamples     *MediaSamples
+	cleanup          []func()
+	isolationMode    IsolationMode
+	startTime        time.Time
+	mockAPIRequests  map[string]int
+	mockAPIFailures  map[string]int
+	mockAPILock      sync.RWMutex
+	whatsignalServer *http.Server
+	messageService   service.MessageService
+	waClient         types.WAClient
 }
 
 // IsolationMode defines how the test environment handles isolation
@@ -322,6 +336,11 @@ func (env *TestEnvironment) GetConfig() *models.Config {
 		},
 		RetentionDays: 30,
 		LogLevel:      "info",
+		Retry: models.RetryConfig{
+			InitialBackoffMs: 100,
+			MaxBackoffMs:     5000,
+			MaxAttempts:      3,
+		},
 	}
 }
 
@@ -504,7 +523,7 @@ func (env *TestEnvironment) WaitForCondition(condition func() bool, timeout time
 
 // Message flow test helpers
 
-// StartMessageFlowServer starts a mock server for message flow testing
+// StartMessageFlowServer starts the actual WhatsSignal server with mock external APIs for message flow testing
 func (env *TestEnvironment) StartMessageFlowServer() {
 	env.mockAPILock.Lock()
 	defer env.mockAPILock.Unlock()
@@ -513,59 +532,387 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 	env.mockAPIRequests = make(map[string]int)
 	env.mockAPIFailures = make(map[string]int)
 
+	// Create a mock server for WhatsApp and Signal APIs
+	mockAPIServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env.mockAPILock.Lock()
+		defer env.mockAPILock.Unlock()
+
+		// Log the request for debugging
+		logger := logrus.New()
+		logger.WithFields(logrus.Fields{
+			"method": r.Method,
+			"path":   r.URL.Path,
+		}).Debug("Mock API request")
+
+		switch {
+		// WhatsApp API endpoints
+		case strings.Contains(r.URL.Path, "/sessions"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"name": "personal", "status": "WORKING"}, {"name": "business", "status": "WORKING"}]`))
+
+		case strings.Contains(r.URL.Path, "/contacts"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"contacts": []}`))
+
+		case strings.Contains(r.URL.Path, "/sendText"):
+			failures := env.mockAPIFailures["whatsapp_send"]
+			if failures > 0 {
+				env.mockAPIFailures["whatsapp_send"]--
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+				return
+			}
+			env.mockAPIRequests["whatsapp_send"]++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id": "wamid.test123", "status": "sent"}`))
+
+		case strings.Contains(r.URL.Path, "/sendSeen"):
+			env.mockAPIRequests["ack"]++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status": "acked"}`))
+
+		// Signal API endpoints - handle any POST request like send
+		case r.Method == "POST" && strings.Contains(r.URL.Path, "/send"):
+			env.mockAPIRequests["send"]++
+			failures := env.mockAPIFailures["send"]
+			if failures > 0 {
+				env.mockAPIFailures["send"]--
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			// Return a simple Signal response matching SendMessageResponse struct
+			_, _ = w.Write([]byte(`{"timestamp": 1234567890123, "messageId": "signal_msg_123"}`))
+
+		case strings.Contains(r.URL.Path, "/about"):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"version": "test", "status": "ok"}`))
+
+		// Catch all for Signal RPC endpoints
+		case r.Method == "POST":
+			// Handle generic Signal JSON-RPC requests
+			body, _ := io.ReadAll(r.Body)
+			var rpcRequest map[string]interface{}
+			if err := json.Unmarshal(body, &rpcRequest); err == nil {
+				method, _ := rpcRequest["method"].(string)
+				id, _ := rpcRequest["id"].(string)
+
+				// Track the request
+				if strings.Contains(method, "send") {
+					env.mockAPIRequests["send"]++
+				}
+
+				// Return a generic success response
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				response := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"result": map[string]interface{}{
+						"timestamp": int64(1234567890123),
+						"messageId": "signal_msg_123",
+					},
+					"id": id,
+				}
+				_ = json.NewEncoder(w).Encode(response)
+				return
+			}
+			// Default POST response
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+
+		default:
+			logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"path":   r.URL.Path,
+			}).Warn("Unhandled mock API request")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error": "not found"}`))
+		}
+	}))
+
+	// Add cleanup for the mock API server
+	env.cleanup = append(env.cleanup, func() {
+		mockAPIServer.Close()
+	})
+
+	// Get config and update URLs to use mock server
+	cfg := env.GetConfig()
+	cfg.WhatsApp.APIBaseURL = mockAPIServer.URL
+	cfg.Signal.RPCURL = mockAPIServer.URL
+
+	// Initialize services
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	// Create WhatsApp client
+	waClient := whatsapp.NewClient(types.ClientConfig{
+		BaseURL:     cfg.WhatsApp.APIBaseURL,
+		APIKey:      os.Getenv("WHATSAPP_API_KEY"),
+		SessionName: "personal",
+		Timeout:     cfg.WhatsApp.Timeout,
+		RetryCount:  cfg.WhatsApp.RetryCount,
+	})
+	env.waClient = waClient
+
+	// Create Signal client
+	sigClient := signalapi.NewClientWithLogger(
+		cfg.Signal.RPCURL,
+		cfg.Signal.IntermediaryPhoneNumber,
+		cfg.Signal.DeviceName,
+		"",  // attachments dir
+		nil, // http client
+		logger,
+	)
+
+	// Create media handler
+	mediaHandler, err := media.NewHandler(
+		cfg.Media.CacheDir,
+		cfg.Media,
+	)
+	if err != nil {
+		env.t.Fatalf("Failed to create media handler: %v", err)
+	}
+
+	// Create contact service
+	contactService := service.NewContactService(env.db, waClient)
+
+	// Create channel manager
+	channelManager, err := service.NewChannelManager(cfg.Channels)
+	if err != nil {
+		env.t.Fatalf("Failed to create channel manager: %v", err)
+	}
+
+	// Create bridge - use the existing database instance from test environment
+	bridge := service.NewBridge(
+		waClient,
+		sigClient,
+		env.db,
+		mediaHandler,
+		models.RetryConfig{
+			InitialBackoffMs: cfg.Retry.InitialBackoffMs,
+			MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
+			MaxAttempts:      cfg.Retry.MaxAttempts,
+		},
+		cfg.Media,
+		channelManager,
+		contactService,
+	)
+
+	// Create message service
+	env.messageService = service.NewMessageService(
+		bridge,
+		env.db,
+		mediaHandler,
+		sigClient,
+		cfg.Signal,
+		channelManager,
+	)
+
+	// Load test fixtures into database for message flow testing
+	if err := env.PopulateWithFixtures(); err != nil {
+		env.t.Fatalf("Failed to load test fixtures: %v", err)
+	}
+
+	// Start the WhatsSignal server
+	env.startWhatsSignalServer(cfg, logger)
+}
+
+// startWhatsSignalServer starts the actual WhatsSignal HTTP server
+func (env *TestEnvironment) startWhatsSignalServer(cfg *models.Config, logger *logrus.Logger) {
+	// Find an available port
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		env.t.Fatalf("Failed to find available port: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+
+	// Create router
+	router := mux.NewRouter()
+
 	// Add webhook endpoints
-	mux := env.httpServer.Config.Handler.(*http.ServeMux)
-
-	// WhatsApp webhook endpoint
-	mux.HandleFunc("/webhook/whatsapp", func(w http.ResponseWriter, r *http.Request) {
-		env.incrementMockAPIRequest("webhook_whatsapp")
+	router.HandleFunc("/webhook/whatsapp", env.handleWhatsAppWebhook()).Methods(http.MethodPost)
+	router.HandleFunc("/webhook/signal", env.handleSignalWebhook()).Methods(http.MethodPost)
+	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "received"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}).Methods(http.MethodGet)
+
+	// Create and start server
+	env.whatsignalServer = &http.Server{
+		Addr:              fmt.Sprintf("127.0.0.1:%d", port),
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+
+	// Start server in background
+	go func() {
+		if err := env.whatsignalServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Errorf("Server error: %v", err)
+		}
+	}()
+
+	// Update httpServer URL to point to the WhatsSignal server
+	env.httpServer.URL = fmt.Sprintf("http://127.0.0.1:%d", port)
+
+	// Add cleanup
+	env.cleanup = append(env.cleanup, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if env.whatsignalServer != nil {
+			_ = env.whatsignalServer.Shutdown(ctx)
+		}
 	})
 
-	// Signal webhook endpoint
-	mux.HandleFunc("/webhook/signal", func(w http.ResponseWriter, r *http.Request) {
-		env.incrementMockAPIRequest("webhook_signal")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "received"}`))
-	})
+	// Wait for server to be ready
+	time.Sleep(50 * time.Millisecond)
+}
 
-	// WhatsApp ACK endpoint
-	mux.HandleFunc("/api/ack", func(w http.ResponseWriter, r *http.Request) {
-		env.incrementMockAPIRequest("ack")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "acked"}`))
-	})
+// handleWhatsAppWebhook handles incoming WhatsApp webhooks
+func (env *TestEnvironment) handleWhatsAppWebhook() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
 
-	// Signal send endpoint (override the basic one with tracking)
-	mux.HandleFunc("/v1/send", func(w http.ResponseWriter, r *http.Request) {
-		failures := env.getMockAPIFailures("send")
-		if failures > 0 {
-			env.decrementMockAPIFailures("send")
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+		var payload models.WhatsAppWebhookPayload
+		if err := json.Unmarshal(body, &payload); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
 		}
 
-		env.incrementMockAPIRequest("send")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"timestamp": 123456789, "message": "sent"}`))
-	})
-
-	// WhatsApp send endpoint
-	mux.HandleFunc("/api/sendText", func(w http.ResponseWriter, r *http.Request) {
-		failures := env.getMockAPIFailures("whatsapp_send")
-		if failures > 0 {
-			env.decrementMockAPIFailures("whatsapp_send")
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+		// Skip messages from ourselves
+		if payload.Payload.FromMe {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"received"}`))
 			return
 		}
 
-		env.incrementMockAPIRequest("whatsapp_send")
+		// Process the webhook through the message service
+		if env.messageService != nil && payload.Event == models.EventMessage {
+			ctx := context.Background()
+			sessionName := payload.Session
+			if sessionName == "" {
+				sessionName = "personal" // Default session
+			}
+
+			// Extract chat ID from the From field
+			chatID := payload.Payload.From
+			if !strings.Contains(chatID, "@") {
+				chatID = chatID + "@c.us"
+			}
+
+			err := env.messageService.HandleWhatsAppMessageWithSession(
+				ctx,
+				sessionName,
+				chatID,
+				payload.Payload.ID,
+				payload.Payload.From,
+				payload.Payload.Body,
+				"", // No media path for now
+			)
+			if err != nil {
+				logger := logrus.New()
+				logger.WithError(err).Error("Failed to handle WhatsApp message")
+				http.Error(w, fmt.Sprintf("Failed to handle message: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			// Acknowledge the incoming WhatsApp message
+			// The FromMe check above ensures we only process truly incoming messages
+			if env.waClient != nil {
+				logger := logrus.New()
+				logger.WithFields(logrus.Fields{
+					"messageID": payload.Payload.ID,
+					"from":      payload.Payload.From,
+					"fromMe":    payload.Payload.FromMe,
+				}).Info("Sending WhatsApp ACK")
+				if ackErr := env.waClient.AckMessage(ctx, chatID, sessionName); ackErr != nil {
+					logger.WithError(ackErr).Warn("Failed to acknowledge WhatsApp message")
+					// Don't fail the webhook for ACK failure
+				}
+			}
+		}
+
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id": "wamid.test123", "status": "sent"}`))
-	})
+		_, _ = w.Write([]byte(`{"status":"received"}`))
+	}
+}
+
+// handleSignalWebhook handles incoming Signal webhooks
+func (env *TestEnvironment) handleSignalWebhook() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		var message struct {
+			Account  string `json:"account"`
+			Envelope struct {
+				Source      string `json:"source"`
+				SourceName  string `json:"sourceName"`
+				Timestamp   int64  `json:"timestamp"`
+				DataMessage *struct {
+					Message   string `json:"message"`
+					Timestamp int64  `json:"timestamp"`
+				} `json:"dataMessage"`
+			} `json:"envelope"`
+		}
+		if err := json.Unmarshal(body, &message); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Process the Signal message through the message service
+		logger := logrus.New()
+		logger.WithFields(logrus.Fields{
+			"account":        message.Account,
+			"source":         message.Envelope.Source,
+			"hasDataMessage": message.Envelope.DataMessage != nil,
+		}).Info("Processing Signal webhook")
+
+		if env.messageService != nil {
+			ctx := context.Background()
+			if message.Envelope.DataMessage != nil && message.Envelope.DataMessage.Message != "" {
+				logger.Info("Processing Signal message through ProcessIncomingSignalMessageWithDestination")
+
+				// Convert the webhook format to signaltypes.SignalMessage
+				signalMsg := &signaltypes.SignalMessage{
+					MessageID: fmt.Sprintf("signal_%d", message.Envelope.Timestamp),
+					Sender:    message.Envelope.Source,
+					Message:   message.Envelope.DataMessage.Message,
+					Timestamp: message.Envelope.DataMessage.Timestamp,
+				}
+
+				// Use the account as the destination (Signal phone number receiving the message)
+				destination := message.Account
+
+				// Process the Signal message using the proper flow with destination
+				err := env.messageService.ProcessIncomingSignalMessageWithDestination(ctx, signalMsg, destination)
+				if err != nil {
+					logger.WithError(err).Error("Failed to handle Signal message")
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				} else {
+					logger.Info("Signal message handled successfully")
+				}
+			}
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"received"}`))
+	}
 }
 
 // CountMockAPIRequests returns the number of requests made to a specific mock API endpoint
@@ -575,34 +922,19 @@ func (env *TestEnvironment) CountMockAPIRequests(endpoint string) int {
 	return env.mockAPIRequests[endpoint]
 }
 
+// ResetMockAPICounters resets all API request counters
+func (env *TestEnvironment) ResetMockAPICounters() {
+	env.mockAPILock.Lock()
+	defer env.mockAPILock.Unlock()
+	env.mockAPIRequests = make(map[string]int)
+	env.mockAPIFailures = make(map[string]int)
+}
+
 // SetMockAPIFailures sets the number of failures for a specific endpoint
 func (env *TestEnvironment) SetMockAPIFailures(endpoint string, failures int) {
 	env.mockAPILock.Lock()
 	defer env.mockAPILock.Unlock()
 	env.mockAPIFailures[endpoint] = failures
-}
-
-// incrementMockAPIRequest increments the request counter for an endpoint
-func (env *TestEnvironment) incrementMockAPIRequest(endpoint string) {
-	env.mockAPILock.Lock()
-	defer env.mockAPILock.Unlock()
-	env.mockAPIRequests[endpoint]++
-}
-
-// getMockAPIFailures gets the current failure count for an endpoint
-func (env *TestEnvironment) getMockAPIFailures(endpoint string) int {
-	env.mockAPILock.RLock()
-	defer env.mockAPILock.RUnlock()
-	return env.mockAPIFailures[endpoint]
-}
-
-// decrementMockAPIFailures decrements the failure count for an endpoint
-func (env *TestEnvironment) decrementMockAPIFailures(endpoint string) {
-	env.mockAPILock.Lock()
-	defer env.mockAPILock.Unlock()
-	if env.mockAPIFailures[endpoint] > 0 {
-		env.mockAPIFailures[endpoint]--
-	}
 }
 
 // GetMemoryUsage returns current memory usage statistics

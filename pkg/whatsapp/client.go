@@ -227,6 +227,10 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 	return fmt.Errorf("timeout waiting for session to be ready after %v", maxWaitTime)
 }
 
+func (c *WhatsAppClient) AckMessage(ctx context.Context, chatID, sessionName string) error {
+	return c.sendSeenWithSession(ctx, chatID, sessionName)
+}
+
 func (c *WhatsAppClient) sendSeenWithSession(ctx context.Context, chatID, sessionName string) error {
 	payload := types.SeenRequest{
 		ChatID:  chatID,

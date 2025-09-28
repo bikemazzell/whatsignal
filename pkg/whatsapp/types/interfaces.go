@@ -32,6 +32,9 @@ type WAClient interface {
 	GetContact(ctx context.Context, contactID string) (*Contact, error)
 	GetAllContacts(ctx context.Context, limit, offset int) ([]Contact, error)
 
+	// Message acknowledgment
+	AckMessage(ctx context.Context, chatID, sessionName string) error
+
 	// Health check
 	HealthCheck(ctx context.Context) error
 }

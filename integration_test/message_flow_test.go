@@ -44,6 +44,9 @@ func TestWhatsAppToSignalMessageFlow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Reset counters for each sub-test
+			env.ResetMockAPICounters()
+
 			scenario := env.fixtures.Scenarios()[tt.scenario]
 
 			webhook := scenario.WhatsAppWebhook
@@ -119,6 +122,9 @@ func TestSignalToWhatsAppMessageFlow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Reset counters for each sub-test
+			env.ResetMockAPICounters()
+
 			scenario := env.fixtures.Scenarios()[tt.scenario]
 
 			signalPayload := scenario.SignalWebhook
@@ -205,8 +211,8 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	signalSends := env.CountMockAPIRequests("send")
 	whatsappSends := env.CountMockAPIRequests("whatsapp_send")
 
-	if waAcks != 1 {
-		t.Errorf("Expected 1 WhatsApp ACK, got %d", waAcks)
+	if waAcks != 2 {
+		t.Errorf("Expected 2 WhatsApp ACKs (1 from WA→Signal processing + 1 from Signal→WA sending), got %d", waAcks)
 	}
 	if signalSends != 1 {
 		t.Errorf("Expected 1 Signal send, got %d", signalSends)
@@ -265,10 +271,25 @@ func TestMessageFlowWithRetries(t *testing.T) {
 }
 
 func TestHighVolumeMessageFlow(t *testing.T) {
-	env := NewTestEnvironment(t, "high_volume", IsolationProcess)
+	env := NewTestEnvironment(t, "high_volume_flow", IsolationStrict)
 	defer env.Cleanup()
 
 	env.StartMessageFlowServer()
+
+	// Give the database and server time to fully initialize before high-volume load
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify database is ready by checking for required tables
+	if err := env.VerifyDatabaseConnection(); err != nil {
+		t.Fatalf("Database not ready before high volume test: %v", err)
+	}
+
+	// Explicitly verify required tables exist
+	ctx := context.Background()
+	err := env.db.HealthCheck(ctx)
+	if err != nil {
+		t.Fatalf("Database health check failed: %v", err)
+	}
 
 	const messageCount = 50
 	const concurrentSenders = 5
@@ -322,6 +343,7 @@ func TestHighVolumeMessageFlow(t *testing.T) {
 	if acks != messageCount {
 		t.Errorf("Expected %d ACKs, got %d", messageCount, acks)
 	}
+	t.Logf("SUCCESS: Got expected %d ACKs for %d messages", acks, messageCount)
 
 	if sends != messageCount {
 		t.Errorf("Expected %d sends, got %d", messageCount, sends)

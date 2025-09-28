@@ -246,6 +246,11 @@ func (m *mockWAClient) HealthCheck(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockWAClient) AckMessage(ctx context.Context, chatID, sessionName string) error {
+	args := m.Called(ctx, chatID, sessionName)
+	return args.Error(0)
+}
+
 func (m *mockMessageService) GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error) {
 	args := m.Called(ctx, threadID)
 	if args.Get(0) == nil {

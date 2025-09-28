@@ -181,6 +181,11 @@ func (m *MockWAClient) HealthCheck(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *MockWAClient) AckMessage(ctx context.Context, chatID, sessionName string) error {
+	args := m.Called(ctx, chatID, sessionName)
+	return args.Error(0)
+}
+
 // MockSessionManager is a mock implementation of the SessionManager interface
 type MockSessionManager struct {
 	mock.Mock

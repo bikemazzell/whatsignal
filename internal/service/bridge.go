@@ -11,6 +11,7 @@ import (
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/internal/privacy"
+	"whatsignal/internal/retry"
 	"whatsignal/internal/tracing"
 	"whatsignal/pkg/media"
 	"whatsignal/pkg/signal"
@@ -160,9 +161,36 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 	}
 	destinationNumber := dest
 
-	resp, err := b.sigClient.SendMessage(ctx, destinationNumber, message, attachments)
-	if err != nil {
-		return fmt.Errorf("failed to send signal message: %w", err)
+	// Prepare retry configuration
+	backoffConfig := retry.BackoffConfig{
+		InitialDelay: time.Duration(b.retryConfig.InitialBackoffMs) * time.Millisecond,
+		MaxDelay:     time.Duration(b.retryConfig.MaxBackoffMs) * time.Millisecond,
+		Multiplier:   2.0,
+		MaxAttempts:  b.retryConfig.MaxAttempts,
+		Jitter:       true,
+	}
+
+	b.logger.WithFields(logrus.Fields{
+		"InitialBackoffMs": b.retryConfig.InitialBackoffMs,
+		"MaxBackoffMs":     b.retryConfig.MaxBackoffMs,
+		"MaxAttempts":      b.retryConfig.MaxAttempts,
+	}).Info("Retry configuration for Signal send")
+
+	backoff := retry.NewBackoff(backoffConfig)
+
+	var resp *signaltypes.SendMessageResponse
+	retryErr := backoff.Retry(ctx, func() error {
+		var sendErr error
+		resp, sendErr = b.sigClient.SendMessage(ctx, destinationNumber, message, attachments)
+		return sendErr
+	})
+
+	if retryErr != nil {
+		return fmt.Errorf("failed to send signal message after retries: %w", retryErr)
+	}
+
+	if resp == nil {
+		return fmt.Errorf("received nil response from Signal client after successful retry")
 	}
 
 	mapping := &models.MessageMapping{

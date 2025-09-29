@@ -1,8 +1,6 @@
 # Docker Compose for WhatsSignal Integration Testing
 # Optional external dependencies for comprehensive integration testing
 
-version: '3.8'
-
 services:
   # Signal-CLI service for real Signal integration testing
   signal-cli:
@@ -29,13 +27,13 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - WHATSAPP_HOOK_URL=http://host.docker.internal:8082/webhook/whatsapp
+      - WHATSAPP_HOOK_URL=http://nginx:80/webhook/whatsapp
       - WHATSAPP_HOOK_EVENTS=message,message.any,session.status
       - WHATSAPP_START_SESSION=default
     volumes:
       - waha_data:/app/.sessions
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/version"]
       interval: 30s
       timeout: 10s
       retries: 3

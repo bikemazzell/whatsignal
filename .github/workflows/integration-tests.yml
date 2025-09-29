@@ -134,7 +134,7 @@ jobs:
         run: |
           cd integration_test
           # Use Docker Compose to start services
-          docker-compose up -d --wait
+          docker compose up -d --wait
         env:
           COMPOSE_PROJECT_NAME: whatsignal_integration_test
 
@@ -142,13 +142,13 @@ jobs:
         run: |
           echo "Waiting for services to be healthy..."
           timeout 300 bash -c '
-            until docker-compose -f integration_test/docker-compose.yml ps | grep -q "Up (healthy)"; do
+            until docker compose -f integration_test/docker-compose.yml ps | grep -q "Up (healthy)"; do
               echo "Waiting for services to start..."
               sleep 5
             done
           ' || {
             echo "Services failed to start properly"
-            docker-compose -f integration_test/docker-compose.yml logs
+            docker compose -f integration_test/docker-compose.yml logs
             exit 1
           }
 
@@ -169,14 +169,14 @@ jobs:
         run: |
           mkdir -p integration-test-logs
           cd integration_test
-          docker-compose logs --no-color > ../integration-test-logs/docker-services.log
-          docker-compose ps > ../integration-test-logs/docker-status.log
+          docker compose logs --no-color > ../integration-test-logs/docker-services.log
+          docker compose ps > ../integration-test-logs/docker-status.log
 
       - name: Stop Docker services
         if: always()
         run: |
           cd integration_test
-          docker-compose down -v --remove-orphans
+          docker compose down -v --remove-orphans
 
       - name: Upload test artifacts
         if: failure()

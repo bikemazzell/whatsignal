@@ -194,17 +194,20 @@ cleanup_docker() {
     if [[ "$USE_DOCKER" != true ]] || [[ "$CLEANUP_AFTER" != true ]]; then
         return 0
     fi
-    
+
     log_info "Cleaning up Docker services..."
-    
+
     cd "$SCRIPT_DIR"
-    
+
+    # Use the same detection logic as in setup_docker
     if command -v docker-compose &> /dev/null; then
-        docker-compose -f "$DOCKER_COMPOSE_FILE" down -v
+        DOCKER_COMPOSE_CMD="docker-compose"
     else
-        docker compose -f "$DOCKER_COMPOSE_FILE" down -v
+        DOCKER_COMPOSE_CMD="docker compose"
     fi
-    
+
+    $DOCKER_COMPOSE_CMD -f "$DOCKER_COMPOSE_FILE" down -v
+
     log_success "Docker cleanup completed"
 }
 

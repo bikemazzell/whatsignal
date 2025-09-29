@@ -92,6 +92,12 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=1h'
       - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - whatsignal-test
 
@@ -136,6 +142,12 @@ services:
     depends_on:
       - waha
       - signal-cli
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - whatsignal-test
 

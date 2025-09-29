@@ -130,7 +130,30 @@ jobs:
         run: |
           echo "Waiting for services to be healthy..."
           timeout 300 bash -c '
-            until docker compose -f integration_test/docker-compose.yml ps | grep -q "Up (healthy)"; do
+            while true; do
+              # Check service status and count healthy ones
+              ps_output=$(docker compose -f integration_test/docker-compose.yml ps)
+              echo "Current status:"
+              echo "$ps_output"
+
+              # Count services that are healthy
+              healthy_count=$(echo "$ps_output" | grep -c "(healthy)" || true)
+
+              # Count services that are just Up (excluding header)
+              up_count=$(echo "$ps_output" | grep -c "Up [0-9]" || true)
+
+              # Count services that are starting/unhealthy
+              starting_count=$(echo "$ps_output" | grep -c "starting\|unhealthy" || true)
+
+              echo "Found: $healthy_count healthy services, $up_count total up services, $starting_count starting/unhealthy"
+
+              # We expect at least 6 healthy services (postgres, redis, waha, signal-cli, minio, nginx, prometheus)
+              # and no starting/unhealthy services
+              if [ "$healthy_count" -ge 6 ] && [ "$starting_count" -eq 0 ]; then
+                echo "All critical services are ready!"
+                break
+              fi
+
               echo "Waiting for services to start..."
               sleep 5
             done
@@ -139,6 +162,8 @@ jobs:
             docker compose -f integration_test/docker-compose.yml logs
             exit 1
           }
+        env:
+          COMPOSE_PROJECT_NAME: whatsignal_integration_test
 
       - name: Run integration tests (Docker mode)
         run: |
@@ -159,12 +184,16 @@ jobs:
           cd integration_test
           docker compose logs --no-color > ../integration-test-logs/docker-services.log
           docker compose ps > ../integration-test-logs/docker-status.log
+        env:
+          COMPOSE_PROJECT_NAME: whatsignal_integration_test
 
       - name: Stop Docker services
         if: always()
         run: |
           cd integration_test
           docker compose down -v --remove-orphans
+        env:
+          COMPOSE_PROJECT_NAME: whatsignal_integration_test
 
       - name: Upload test artifacts
         if: failure()

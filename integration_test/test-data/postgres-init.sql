@@ -7,11 +7,30 @@ CREATE DATABASE whatsignal_benchmark;
 -- Create test user with limited permissions
 CREATE USER whatsignal_readonly WITH PASSWORD 'readonly_password';
 GRANT CONNECT ON DATABASE whatsignal_test TO whatsignal_readonly;
-GRANT USAGE ON SCHEMA public TO whatsignal_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO whatsignal_readonly;
 
 -- Create test data for benchmarking
 \c whatsignal_test;
+
+-- Create tables if they don't exist
+CREATE TABLE IF NOT EXISTS contacts (
+    contact_id VARCHAR(255) PRIMARY KEY,
+    phone_number VARCHAR(50),
+    name VARCHAR(255),
+    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS message_mappings (
+    id SERIAL PRIMARY KEY,
+    whatsapp_chat_id VARCHAR(255),
+    whatsapp_msg_id VARCHAR(255) UNIQUE,
+    signal_msg_id VARCHAR(255),
+    session_name VARCHAR(100),
+    delivery_status VARCHAR(50),
+    signal_timestamp TIMESTAMP,
+    forwarded_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Performance testing functions
 CREATE OR REPLACE FUNCTION generate_test_contacts(num_contacts INTEGER)
@@ -73,3 +92,8 @@ CREATE INDEX IF NOT EXISTS idx_mappings_timestamp_test ON message_mappings(signa
 -- Grant permissions to the main user
 GRANT EXECUTE ON FUNCTION generate_test_contacts(INTEGER) TO whatsignal;
 GRANT EXECUTE ON FUNCTION generate_test_mappings(INTEGER) TO whatsignal;
+
+-- Grant permissions to readonly user on the tables
+GRANT USAGE ON SCHEMA public TO whatsignal_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO whatsignal_readonly;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO whatsignal_readonly;

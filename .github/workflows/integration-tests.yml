@@ -167,6 +167,14 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
+          # Ensure Go environment is set up
+          eval "$(go env)"
+          export PATH="$(go env GOROOT)/bin:$PATH"
+
+          echo "Go version: $(go version)"
+          echo "Go root: $(go env GOROOT)"
+          echo "PATH: $PATH"
+
           ./integration_test/run-tests.sh \
             --docker \
             --timeout ${{ env.TEST_TIMEOUT }} \

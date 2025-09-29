@@ -79,18 +79,6 @@ jobs:
     timeout-minutes: 30
     # Only run Docker tests on main branch, develop, or when explicitly requested
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event.inputs.use_docker == 'true'
-    
-    services:
-      # Basic services that tests might need
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout code

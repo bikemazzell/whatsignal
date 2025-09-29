@@ -26,8 +26,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Test Docker and network connectivity
+        run: |
+          echo "Testing Docker daemon..."
+          docker version
+          echo "Testing network connectivity to ghcr.io..."
+          curl -I --connect-timeout 10 https://ghcr.io 2>/dev/null | head -n 1 || echo "Warning: Cannot reach ghcr.io directly"
+          echo "Testing DNS resolution..."
+          nslookup ghcr.io || echo "Warning: DNS resolution issues"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+          driver-opts: |
+            network=host
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
@@ -36,6 +49,18 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 2
+        continue-on-error: true
+        id: docker_login
+
+      - name: Retry Docker login if failed
+        if: github.event_name != 'pull_request' && steps.docker_login.outcome == 'failure'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 3
 
       - name: Extract metadata
         id: meta

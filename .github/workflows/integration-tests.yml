@@ -122,7 +122,13 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          # Remove AGENT_TOOLSDIRECTORY contents except Go
+          # AGENT_TOOLSDIRECTORY is /opt/hostedtoolcache which contains our Go installation
+          if [ -n "$AGENT_TOOLSDIRECTORY" ] && [ -d "$AGENT_TOOLSDIRECTORY" ]; then
+            echo "Cleaning up $AGENT_TOOLSDIRECTORY but preserving Go..."
+            # Remove everything except the 'go' directory
+            find "$AGENT_TOOLSDIRECTORY" -mindepth 1 -maxdepth 1 ! -name 'go' -exec sudo rm -rf {} + || true
+          fi
           docker system prune -af
 
       - name: Create required directories with proper permissions
@@ -185,36 +191,21 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
-          # Debug: Check if Go binary exists
-          echo "Checking for Go binary..."
-          if [ -f "${GOROOT}/bin/go" ]; then
-            echo "Go binary exists at ${GOROOT}/bin/go"
-            ls -la "${GOROOT}/bin/go"
-          else
-            echo "ERROR: Go binary NOT found at ${GOROOT}/bin/go"
-            echo "Contents of ${GOROOT}/bin:"
-            ls -la "${GOROOT}/bin/" || echo "Directory does not exist"
-            exit 1
-          fi
-
-          # Ensure Go is in PATH for the test runner script
-          export PATH="${GOROOT}/bin:${PATH}"
-
-          # Try to execute Go directly
-          echo "Attempting to execute Go directly..."
-          "${GOROOT}/bin/go" version || {
-            echo "ERROR: Cannot execute ${GOROOT}/bin/go"
-            exit 1
-          }
-
-          # Verify Go is accessible via PATH
-          if command -v go &> /dev/null; then
-            echo "Go binary location: $(which go)"
-            echo "Go version: $(go version)"
-          else
-            echo "WARNING: Go not found via 'command -v' but direct execution worked"
+          # Verify Go is still available after disk cleanup
+          echo "Verifying Go installation..."
+          if ! command -v go &> /dev/null; then
+            echo "ERROR: Go not found in PATH after disk cleanup"
             echo "PATH: $PATH"
+            echo "GOROOT: ${GOROOT:-not set}"
+            if [ -n "$GOROOT" ]; then
+              echo "Checking if Go binary exists at GOROOT..."
+              ls -la "${GOROOT}/bin/" || echo "GOROOT/bin directory does not exist"
+            fi
+            exit 1
           fi
+
+          echo "Go version: $(go version)"
+          echo "Go location: $(which go)"
 
           ./integration_test/run-tests.sh \
             --docker \

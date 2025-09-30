@@ -135,31 +135,54 @@ jobs:
         run: |
           mkdir -p /tmp/whatsignal-test
           chmod 755 /tmp/whatsignal-test
-          
+
           # Create Docker volume directories
           mkdir -p /tmp/docker-volumes/signal
           mkdir -p /tmp/docker-volumes/waha
           mkdir -p /tmp/docker-volumes/postgres
           chmod -R 755 /tmp/docker-volumes
 
+      - name: Clean up existing Docker resources
+        run: |
+          echo "Stopping and removing any existing integration test containers..."
+
+          # Stop all containers with our project name
+          docker ps -a --filter "name=integration_test" -q | xargs -r docker stop 2>/dev/null || true
+          docker ps -a --filter "name=integration_test" -q | xargs -r docker rm -f 2>/dev/null || true
+
+          # Remove networks
+          docker network ls --filter "name=integration_test" -q | xargs -r docker network rm 2>/dev/null || true
+
+          # Remove volumes
+          docker volume ls --filter "name=integration_test" -q | xargs -r docker volume rm -f 2>/dev/null || true
+
+          # Kill any processes using our ports
+          echo "Freeing up required ports..."
+          for port in 3000 5432 6379 8080 8081 9000 9001 9090 14250 16686; do
+            if sudo lsof -ti:$port >/dev/null 2>&1; then
+              echo "Killing process on port $port"
+              sudo lsof -ti:$port | xargs -r sudo kill -9 2>/dev/null || true
+            fi
+          done
+
+          # Wait for cleanup to complete
+          sleep 3
+
+          # Verify ports are free
+          echo "Verifying ports are available..."
+          for port in 9000 3000 8080; do
+            if sudo lsof -ti:$port >/dev/null 2>&1; then
+              echo "ERROR: Port $port is still in use after cleanup!"
+              sudo lsof -i:$port || true
+            else
+              echo "Port $port is available"
+            fi
+          done
+
       - name: Start Docker services
         run: |
           cd integration_test
-
-          # Clean up any existing containers/networks from previous runs
-          echo "Cleaning up any existing Docker resources..."
-          docker compose down -v --remove-orphans 2>/dev/null || true
-
-          # Kill any processes using our ports
-          echo "Checking for processes using required ports..."
-          for port in 3000 5432 6379 8080 8081 9000 9001 9090 14250 16686; do
-            sudo lsof -ti:$port | xargs -r sudo kill -9 2>/dev/null || true
-          done
-
-          # Wait a moment for ports to be released
-          sleep 2
-
-          # Use Docker Compose to start services
+          echo "Starting Docker services..."
           docker compose up -d --wait
         env:
           COMPOSE_PROJECT_NAME: whatsignal_integration_test

@@ -175,6 +175,15 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
+          # Add Go to PATH explicitly for the test script
+          export GOROOT=$(go env GOROOT)
+          export PATH=$GOROOT/bin:$PATH
+
+          # Verify Go is accessible
+          echo "Final PATH check before running tests:"
+          which go
+          go version
+
           ./integration_test/run-tests.sh \
             --docker \
             --timeout ${{ env.TEST_TIMEOUT }} \

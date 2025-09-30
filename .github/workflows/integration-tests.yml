@@ -185,13 +185,6 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
-          # Verify Go is accessible
-          echo "Go environment for test execution:"
-          echo "GOROOT: $GOROOT"
-          echo "PATH: $PATH"
-          which go
-          go version
-
           ./integration_test/run-tests.sh \
             --docker \
             --timeout ${{ env.TEST_TIMEOUT }} \

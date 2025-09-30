@@ -54,22 +54,14 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 		return fmt.Errorf("download host not allowed: %s", u.Hostname())
 	}
 
-	// Reject IP literals by category (except Docker internal IPs handled above)
-	if ip := net.ParseIP(u.Hostname()); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("download IP not allowed: %s", ip.String())
-		}
+	// Also verify the port matches to prevent accessing different services on the same host
+	if u.Port() != waha.Port() {
+		return fmt.Errorf("download host not allowed: %s", u.Hostname())
 	}
-	// Resolve DNS and block private/loopback/link-local
-	addrs, err := net.LookupIP(u.Hostname())
-	if err != nil {
-		return fmt.Errorf("failed to resolve host: %w", err)
-	}
-	for _, ip := range addrs {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("resolved to disallowed IP: %s", ip.String())
-		}
-	}
+
+	// If hostname and port match WAHA, allow it regardless of IP type
+	// This is safe because we've already verified it matches the configured WAHA host
+	// WAHA may be running on private IPs (192.168.x.x, 10.x.x.x) or localhost
 	return nil
 }
 

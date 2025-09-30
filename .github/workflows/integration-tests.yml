@@ -185,21 +185,35 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
-          # Ensure Go is in PATH for the test runner script
-          # GOROOT was set in the "Verify Go installation" step
-          if [ -n "$GOROOT" ]; then
-            export PATH="${GOROOT}/bin:${PATH}"
+          # Debug: Check if Go binary exists
+          echo "Checking for Go binary..."
+          if [ -f "${GOROOT}/bin/go" ]; then
+            echo "Go binary exists at ${GOROOT}/bin/go"
+            ls -la "${GOROOT}/bin/go"
+          else
+            echo "ERROR: Go binary NOT found at ${GOROOT}/bin/go"
+            echo "Contents of ${GOROOT}/bin:"
+            ls -la "${GOROOT}/bin/" || echo "Directory does not exist"
+            exit 1
           fi
 
-          # Verify Go is accessible
+          # Ensure Go is in PATH for the test runner script
+          export PATH="${GOROOT}/bin:${PATH}"
+
+          # Try to execute Go directly
+          echo "Attempting to execute Go directly..."
+          "${GOROOT}/bin/go" version || {
+            echo "ERROR: Cannot execute ${GOROOT}/bin/go"
+            exit 1
+          }
+
+          # Verify Go is accessible via PATH
           if command -v go &> /dev/null; then
             echo "Go binary location: $(which go)"
             echo "Go version: $(go version)"
           else
-            echo "ERROR: Go not found in PATH after setup"
+            echo "WARNING: Go not found via 'command -v' but direct execution worked"
             echo "PATH: $PATH"
-            echo "GOROOT: ${GOROOT:-not set}"
-            exit 1
           fi
 
           ./integration_test/run-tests.sh \

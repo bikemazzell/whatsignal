@@ -170,7 +170,7 @@ jobs:
 
           # Verify ports are free
           echo "Verifying ports are available..."
-          for port in 9000 3000 8080; do
+          for port in 9000 9090 3000 8080; do
             if sudo lsof -ti:$port >/dev/null 2>&1; then
               echo "ERROR: Port $port is still in use after cleanup!"
               sudo lsof -i:$port || true
@@ -179,52 +179,8 @@ jobs:
             fi
           done
 
-      - name: Start Docker services
-        run: |
-          cd integration_test
-          echo "Starting Docker services..."
-          docker compose up -d --wait
-        env:
-          COMPOSE_PROJECT_NAME: whatsignal_integration_test
-
-      - name: Wait for services to be ready
-        run: |
-          echo "Waiting for services to be healthy..."
-          timeout 300 bash -c '
-            while true; do
-              # Check service status and count healthy ones
-              ps_output=$(docker compose -f integration_test/docker-compose.yml ps)
-              echo "Current status:"
-              echo "$ps_output"
-
-              # Count services that are healthy
-              healthy_count=$(echo "$ps_output" | grep -c "(healthy)" || true)
-
-              # Count services that are just Up (excluding header)
-              up_count=$(echo "$ps_output" | grep -c "Up [0-9]" || true)
-
-              # Count services that are starting/unhealthy
-              starting_count=$(echo "$ps_output" | grep -c "starting\|unhealthy" || true)
-
-              echo "Found: $healthy_count healthy services, $up_count total up services, $starting_count starting/unhealthy"
-
-              # We expect at least 6 healthy services (postgres, redis, waha, signal-cli, minio, nginx, prometheus)
-              # and no starting/unhealthy services
-              if [ "$healthy_count" -ge 6 ] && [ "$starting_count" -eq 0 ]; then
-                echo "All critical services are ready!"
-                break
-              fi
-
-              echo "Waiting for services to start..."
-              sleep 5
-            done
-          ' || {
-            echo "Services failed to start properly"
-            docker compose -f integration_test/docker-compose.yml logs
-            exit 1
-          }
-        env:
-          COMPOSE_PROJECT_NAME: whatsignal_integration_test
+      # Note: Docker services are started by the test runner script itself
+      # No need to start them separately here
 
       - name: Run integration tests (Docker mode)
         run: |

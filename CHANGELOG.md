@@ -11,13 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Media download IP validation** - Fixed private IP rejection for self-hosted WAHA deployments
   - Issue: Media downloads from WAHA running on private IPs (192.168.x.x, 10.x.x.x) were incorrectly rejected
-- **GitHub Actions integration tests** - Fixed Go installation being deleted and Docker port conflicts
-  - Root cause: "Free up disk space" step was deleting `$AGENT_TOOLSDIRECTORY` which contained Go
-  - Modified disk cleanup to preserve Go installation while removing other tools
-  - Added dedicated cleanup step to stop/remove all integration test containers, networks, and volumes
-  - Added aggressive port cleanup for all service ports (3000, 5432, 6379, 8080, 8081, 9000, 9001, 9090, 14250, 16686)
-  - Added port availability verification before starting services
-  - Added verification step to confirm Go availability after disk cleanup
 
 ## [1.1.9] - 2025-09-27
 

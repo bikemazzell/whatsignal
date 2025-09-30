@@ -152,8 +152,12 @@ jobs:
 
           # Kill any processes using our ports
           echo "Checking for processes using required ports..."
-          sudo lsof -ti:3000 | xargs -r sudo kill -9 || true
-          sudo lsof -ti:8080 | xargs -r sudo kill -9 || true
+          for port in 3000 5432 6379 8080 8081 9000 9001 9090 14250 16686; do
+            sudo lsof -ti:$port | xargs -r sudo kill -9 2>/dev/null || true
+          done
+
+          # Wait a moment for ports to be released
+          sleep 2
 
           # Use Docker Compose to start services
           docker compose up -d --wait

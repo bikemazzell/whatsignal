@@ -93,9 +93,16 @@ jobs:
 
       - name: Verify Go installation
         run: |
-          which go
-          go version
-          go env GOROOT
+          if ! command -v go &> /dev/null; then
+            echo "ERROR: Go is not installed or not in PATH"
+            echo "PATH: $PATH"
+            echo "GOROOT: ${GOROOT:-not set}"
+            exit 1
+          fi
+          echo "Go found at: $(which go)"
+          echo "Go version: $(go version)"
+          echo "Go root: $(go env GOROOT)"
+          echo "Go path: $(go env GOPATH)"
           ls -la $(go env GOROOT)/bin/ || echo "GOROOT bin directory not found"
 
       - name: Install dependencies
@@ -175,12 +182,23 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
-          # Add Go to PATH explicitly for the test script
-          export GOROOT=$(go env GOROOT)
-          export PATH=$GOROOT/bin:$PATH
+          # Ensure Go is in PATH by sourcing the GitHub Actions environment
+          # The setup-go action sets GOROOT and updates PATH in the GitHub environment file
+          if [ -n "$GOROOT" ]; then
+            export PATH="$GOROOT/bin:$PATH"
+          else
+            # Fallback: find Go in the hostedtoolcache
+            GO_BIN=$(find /opt/hostedtoolcache/go -name "go" -type f -executable 2>/dev/null | head -1)
+            if [ -n "$GO_BIN" ]; then
+              export GOROOT=$(dirname $(dirname "$GO_BIN"))
+              export PATH="$GOROOT/bin:$PATH"
+            fi
+          fi
 
           # Verify Go is accessible
           echo "Final PATH check before running tests:"
+          echo "GOROOT: $GOROOT"
+          echo "PATH: $PATH"
           which go
           go version
 

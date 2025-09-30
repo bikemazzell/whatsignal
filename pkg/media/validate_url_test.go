@@ -389,7 +389,7 @@ func TestValidateDownloadURL_RealWorldExamples(t *testing.T) {
 			wahaBaseURL: "http://localhost:3000",
 			testURL:     "http://localhost:8080/admin/secret",
 			expectError: true,
-			errorMsg:    "resolved to disallowed IP", // localhost resolves to ::1 (IPv6 loopback)
+			errorMsg:    "download host not allowed", // Different port blocked
 		},
 		{
 			name:        "legitimate same-host URL",
@@ -571,11 +571,85 @@ func TestValidateDownloadURL_DockerInternalHosts(t *testing.T) {
 			expectError: true,
 			errorMsg:    "download host not allowed: malicious.example.com",
 		},
+		{
+			name:        "WAHA host IP directly - allowed",
+			url:         "http://192.168.1.23:3000/api/files/voice.ogg",
+			expectError: false,
+		},
+		{
+			name:        "WAHA host IP with different path - allowed",
+			url:         "http://192.168.1.23:3000/media/image.jpg",
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateDownloadURL_PrivateIPAsWAHAHost(t *testing.T) {
+	// Test that private IPs are allowed when they match the WAHA base URL
+	// This is the common case for self-hosted deployments on private networks
+
+	tests := []struct {
+		name        string
+		wahaBaseURL string
+		testURL     string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "192.168.x.x private IP - allowed when matches WAHA",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			testURL:     "http://192.168.1.23:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "10.x.x.x private IP - allowed when matches WAHA",
+			wahaBaseURL: "http://10.0.0.5:3000",
+			testURL:     "http://10.0.0.5:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "172.x.x.x private IP (non-Docker) - allowed when matches WAHA",
+			wahaBaseURL: "http://172.31.50.100:3000",
+			testURL:     "http://172.31.50.100:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "localhost - allowed when matches WAHA",
+			wahaBaseURL: "http://localhost:3000",
+			testURL:     "http://localhost:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "127.0.0.1 - allowed when matches WAHA",
+			wahaBaseURL: "http://127.0.0.1:3000",
+			testURL:     "http://127.0.0.1:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "different private IP - blocked",
+			wahaBaseURL: "http://192.168.1.23:3000",
+			testURL:     "http://192.168.1.50:3000/api/files/test.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: 192.168.1.50",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := setupHandlerForURLValidation(t, tt.wahaBaseURL)
+			err := h.validateDownloadURL(tt.testURL)
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)

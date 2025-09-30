@@ -185,7 +185,23 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
-          export PATH="${GOROOT}/bin:${PATH}"
+          # Ensure Go is in PATH for the test runner script
+          # GOROOT was set in the "Verify Go installation" step
+          if [ -n "$GOROOT" ]; then
+            export PATH="${GOROOT}/bin:${PATH}"
+          fi
+
+          # Verify Go is accessible
+          if command -v go &> /dev/null; then
+            echo "Go binary location: $(which go)"
+            echo "Go version: $(go version)"
+          else
+            echo "ERROR: Go not found in PATH after setup"
+            echo "PATH: $PATH"
+            echo "GOROOT: ${GOROOT:-not set}"
+            exit 1
+          fi
+
           ./integration_test/run-tests.sh \
             --docker \
             --timeout ${{ env.TEST_TIMEOUT }} \

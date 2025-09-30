@@ -72,8 +72,9 @@ help:
 	@echo "  security       - Run security scans (gosec, govulncheck)"
 	@echo "  deps           - Download dependencies"
 	@echo "  tidy           - Tidy go modules"
-	@echo "  install-tools  - Install development and CI tools"
-	@echo "  ci             - Run all CI checks (fmt, vet, lint, staticcheck, security, test-race, coverage)"
+	@echo "  install-tools            - Install development and CI tools"
+	@echo "  ci                       - Run all CI checks (fmt, vet, lint, staticcheck, security, test-race, coverage)"
+	@echo "  ci-integration-workflow  - Simulate full GitHub Actions integration workflow (includes Docker services)"
 	@echo ""
 	@echo "Run targets:"
 	@echo "  run        - Run debug version"
@@ -330,6 +331,57 @@ staticcheck:
 .PHONY: ci
 ci: fmt vet lint staticcheck security test-race coverage
 	@echo "All CI checks passed!"
+
+# Simulate GitHub Actions integration workflow locally
+.PHONY: ci-integration-workflow
+ci-integration-workflow:
+	@echo "=========================================="
+	@echo "Simulating GitHub Actions Integration Workflow"
+	@echo "=========================================="
+	@echo ""
+	@echo "Step 1: Verifying Go installation..."
+	@go version
+	@echo ""
+	@echo "Step 2: Installing dependencies..."
+	@go mod download
+	@echo ""
+	@echo "Step 3: Building project..."
+	@go build -v ./...
+	@echo ""
+	@echo "Step 4: Verifying Docker..."
+	@if ! command -v docker >/dev/null 2>&1; then \
+		echo "ERROR: Docker is required"; \
+		exit 1; \
+	fi
+	@docker version > /dev/null 2>&1 || { echo "ERROR: Docker daemon not running"; exit 1; }
+	@echo ""
+	@echo "Step 5: Starting Docker services..."
+	@export COMPOSE_PROJECT_NAME=whatsignal_integration_test && \
+		cd integration_test && \
+		docker compose down -v --remove-orphans 2>/dev/null || true && \
+		docker compose up -d --wait && \
+		cd ..
+	@echo ""
+	@echo "Step 6: Verifying services are healthy..."
+	@export COMPOSE_PROJECT_NAME=whatsignal_integration_test && \
+		docker compose -f integration_test/docker-compose.yml ps
+	@echo ""
+	@echo "Step 7: Running integration tests..."
+	@export COMPOSE_PROJECT_NAME=whatsignal_integration_test && \
+		export WHATSIGNAL_LOG_LEVEL=debug && \
+		export WHATSIGNAL_INTEGRATION_USE_DOCKER=true && \
+		export WHATSIGNAL_INTEGRATION_VERBOSE=true && \
+		./integration_test/run-tests.sh --docker --timeout 20m --verbose
+	@echo ""
+	@echo "Step 8: Cleaning up Docker services..."
+	@export COMPOSE_PROJECT_NAME=whatsignal_integration_test && \
+		cd integration_test && \
+		docker compose down -v --remove-orphans && \
+		cd ..
+	@echo ""
+	@echo "=========================================="
+	@echo "CI Integration Workflow: PASSED"
+	@echo "=========================================="
 
 # Download dependencies
 .PHONY: deps

@@ -185,6 +185,7 @@ jobs:
 
       - name: Run integration tests (Docker mode)
         run: |
+          export PATH="${GOROOT}/bin:${PATH}"
           ./integration_test/run-tests.sh \
             --docker \
             --timeout ${{ env.TEST_TIMEOUT }} \

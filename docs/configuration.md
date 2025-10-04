@@ -418,7 +418,7 @@ Failed to sync contacts on startup: failed to fetch contacts batch (offset 0): r
 
 2. **WAHA Service Issues**: Check that your WAHA instance is running and accessible
    ```bash
-   curl http://192.168.1.23:3000/api/sessions
+   curl http://192.168.X.X:3000/api/sessions
    ```
 
 3. **Session Not Ready**: The WhatsApp session may not be fully initialized

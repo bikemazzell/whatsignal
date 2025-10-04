@@ -25,19 +25,24 @@ type Handler interface {
 }
 
 type handler struct {
-	cacheDir    string
-	config      models.MediaConfig
-	mediaRouter media.Router
-	httpClient  *http.Client
-	wahaBaseURL string // For URL rewriting
-	wahaAPIKey  string // For WAHA authentication
+	cacheDir     string
+	config       models.MediaConfig
+	mediaRouter  media.Router
+	httpClient   *http.Client
+	wahaBaseURL  string // For URL rewriting
+	wahaAPIKey   string // For WAHA authentication
+	signalRPCURL string // For Signal-CLI service validation
 }
 
 func NewHandler(cacheDir string, config models.MediaConfig) (Handler, error) {
-	return NewHandlerWithWAHA(cacheDir, config, "", "")
+	return NewHandlerWithServices(cacheDir, config, "", "", "")
 }
 
 func NewHandlerWithWAHA(cacheDir string, config models.MediaConfig, wahaBaseURL, wahaAPIKey string) (Handler, error) {
+	return NewHandlerWithServices(cacheDir, config, wahaBaseURL, wahaAPIKey, "")
+}
+
+func NewHandlerWithServices(cacheDir string, config models.MediaConfig, wahaBaseURL, wahaAPIKey, signalRPCURL string) (Handler, error) {
 	if err := os.MkdirAll(cacheDir, constants.DefaultDirectoryPermissions); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -49,12 +54,13 @@ func NewHandlerWithWAHA(cacheDir string, config models.MediaConfig, wahaBaseURL,
 	}
 
 	return &handler{
-		cacheDir:    cacheDir,
-		config:      config,
-		mediaRouter: media.NewRouter(config),
-		httpClient:  &http.Client{Timeout: time.Duration(downloadTimeout) * time.Second},
-		wahaBaseURL: wahaBaseURL,
-		wahaAPIKey:  wahaAPIKey,
+		cacheDir:     cacheDir,
+		config:       config,
+		mediaRouter:  media.NewRouter(config),
+		httpClient:   &http.Client{Timeout: time.Duration(downloadTimeout) * time.Second},
+		wahaBaseURL:  wahaBaseURL,
+		wahaAPIKey:   wahaAPIKey,
+		signalRPCURL: signalRPCURL,
 	}, nil
 }
 

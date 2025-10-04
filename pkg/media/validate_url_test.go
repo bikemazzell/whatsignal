@@ -12,6 +12,11 @@ import (
 
 // Helper function to create a test handler with WAHA configuration
 func setupHandlerForURLValidation(t *testing.T, wahaBaseURL string) *handler {
+	return setupHandlerForURLValidationWithSignal(t, wahaBaseURL, "")
+}
+
+// Helper function to create a test handler with both WAHA and Signal configuration
+func setupHandlerForURLValidationWithSignal(t *testing.T, wahaBaseURL, signalRPCURL string) *handler {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-url-test")
 	require.NoError(t, err)
 
@@ -20,7 +25,7 @@ func setupHandlerForURLValidation(t *testing.T, wahaBaseURL string) *handler {
 	})
 
 	cacheDir := filepath.Join(tmpDir, "cache")
-	handlerInterface, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), wahaBaseURL, "test-api-key")
+	handlerInterface, err := NewHandlerWithServices(cacheDir, getTestMediaConfig(), wahaBaseURL, "test-api-key", signalRPCURL)
 	require.NoError(t, err)
 
 	// Cast to concrete type to access private validateDownloadURL method
@@ -501,7 +506,7 @@ func TestValidateDownloadURL_CodeCoverage(t *testing.T) {
 
 func TestValidateDownloadURL_DockerInternalIP(t *testing.T) {
 	// Test with external IP as WAHA base URL (simulating Docker deployment)
-	h := setupHandlerForURLValidation(t, "http://192.168.1.23:3000")
+	h := setupHandlerForURLValidation(t, "http://192.168.1.50:3000")
 
 	tests := []struct {
 		name        string
@@ -542,7 +547,7 @@ func TestValidateDownloadURL_DockerInternalIP(t *testing.T) {
 
 func TestValidateDownloadURL_DockerInternalHosts(t *testing.T) {
 	// Test with external IP as WAHA base URL (simulating Docker deployment)
-	h := setupHandlerForURLValidation(t, "http://192.168.1.23:3000")
+	h := setupHandlerForURLValidation(t, "http://192.168.1.50:3000")
 
 	tests := []struct {
 		name        string
@@ -573,12 +578,12 @@ func TestValidateDownloadURL_DockerInternalHosts(t *testing.T) {
 		},
 		{
 			name:        "WAHA host IP directly - allowed",
-			url:         "http://192.168.1.23:3000/api/files/voice.ogg",
+			url:         "http://192.168.1.50:3000/api/files/voice.ogg",
 			expectError: false,
 		},
 		{
 			name:        "WAHA host IP with different path - allowed",
-			url:         "http://192.168.1.23:3000/media/image.jpg",
+			url:         "http://192.168.1.50:3000/media/image.jpg",
 			expectError: false,
 		},
 	}
@@ -609,8 +614,8 @@ func TestValidateDownloadURL_PrivateIPAsWAHAHost(t *testing.T) {
 	}{
 		{
 			name:        "192.168.x.x private IP - allowed when matches WAHA",
-			wahaBaseURL: "http://192.168.1.23:3000",
-			testURL:     "http://192.168.1.23:3000/api/files/test.jpg",
+			wahaBaseURL: "http://192.168.1.50:3000",
+			testURL:     "http://192.168.1.50:3000/api/files/test.jpg",
 			expectError: false,
 		},
 		{
@@ -639,10 +644,10 @@ func TestValidateDownloadURL_PrivateIPAsWAHAHost(t *testing.T) {
 		},
 		{
 			name:        "different private IP - blocked",
-			wahaBaseURL: "http://192.168.1.23:3000",
-			testURL:     "http://192.168.1.50:3000/api/files/test.jpg",
+			wahaBaseURL: "http://192.168.1.50:3000",
+			testURL:     "http://192.168.1.99:3000/api/files/test.jpg",
 			expectError: true,
-			errorMsg:    "download host not allowed: 192.168.1.50",
+			errorMsg:    "download host not allowed: 192.168.1.99",
 		},
 	}
 
@@ -653,6 +658,129 @@ func TestValidateDownloadURL_PrivateIPAsWAHAHost(t *testing.T) {
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateDownloadURL_DockerHostnameWithExternalIP tests the scenario where
+// WAHA is configured with a Docker internal hostname (e.g., "waha:3000") but
+// generates media URLs with an external IP
+// This is a common scenario in Docker deployments where WAHA auto-detects its external IP
+func TestValidateDownloadURL_DockerHostnameWithExternalIP(t *testing.T) {
+	// WAHA configured with Docker internal hostname
+	h := setupHandlerForURLValidation(t, "http://waha:3000")
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "External IP with same port as WAHA - allowed",
+			url:         "http://192.168.1.50:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "External IP with different port - blocked",
+			url:         "http://192.168.1.50:8080/api/files/test.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: 192.168.1.50",
+		},
+		{
+			name:        "Different external IP with same port - allowed (WAHA could be behind NAT)",
+			url:         "http://10.0.0.5:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "Docker internal hostname - allowed",
+			url:         "http://waha:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "Different Docker internal hostname with same port - allowed",
+			url:         "http://other-service:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "External domain with same port - blocked",
+			url:         "http://evil.com:3000/api/files/test.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: evil.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateDownloadURL_DockerHostnameWithExternalIP_Signal tests the same scenario for Signal
+func TestValidateDownloadURL_DockerHostnameWithExternalIP_Signal(t *testing.T) {
+	// Both WAHA and Signal configured with Docker internal hostnames
+	h := setupHandlerForURLValidationWithSignal(t, "http://waha:3000", "http://signal-cli-waha:8080")
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "WAHA external IP with same port - allowed",
+			url:         "http://192.168.1.50:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "Signal external IP with same port - allowed",
+			url:         "http://192.168.1.50:8080/v1/attachments/abc123",
+			expectError: false,
+		},
+		{
+			name:        "External IP with WAHA port - allowed",
+			url:         "http://10.0.0.5:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "External IP with Signal port - allowed",
+			url:         "http://10.0.0.5:8080/v1/attachments/abc123",
+			expectError: false,
+		},
+		{
+			name:        "External IP with different port - blocked",
+			url:         "http://192.168.1.50:9999/malicious/file.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: 192.168.1.50",
+		},
+		{
+			name:        "External domain with WAHA port - blocked",
+			url:         "http://evil.com:3000/api/files/test.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: evil.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -729,4 +857,108 @@ func TestIsDockerInternalHost(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestValidateDownloadURL_SignalRPCService(t *testing.T) {
+	// Test that Signal RPC service URLs are properly validated
+	wahaBaseURL := "http://192.168.1.50:3000"
+	signalRPCURL := "http://192.168.1.50:8081"
+	h := setupHandlerForURLValidationWithSignal(t, wahaBaseURL, signalRPCURL)
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "WAHA service URL - allowed",
+			url:         "http://192.168.1.50:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "Signal RPC service URL - allowed",
+			url:         "http://192.168.1.50:8081/v1/attachments/abc123",
+			expectError: false,
+		},
+		{
+			name:        "Same host different port - blocked",
+			url:         "http://192.168.1.50:9999/malicious/file.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: 192.168.1.50",
+		},
+		{
+			name:        "Different host - blocked",
+			url:         "http://192.168.1.99:3000/api/files/test.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: 192.168.1.99",
+		},
+		{
+			name:        "External host - blocked",
+			url:         "http://evil.com:3000/api/files/test.jpg",
+			expectError: true,
+			errorMsg:    "download host not allowed: evil.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateDownloadURL_SignalRPCServiceNotConfigured(t *testing.T) {
+	// Test behavior when Signal RPC URL is not configured
+	wahaBaseURL := "http://192.168.1.50:3000"
+	h := setupHandlerForURLValidationWithSignal(t, wahaBaseURL, "") // No Signal RPC URL
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "WAHA service URL - allowed",
+			url:         "http://192.168.1.50:3000/api/files/test.jpg",
+			expectError: false,
+		},
+		{
+			name:        "Signal RPC service URL - blocked when not configured",
+			url:         "http://192.168.1.50:8081/v1/attachments/abc123",
+			expectError: true,
+			errorMsg:    "download host not allowed: 192.168.1.50",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateDownloadURL_InvalidSignalRPCURL(t *testing.T) {
+	// Test behavior with invalid Signal RPC URL configuration
+	wahaBaseURL := "http://192.168.1.50:3000"
+	invalidSignalRPCURL := "://invalid-url"
+	h := setupHandlerForURLValidationWithSignal(t, wahaBaseURL, invalidSignalRPCURL)
+
+	// Should return error when trying to validate any URL due to invalid Signal RPC URL
+	err := h.validateDownloadURL("http://192.168.1.50:8081/v1/attachments/abc123")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid Signal RPC URL")
 }

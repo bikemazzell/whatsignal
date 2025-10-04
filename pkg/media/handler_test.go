@@ -879,25 +879,25 @@ func TestRewriteMediaURL_DockerInternalIP(t *testing.T) {
 	}{
 		{
 			name:        "Docker internal IP rewritten to external WAHA host",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://172.18.0.3:3000/api/files/default/voice.ogg",
-			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.50:3000/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Docker internal IP different subnet rewritten",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://172.17.0.2:3000/api/files/default/voice.ogg",
-			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.50:3000/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Docker internal IP with different port not rewritten",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://172.18.0.3:8080/api/files/default/voice.ogg",
 			expectedURL: "http://172.18.0.3:8080/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Non-Docker IP unchanged",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://10.0.0.1:3000/api/files/default/voice.ogg",
 			expectedURL: "http://10.0.0.1:3000/api/files/default/voice.ogg",
 		},
@@ -931,33 +931,33 @@ func TestRewriteMediaURL_DockerInternalHosts(t *testing.T) {
 	}{
 		{
 			name:        "Docker internal host 'waha' rewritten to external host",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://waha:3000/api/files/default/voice.ogg",
-			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.50:3000/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Docker internal host 'signal-cli-waha' rewritten",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://signal-cli-waha:3000/api/files/default/voice.ogg",
-			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.50:3000/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Docker internal host 'myservice' rewritten",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://myservice:3000/api/files/default/voice.ogg",
-			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.50:3000/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Domain name with dots unchanged",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://example.com:3000/api/files/default/voice.ogg",
 			expectedURL: "http://example.com:3000/api/files/default/voice.ogg",
 		},
 		{
 			name:        "Localhost unchanged (handled separately)",
-			wahaBaseURL: "http://192.168.1.23:3000",
+			wahaBaseURL: "http://192.168.1.50:3000",
 			inputURL:    "http://localhost:3000/api/files/default/voice.ogg",
-			expectedURL: "http://192.168.1.23:3000/api/files/default/voice.ogg",
+			expectedURL: "http://192.168.1.50:3000/api/files/default/voice.ogg",
 		},
 	}
 
@@ -1559,7 +1559,7 @@ func TestProcessMediaFromURL_DockerInternalIP_VoiceMessage(t *testing.T) {
 	cacheDir := filepath.Join(tmpDir, "cache")
 
 	// Configure handler with external WAHA base URL (simulating Docker deployment)
-	wahaBaseURL := "http://192.168.1.23:3000"
+	wahaBaseURL := "http://192.168.1.50:3000"
 	handlerInterface, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), wahaBaseURL, "test-api-key")
 	require.NoError(t, err)
 
@@ -1572,7 +1572,7 @@ func TestProcessMediaFromURL_DockerInternalIP_VoiceMessage(t *testing.T) {
 	rewrittenURL := h.rewriteMediaURL(dockerInternalURL)
 
 	// The Docker IP should be rewritten to the external WAHA host
-	expectedURL := "http://192.168.1.23:3000/api/files/default/voice.ogg"
+	expectedURL := "http://192.168.1.50:3000/api/files/default/voice.ogg"
 	assert.Equal(t, expectedURL, rewrittenURL)
 
 	// Test validation - Docker internal IP with matching port should be allowed

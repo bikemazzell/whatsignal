@@ -7,11 +7,7 @@ import (
 	"strings"
 )
 
-// validateDownloadURL enforces HTTPS scheme and restricts downloads to the configured WAHA host
-// It also rejects IP literals and private/loopback/link-local addresses after resolution
-// Special handling for Docker internal networks when URL rewriting is in effect
 func (h *handler) validateDownloadURL(rawURL string) error {
-	// In test or non-WAHA contexts (no base URL), skip strict validation to allow httptest servers
 	if h.wahaBaseURL == "" {
 		return nil
 	}
@@ -20,7 +16,7 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 	if err != nil {
 		return fmt.Errorf("invalid media URL: %w", err)
 	}
-	if u.Scheme != "https" && u.Scheme != "http" { // Prefer https; allow http only if WAHA base uses http
+	if u.Scheme != "https" && u.Scheme != "http" {
 		return fmt.Errorf("unsupported URL scheme: %s", u.Scheme)
 	}
 
@@ -29,62 +25,57 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 		return fmt.Errorf("invalid WAHA base URL: %w", err)
 	}
 
-	// Check if this is a Docker internal IP that would be rewritten
-	if ip := net.ParseIP(u.Hostname()); ip != nil && isDockerInternalIP(ip) {
-		// Allow Docker internal IPs only if:
-		// 1. They have the same port as WAHA base URL
-		// 2. The WAHA base URL is a real IP address (not a domain name)
-		// 3. The WAHA IP is not a loopback address (127.x.x.x or ::1)
-		// This handles the case where WAHA generates URLs with Docker internal IPs
-		// but we'll rewrite them to the external WAHA host (could be LAN IP like 192.168.x.x)
-		wahaIP := net.ParseIP(waha.Hostname())
-		if wahaIP != nil && !wahaIP.IsLoopback() && u.Port() == waha.Port() {
-			return nil // Allow - this will be rewritten by rewriteMediaURL
+	var signal *url.URL
+	if h.signalRPCURL != "" {
+		signal, err = url.Parse(h.signalRPCURL)
+		if err != nil {
+			return fmt.Errorf("invalid Signal RPC URL: %w", err)
 		}
 	}
 
-	// Check if this is a Docker internal hostname that would be rewritten
-	// For validation, we allow Docker internal hostnames since they will be rewritten
+	if ip := net.ParseIP(u.Hostname()); ip != nil && isDockerInternalIP(ip) {
+		wahaIP := net.ParseIP(waha.Hostname())
+		if wahaIP != nil && !wahaIP.IsLoopback() && u.Port() == waha.Port() {
+			return nil
+		}
+	}
+
 	if isDockerInternalHost(u.Hostname()) {
-		return nil // Allow - this will be rewritten by rewriteMediaURL
+		return nil
 	}
 
-	// Only allow downloads from the same host as WAHA base
-	if !strings.EqualFold(u.Hostname(), waha.Hostname()) {
-		return fmt.Errorf("download host not allowed: %s", u.Hostname())
+	if strings.EqualFold(u.Hostname(), waha.Hostname()) && u.Port() == waha.Port() {
+		return nil
 	}
 
-	// Also verify the port matches to prevent accessing different services on the same host
-	if u.Port() != waha.Port() {
-		return fmt.Errorf("download host not allowed: %s", u.Hostname())
+	if signal != nil && strings.EqualFold(u.Hostname(), signal.Hostname()) && u.Port() == signal.Port() {
+		return nil
 	}
 
-	// If hostname and port match WAHA, allow it regardless of IP type
-	// This is safe because we've already verified it matches the configured WAHA host
-	// WAHA may be running on private IPs (192.168.x.x, 10.x.x.x) or localhost
-	return nil
+	if isDockerInternalHost(waha.Hostname()) && u.Port() == waha.Port() {
+		if net.ParseIP(u.Hostname()) != nil || isDockerInternalHost(u.Hostname()) {
+			return nil
+		}
+	}
+
+	if signal != nil && isDockerInternalHost(signal.Hostname()) && u.Port() == signal.Port() {
+		if net.ParseIP(u.Hostname()) != nil || isDockerInternalHost(u.Hostname()) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("download host not allowed: %s", u.Hostname())
 }
 
-// isDockerInternalHost checks if a hostname appears to be a Docker internal service
-// This is a heuristic check - if it's not a valid domain name and not an IP,
-// it's likely a Docker service name that should be rewritten
 func isDockerInternalHost(hostname string) bool {
-	// If it's an IP address, it's not a Docker service name
 	if net.ParseIP(hostname) != nil {
 		return false
 	}
-
-	// If it contains dots, it's likely a domain name, not a Docker service
 	if strings.Contains(hostname, ".") {
 		return false
 	}
-
-	// If it's localhost variants, handle separately
 	if hostname == "localhost" {
 		return false
 	}
-
-	// Single word hostnames without dots are likely Docker service names
-	// This covers cases like "waha", "signal-cli-rest-api", etc.
 	return len(hostname) > 0
 }

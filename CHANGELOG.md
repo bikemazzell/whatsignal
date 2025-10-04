@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.10] - 2025-10-04
+
+### Fixed
+- **Critical: Bidirectional media forwarding** - Fixed WhatsApp → Signal media forwarding failure in Docker deployments
+Docker internal hostname and the port matches
+  - Added special handling for Docker deployments where services use internal hostnames but generate URLs with external IPs
+  - Extended validation to support both WAHA and Signal-CLI services on the same host with different ports
+  - Security: Only allows IP addresses or Docker internal hostnames with matching ports, blocks external domains
+  - Added comprehensive test coverage for Docker hostname/external IP scenarios
+
 ## [1.1.9] - 2025-09-30
 
 ### Fixed

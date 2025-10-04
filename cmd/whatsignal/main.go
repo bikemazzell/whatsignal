@@ -140,7 +140,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
 	}
 
-	mediaHandler, err := media.NewHandlerWithWAHA(cfg.Media.CacheDir, cfg.Media, cfg.WhatsApp.APIBaseURL, apiKey)
+	mediaHandler, err := media.NewHandlerWithServices(cfg.Media.CacheDir, cfg.Media, cfg.WhatsApp.APIBaseURL, apiKey, cfg.Signal.RPCURL)
 	if err != nil {
 		return fmt.Errorf("failed to initialize media handler: %w", err)
 	}

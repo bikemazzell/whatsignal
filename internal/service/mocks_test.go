@@ -137,6 +137,14 @@ func (m *mockWhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Sessi
 	return args.Get(0).(*types.Session), args.Error(1)
 }
 
+func (m *mockWhatsAppClient) GetSessionStatusByName(ctx context.Context, sessionName string) (*types.Session, error) {
+	args := m.Called(ctx, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Session), args.Error(1)
+}
+
 func (m *mockWhatsAppClient) RestartSession(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)

@@ -159,10 +159,10 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				}
 			} else if r.Method == http.MethodGet {
 				// Return a list of sessions
-				sessions := []map[string]interface{}{
+				sessions := []types.Session{
 					{
-						"name":   "test-session",
-						"status": types.SessionStatusRunning,
+						Name:   "test-session",
+						Status: "WORKING",
 					},
 				}
 				if err := json.NewEncoder(w).Encode(sessions); err != nil {
@@ -173,7 +173,7 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 			}
 		case testEndpointSessionDefault:
 			if r.Method == http.MethodGet {
-				if err := json.NewEncoder(w).Encode(types.Session{Name: "test-session", Status: types.SessionStatusRunning}); err != nil {
+				if err := json.NewEncoder(w).Encode(types.Session{Name: "test-session", Status: "WORKING"}); err != nil {
 					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 				}
 			} else {
@@ -242,7 +242,7 @@ func TestClient_Session(t *testing.T) {
 
 	status, err := client.GetSessionStatus(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, types.SessionStatusRunning, status.Status)
+	assert.Equal(t, types.SessionStatus("WORKING"), status.Status)
 
 	err = client.StopSession(ctx)
 	require.NoError(t, err)

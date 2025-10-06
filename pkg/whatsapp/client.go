@@ -156,6 +156,71 @@ func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, 
 	return nil, fmt.Errorf("session %s not found", c.sessionName)
 }
 
+// GetSessionStatusByName gets the status of a specific session by name
+func (c *WhatsAppClient) GetSessionStatusByName(ctx context.Context, sessionName string) (*types.Session, error) {
+	url := fmt.Sprintf("%s/api/sessions", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sessions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get sessions, status: %d", resp.StatusCode)
+	}
+
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		return nil, fmt.Errorf("failed to decode sessions: %w", err)
+	}
+
+	// Find the requested session
+	for _, session := range sessions {
+		if name, ok := session["name"].(string); ok && name == sessionName {
+			status := "unknown"
+			if s, ok := session["status"].(string); ok {
+				status = s
+			}
+			return &types.Session{
+				Name:      sessionName,
+				Status:    types.SessionStatus(status),
+				UpdatedAt: time.Now(),
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("session %s not found", sessionName)
+}
+
+// validateSessionStatus checks if a session is ready to send messages
+func (c *WhatsAppClient) validateSessionStatus(ctx context.Context, sessionName string) error {
+	// Use default session name if not provided
+	if sessionName == "" {
+		sessionName = c.sessionName
+	}
+
+	session, err := c.GetSessionStatusByName(ctx, sessionName)
+	if err != nil {
+		return fmt.Errorf("failed to get session status: %w", err)
+	}
+
+	// Check if session is in WORKING status
+	if session.Status != "WORKING" {
+		return fmt.Errorf("session '%s' is not ready (status: %s). Please ensure the WhatsApp session is authenticated and in WORKING state", sessionName, session.Status)
+	}
+
+	return nil
+}
+
 // WaitForSessionReady waits for the WhatsApp session to be in WORKING status
 func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
 	deadline := time.Now().Add(maxWaitTime)
@@ -263,6 +328,13 @@ func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*ty
 }
 
 func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, sessionName string) (*types.SendMessageResponse, error) {
+	// Validate session status before sending (skip in test mode)
+	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
+			return nil, err
+		}
+	}
+
 	// Try to send seen status and typing indicators (optional)
 	if err := c.sendSeenWithSession(ctx, chatID, sessionName); err != nil {
 		if c.logger != nil {
@@ -317,6 +389,13 @@ func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, capti
 }
 
 func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType, sessionName string) (*types.SendMessageResponse, error) {
+	// Validate session status before sending (skip in test mode)
+	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
+			return nil, err
+		}
+	}
+
 	// Validate file path to prevent directory traversal
 	if err := security.ValidateFilePath(mediaPath); err != nil {
 		return nil, fmt.Errorf("invalid media path: %w", err)
@@ -441,6 +520,13 @@ func (c *WhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, re
 }
 
 func (c *WhatsAppClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {
+	// Validate session status before sending (skip in test mode)
+	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
+			return nil, err
+		}
+	}
+
 	payload := types.ReactionRequest{
 		Session:   sessionName,
 		MessageID: messageID,

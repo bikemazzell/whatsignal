@@ -59,7 +59,7 @@ const (
 const (
 	DefaultSignalPollingTimeoutSec = 30
 	DefaultWhatsAppPollIntervalSec = 30
-	DefaultWhatsAppTimeoutMs       = 10000 // 10 seconds
+	DefaultWhatsAppTimeoutMs       = 30000
 	DefaultWhatsAppRetryCount      = 3
 	TypingDurationPerCharMs        = 50
 	MaxTypingDurationSec           = 3

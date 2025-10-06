@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.11] - 2025-10-06
+
+### Fixed
+- **Critical: Multi-session message forwarding** - Fixed Signal → WhatsApp message forwarding failures for non-default sessions
+  - Issue: Messages from Signal to WhatsApp were failing with "context deadline exceeded" errors when sent from the 2nd (non-default) session
+  - Root cause: WhatsApp session was stuck in "STARTING" status instead of "WORKING" status in WAHA API
+  - Added session status validation before sending messages to prevent timeouts when sessions aren't ready
+  - Implemented `GetSessionStatusByName()` and `validateSessionStatus()` methods to check session health
+  - Improved error messages to indicate session status issues: "session 'X' is not ready (status: Y). Please ensure the WhatsApp session is authenticated and in WORKING state"
+  - Increased default WhatsApp API timeout from 10 seconds to 30 seconds to handle slow WAHA responses during session initialization or high load
+  - Added session-aware logging to include session name in all Signal-to-WhatsApp message forwarding operations
+  - Updated documentation to reflect new 30-second default timeout value
+
 ## [1.1.10] - 2025-10-04
 
 ### Fixed

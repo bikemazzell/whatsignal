@@ -392,43 +392,49 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	switch {
 	case len(attachments) > 0 && b.mediaRouter.IsImageAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
-			"messageID": msg.MessageID,
-			"method":    "SendImage",
+			"messageID":   msg.MessageID,
+			"method":      "SendImage",
+			"sessionName": sessionName,
 		}).Debug("Sending image to WhatsApp")
 		resp, sendErr = b.waClient.SendImageWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 	case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
-			"messageID": msg.MessageID,
-			"method":    "SendVideo",
+			"messageID":   msg.MessageID,
+			"method":      "SendVideo",
+			"sessionName": sessionName,
 		}).Debug("Sending video to WhatsApp")
 		// The WhatsApp client will automatically handle video support detection
 		resp, sendErr = b.waClient.SendVideoWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 	case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
-			"messageID": msg.MessageID,
-			"method":    "SendVoice",
+			"messageID":   msg.MessageID,
+			"method":      "SendVoice",
+			"sessionName": sessionName,
 		}).Debug("Sending voice to WhatsApp")
 		resp, sendErr = b.waClient.SendVoiceWithSession(ctx, whatsappChatID, attachments[0], sessionName)
 	case len(attachments) > 0:
 		// Default: treat all other attachments (including configured documents and unrecognized files) as documents
 		b.logger.WithFields(logrus.Fields{
-			"messageID": msg.MessageID,
-			"method":    "SendDocument",
-			"filePath":  attachments[0],
+			"messageID":   msg.MessageID,
+			"method":      "SendDocument",
+			"filePath":    attachments[0],
+			"sessionName": sessionName,
 		}).Debug("Sending attachment as document to WhatsApp")
 		resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 	default:
 		// Only send text if there's actually text content
 		if msg.Message != "" {
 			b.logger.WithFields(logrus.Fields{
-				"messageID": msg.MessageID,
-				"method":    "SendText",
+				"messageID":   msg.MessageID,
+				"method":      "SendText",
+				"sessionName": sessionName,
 			}).Debug("Sending text to WhatsApp")
 			resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
 		} else {
 
 			b.logger.WithFields(logrus.Fields{
-				"messageID": msg.MessageID,
+				"messageID":   msg.MessageID,
+				"sessionName": sessionName,
 			}).Warn("Skipping empty message with no attachments")
 			return nil // Skip empty messages
 		}

@@ -368,6 +368,9 @@ func (m *mockMultiSessionWAClient) StopSession(ctx context.Context) error {
 func (m *mockMultiSessionWAClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
 	return nil, nil
 }
+func (m *mockMultiSessionWAClient) GetSessionStatusByName(ctx context.Context, sessionName string) (*types.Session, error) {
+	return nil, nil
+}
 func (m *mockMultiSessionWAClient) RestartSession(ctx context.Context) error {
 	return nil
 }

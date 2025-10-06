@@ -141,6 +141,14 @@ func (m *MockWAClient) GetSessionStatus(ctx context.Context) (*Session, error) {
 	return args.Get(0).(*Session), args.Error(1)
 }
 
+func (m *MockWAClient) GetSessionStatusByName(ctx context.Context, sessionName string) (*Session, error) {
+	args := m.Called(ctx, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*Session), args.Error(1)
+}
+
 func (m *MockWAClient) GetContact(ctx context.Context, contactID string) (*Contact, error) {
 	args := m.Called(ctx, contactID)
 	if args.Get(0) == nil {

@@ -35,6 +35,22 @@ func setupMediaTestServer(t *testing.T) (*httptest.Server, func(string) map[stri
 			return
 		}
 
+		// Handle session status endpoint
+		if strings.Contains(r.URL.Path, "/sessions") {
+			sessions := []types.Session{
+				{Name: "custom-session", Status: "WORKING"},
+				{Name: "test-session", Status: "WORKING"},
+				{Name: "voice-session", Status: "WORKING"},
+				{Name: "video-session", Status: "WORKING"},
+				{Name: "document-session", Status: "WORKING"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(sessions); err != nil {
+				t.Logf("Failed to encode sessions response: %v", err)
+			}
+			return
+		}
+
 		// Parse request body to capture for verification
 		if err := json.NewDecoder(r.Body).Decode(&lastRequestBody); err != nil {
 			http.Error(w, "Failed to decode request body", http.StatusBadRequest)

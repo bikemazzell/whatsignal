@@ -39,6 +39,9 @@ func TestSendTextWithSession_OptionalEndpointsErrors(t *testing.T) {
 	var sendTextCalled, seenCalled, typingStartCalled, typingStopCalled bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/sessions":
+			// Return session status for validation
+			_ = json.NewEncoder(w).Encode([]types.Session{{Name: "sess", Status: "WORKING"}})
 		case types.APIBase + types.EndpointSendText:
 			sendTextCalled = true
 			_ = json.NewEncoder(w).Encode(types.WAHAMessageResponse{ID: &struct {

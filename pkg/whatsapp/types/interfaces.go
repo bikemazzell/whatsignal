@@ -25,6 +25,7 @@ type WAClient interface {
 	StopSession(ctx context.Context) error
 	RestartSession(ctx context.Context) error
 	GetSessionStatus(ctx context.Context) (*Session, error)
+	GetSessionStatusByName(ctx context.Context, sessionName string) (*Session, error)
 	WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error
 	GetSessionName() string
 

@@ -4,7 +4,7 @@ package constants
 const (
 	DefaultHTTPTimeoutSec          = 30
 	DefaultSignalHTTPTimeoutSec    = 60
-	DefaultWhatsAppTimeoutMs       = 10000
+	DefaultWhatsAppTimeoutMs       = 30000
 	DefaultWhatsAppRetryCount      = 3
 	DefaultMediaDownloadTimeoutSec = 30
 )

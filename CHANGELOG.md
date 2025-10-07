@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.12] - 2025-10-07
+
+### Fixed
+- **Signal polling timeout errors** - Removed hardcoded 45s context timeout causing "context deadline exceeded" errors; fixed race condition in Start(); added ticker reset for consistent intervals
+- **Trace IDs showing as all zeros** - Fixed trace ID generation when OpenTelemetry disabled; now generates unique legacy IDs
+- **Type assertion panic** - Added proper type checking before asserting SignalClient type to prevent crashes
+- **Goroutine leaks** - Fixed scheduler cleanup and Signal poller defer handling
+
+### Added
+- **Signal poller improvements** - Config validation, smart error classification (retryable vs non-retryable), jittered exponential backoff, graceful degradation tracking, enhanced metrics
+- **Session monitoring** - Automatic detection/recovery of WhatsApp sessions stuck in STARTING status (configurable timeout: 30s default)
+- **OpenTelemetry optimization** - Comprehensive refactor with nil logger protection, idempotent shutdown, config validation, 7 new test cases
+- **SessionMonitor optimization** - Session name caching, O(1) status lookups, fixed race conditions, better goroutine lifecycle management
+
 ## [1.1.11] - 2025-10-06
 
 ### Fixed

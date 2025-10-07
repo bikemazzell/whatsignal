@@ -96,13 +96,14 @@ type ServerConfig struct {
 
 // TracingConfig holds OpenTelemetry tracing configurations
 type TracingConfig struct {
-	ServiceName    string  `json:"service_name" mapstructure:"service_name"`
-	ServiceVersion string  `json:"service_version" mapstructure:"service_version"`
-	Environment    string  `json:"environment" mapstructure:"environment"`
-	OTLPEndpoint   string  `json:"otlp_endpoint" mapstructure:"otlp_endpoint"`
-	SampleRate     float64 `json:"sample_rate" mapstructure:"sample_rate"`
-	Enabled        bool    `json:"enabled" mapstructure:"enabled"`
-	UseStdout      bool    `json:"use_stdout" mapstructure:"use_stdout"`
+	ServiceName        string  `json:"service_name" mapstructure:"service_name"`
+	ServiceVersion     string  `json:"service_version" mapstructure:"service_version"`
+	Environment        string  `json:"environment" mapstructure:"environment"`
+	OTLPEndpoint       string  `json:"otlp_endpoint" mapstructure:"otlp_endpoint"`
+	SampleRate         float64 `json:"sample_rate" mapstructure:"sample_rate"`
+	Enabled            bool    `json:"enabled" mapstructure:"enabled"`
+	UseStdout          bool    `json:"use_stdout" mapstructure:"use_stdout"`
+	ShutdownTimeoutSec int     `json:"shutdown_timeout_sec" mapstructure:"shutdown_timeout_sec"`
 }
 
 // Channel represents a WhatsApp-Signal channel pairing

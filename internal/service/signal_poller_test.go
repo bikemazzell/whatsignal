@@ -138,7 +138,11 @@ func TestSignalPoller_Start_Disabled(t *testing.T) {
 		PollIntervalSec: 5,
 		PollingEnabled:  false,
 	}
-	retryConfig := models.RetryConfig{}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      3,
+	}
 	logger := logrus.New()
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
@@ -157,7 +161,11 @@ func TestSignalPoller_Start_InitializationFailure(t *testing.T) {
 		PollIntervalSec: 5,
 		PollingEnabled:  true,
 	}
-	retryConfig := models.RetryConfig{}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      3,
+	}
 	logger := logrus.New()
 
 	expectedError := errors.New("initialization failed")
@@ -219,7 +227,11 @@ func TestSignalPoller_Start_AlreadyRunning(t *testing.T) {
 		PollIntervalSec: 5,
 		PollingEnabled:  true,
 	}
-	retryConfig := models.RetryConfig{}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      3,
+	}
 	logger := logrus.New()
 
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
@@ -242,8 +254,14 @@ func TestSignalPoller_Start_AlreadyRunning(t *testing.T) {
 func TestSignalPoller_Stop_NotRunning(t *testing.T) {
 	mockSignalClient := &mockSignalClient{}
 	mockMessageService := &mockMessageService{}
-	signalConfig := models.SignalConfig{}
-	retryConfig := models.RetryConfig{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+	}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      3,
+	}
 	logger := logrus.New()
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
@@ -287,4 +305,328 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 	// Verify that retries happened
 	mockMessageService.AssertExpectations(t)
 	mockSignalClient.AssertExpectations(t)
+}
+
+// New comprehensive tests for optimization fixes
+
+func TestSignalPoller_NilLogger(t *testing.T) {
+	mockSignalClient := &mockSignalClient{}
+	mockMessageService := &mockMessageService{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollingEnabled:  false,
+	}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      3,
+	}
+
+	// Should not panic with nil logger
+	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, nil)
+	assert.NotNil(t, poller)
+	assert.NotNil(t, poller.logger)
+
+	// Should be able to start without panic
+	ctx := context.Background()
+	err := poller.Start(ctx)
+	assert.NoError(t, err)
+}
+
+func TestSignalPoller_ConfigValidation(t *testing.T) {
+	mockSignalClient := &mockSignalClient{}
+	mockMessageService := &mockMessageService{}
+	logger := logrus.New()
+
+	tests := []struct {
+		name         string
+		signalConfig models.SignalConfig
+		retryConfig  models.RetryConfig
+		expectError  bool
+		errorMsg     string
+	}{
+		{
+			name: "Valid configuration",
+			signalConfig: models.SignalConfig{
+				PollIntervalSec: 5,
+				PollTimeoutSec:  10,
+				PollingEnabled:  true,
+			},
+			retryConfig: models.RetryConfig{
+				InitialBackoffMs: 100,
+				MaxBackoffMs:     500,
+				MaxAttempts:      3,
+			},
+			expectError: false,
+		},
+		{
+			name: "Zero poll interval",
+			signalConfig: models.SignalConfig{
+				PollIntervalSec: 0,
+				PollingEnabled:  true,
+			},
+			retryConfig: models.RetryConfig{
+				InitialBackoffMs: 100,
+				MaxBackoffMs:     500,
+				MaxAttempts:      3,
+			},
+			expectError: true,
+			errorMsg:    "poll interval must be positive",
+		},
+		{
+			name: "Negative poll timeout",
+			signalConfig: models.SignalConfig{
+				PollIntervalSec: 5,
+				PollTimeoutSec:  -1,
+				PollingEnabled:  true,
+			},
+			retryConfig: models.RetryConfig{
+				InitialBackoffMs: 100,
+				MaxBackoffMs:     500,
+				MaxAttempts:      3,
+			},
+			expectError: true,
+			errorMsg:    "poll timeout cannot be negative",
+		},
+		{
+			name: "Zero max attempts",
+			signalConfig: models.SignalConfig{
+				PollIntervalSec: 5,
+				PollingEnabled:  true,
+			},
+			retryConfig: models.RetryConfig{
+				InitialBackoffMs: 100,
+				MaxBackoffMs:     500,
+				MaxAttempts:      0,
+			},
+			expectError: true,
+			errorMsg:    "max retry attempts must be positive",
+		},
+		{
+			name: "Negative initial backoff",
+			signalConfig: models.SignalConfig{
+				PollIntervalSec: 5,
+				PollingEnabled:  true,
+			},
+			retryConfig: models.RetryConfig{
+				InitialBackoffMs: -100,
+				MaxBackoffMs:     500,
+				MaxAttempts:      3,
+			},
+			expectError: true,
+			errorMsg:    "initial backoff cannot be negative",
+		},
+		{
+			name: "Max backoff less than initial",
+			signalConfig: models.SignalConfig{
+				PollIntervalSec: 5,
+				PollingEnabled:  true,
+			},
+			retryConfig: models.RetryConfig{
+				InitialBackoffMs: 500,
+				MaxBackoffMs:     100,
+				MaxAttempts:      3,
+			},
+			expectError: true,
+			errorMsg:    "max backoff",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil).Maybe()
+
+			poller := NewSignalPoller(mockSignalClient, mockMessageService, tt.signalConfig, tt.retryConfig, logger)
+
+			ctx := context.Background()
+			err := poller.Start(ctx)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+				poller.Stop()
+			}
+		})
+	}
+}
+
+func TestSignalPoller_ErrorClassification(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{
+			name:      "Nil error",
+			err:       nil,
+			retryable: false,
+		},
+		{
+			name:      "Context cancelled",
+			err:       context.Canceled,
+			retryable: false,
+		},
+		{
+			name:      "Context deadline exceeded",
+			err:       context.DeadlineExceeded,
+			retryable: false,
+		},
+		{
+			name:      "Connection refused",
+			err:       errors.New("connection refused"),
+			retryable: true,
+		},
+		{
+			name:      "Connection reset",
+			err:       errors.New("connection reset by peer"),
+			retryable: true,
+		},
+		{
+			name:      "Timeout error",
+			err:       errors.New("request timeout"),
+			retryable: true,
+		},
+		{
+			name:      "EOF error",
+			err:       errors.New("unexpected EOF"),
+			retryable: true,
+		},
+		{
+			name:      "Unauthorized error",
+			err:       errors.New("unauthorized access"),
+			retryable: false,
+		},
+		{
+			name:      "Forbidden error",
+			err:       errors.New("forbidden resource"),
+			retryable: false,
+		},
+		{
+			name:      "Invalid request",
+			err:       errors.New("invalid request format"),
+			retryable: false,
+		},
+		{
+			name:      "Malformed data",
+			err:       errors.New("malformed JSON"),
+			retryable: false,
+		},
+		{
+			name:      "Unknown error",
+			err:       errors.New("some unknown error"),
+			retryable: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isRetryableError(tt.err)
+			assert.Equal(t, tt.retryable, result, "Error: %v", tt.err)
+		})
+	}
+}
+
+func TestSignalPoller_ContextCancellationDuringRetry(t *testing.T) {
+	mockSignalClient := &mockSignalClient{}
+	mockMessageService := &mockMessageService{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 1,
+		PollingEnabled:  true,
+	}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      10, // Many retries
+	}
+	logger := logrus.New()
+
+	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
+
+	// Always fail to trigger retries
+	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("temporary failure"))
+
+	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := poller.Start(ctx)
+	assert.NoError(t, err)
+
+	// Wait a bit for polling to start
+	time.Sleep(500 * time.Millisecond)
+
+	// Stop the poller (cancels context)
+	poller.Stop()
+
+	// Should stop gracefully without hanging
+	assert.False(t, poller.IsRunning())
+}
+
+func TestSignalPoller_IdempotentStop(t *testing.T) {
+	mockSignalClient := &mockSignalClient{}
+	mockMessageService := &mockMessageService{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollingEnabled:  false,
+	}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 100,
+		MaxBackoffMs:     500,
+		MaxAttempts:      3,
+	}
+	logger := logrus.New()
+
+	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
+
+	// Stop without starting - should not panic
+	assert.NotPanics(t, func() {
+		poller.Stop()
+	})
+
+	// Stop multiple times - should not panic
+	assert.NotPanics(t, func() {
+		poller.Stop()
+		poller.Stop()
+		poller.Stop()
+	})
+}
+
+func TestSignalPoller_NonRetryableErrorStopsRetries(t *testing.T) {
+	mockSignalClient := &mockSignalClient{}
+	mockMessageService := &mockMessageService{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 1,
+		PollingEnabled:  true,
+	}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 50,
+		MaxBackoffMs:     200,
+		MaxAttempts:      10, // Many retries configured
+	}
+	logger := logrus.New()
+
+	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
+
+	// Return non-retryable error
+	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("unauthorized access")).Once()
+	// Should not be called again
+	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)
+
+	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := poller.Start(ctx)
+	assert.NoError(t, err)
+
+	// Wait for one poll cycle
+	time.Sleep(1500 * time.Millisecond)
+	poller.Stop()
+
+	// Should have been called only once (non-retryable error)
+	mockMessageService.AssertNumberOfCalls(t, "PollSignalMessages", 1)
 }

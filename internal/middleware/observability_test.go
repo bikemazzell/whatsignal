@@ -866,3 +866,71 @@ func TestDetailedLoggingConfig_Defaults(t *testing.T) {
 		t.Errorf("Expected %d skip endpoints, got %d", len(expectedSkip), len(config.SkipEndpoints))
 	}
 }
+
+// TestObservabilityMiddleware_TraceIDNotAllZeros verifies that trace IDs
+// are generated correctly and not all zeros when OpenTelemetry is disabled
+func TestObservabilityMiddleware_TraceIDNotAllZeros(t *testing.T) {
+	// Create a test logger with JSON formatter for easier parsing
+	var logBuffer bytes.Buffer
+	logger := logrus.New()
+	logger.SetOutput(&logBuffer)
+	logger.SetFormatter(&logrus.JSONFormatter{})
+
+	// Create test handler
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify tracing information is available and valid
+		requestInfo := tracing.GetRequestInfo(r.Context())
+
+		if requestInfo.RequestID == "" {
+			t.Error("Expected request ID to be set in context")
+		}
+		if requestInfo.TraceID == "" {
+			t.Error("Expected trace ID to be set in context")
+		}
+
+		// Verify trace ID is not all zeros
+		if requestInfo.TraceID == "00000000000000000000000000000000" {
+			t.Error("Trace ID should not be all zeros")
+		}
+
+		// Verify span ID is not all zeros
+		if requestInfo.SpanID == "0000000000000000" {
+			t.Error("Span ID should not be all zeros")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("test response"))
+	})
+
+	// Wrap with observability middleware (OpenTelemetry is not initialized)
+	middleware := ObservabilityMiddleware(logger)
+	wrappedHandler := middleware(testHandler)
+
+	// Create test request
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Execute request
+	wrappedHandler.ServeHTTP(w, req)
+
+	// Verify response
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Verify logging occurred with valid trace IDs
+	logOutput := logBuffer.String()
+
+	// Check that trace_id field exists in logs
+	if !strings.Contains(logOutput, "trace_id") {
+		t.Error("Expected 'trace_id' field in logs")
+	}
+
+	// Check that trace_id is not all zeros
+	if strings.Contains(logOutput, `"trace_id":"00000000000000000000000000000000"`) {
+		t.Error("Trace ID in logs should not be all zeros")
+	}
+
+	// Log output for debugging
+	t.Logf("Log output:\n%s", logOutput)
+}

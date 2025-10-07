@@ -74,22 +74,12 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
+	// Configure log level: verbose flag > config > default (info)
 	if *verbose {
 		logger.SetLevel(logrus.DebugLevel)
 		logger.Info("Verbose logging enabled - sensitive information will be logged")
-	} else if cfg.LogLevel != "" {
-		level, err := logrus.ParseLevel(cfg.LogLevel)
-		if err != nil {
-			logger.Warnf("Invalid log level %q, defaulting to info", cfg.LogLevel)
-			logger.SetLevel(logrus.InfoLevel)
-		} else {
-			if level > logrus.InfoLevel {
-				level = logrus.InfoLevel
-			}
-			logger.SetLevel(level)
-		}
 	} else {
-		logger.SetLevel(logrus.InfoLevel)
+		setLogLevel(logger, cfg.LogLevel)
 	}
 
 	// Initialize OpenTelemetry tracing
@@ -136,9 +126,21 @@ func run(ctx context.Context) error {
 	}
 	defer db.Close()
 
+	// Validate required environment variables
 	apiKey := os.Getenv("WHATSAPP_API_KEY")
 	if apiKey == "" {
 		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
+	}
+
+	// Validate webhook secrets for security (both are mandatory)
+	whatsappWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+	if whatsappWebhookSecret == "" {
+		return fmt.Errorf("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable is required for webhook security")
+	}
+
+	signalWebhookSecret := os.Getenv("WHATSIGNAL_SIGNAL_WEBHOOK_SECRET")
+	if signalWebhookSecret == "" {
+		return fmt.Errorf("WHATSIGNAL_SIGNAL_WEBHOOK_SECRET environment variable is required for webhook security")
 	}
 
 	mediaHandler, err := media.NewHandlerWithServices(cfg.Media.CacheDir, cfg.Media, cfg.WhatsApp.APIBaseURL, apiKey, cfg.Signal.RPCURL)
@@ -153,9 +155,7 @@ func run(ctx context.Context) error {
 	}
 
 	// Use the first configured session explicitly from config for client operations
-	if len(cfg.Channels) == 0 {
-		return fmt.Errorf("no channels configured")
-	}
+	// (already validated in validateConfig)
 	defaultSessionName := cfg.Channels[0].WhatsAppSessionName
 
 	waClient := whatsapp.NewClient(types.ClientConfig{
@@ -167,12 +167,8 @@ func run(ctx context.Context) error {
 	})
 
 	// Use configured Signal HTTP timeout or default
-	signalHTTPTimeout := cfg.Signal.HTTPTimeoutSec
-	if signalHTTPTimeout <= 0 {
-		signalHTTPTimeout = constants.DefaultSignalHTTPTimeoutSec
-	}
 	signalHTTPClient := &http.Client{
-		Timeout: time.Duration(signalHTTPTimeout) * time.Second,
+		Timeout: getTimeoutDuration(cfg.Signal.HTTPTimeoutSec, constants.DefaultSignalHTTPTimeoutSec),
 	}
 
 	sigClient := signalapi.NewClientWithLogger(
@@ -188,6 +184,7 @@ func run(ctx context.Context) error {
 		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
 	}
 
+	// Use configured contact cache hours or default
 	cacheHours := cfg.WhatsApp.ContactCacheHours
 	if cacheHours <= 0 {
 		cacheHours = constants.DefaultContactCacheHours
@@ -202,8 +199,6 @@ func run(ctx context.Context) error {
 		logger.Info("Contact sync on startup is disabled")
 	}
 
-	// Channel manager was already created above
-
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, models.RetryConfig{
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
@@ -216,25 +211,19 @@ func run(ctx context.Context) error {
 
 	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, cfg.Server.CleanupIntervalHours, logger)
 	go scheduler.Start(ctx)
+	defer scheduler.Stop()
 
 	// Start session monitor if auto-restart is enabled
 	if cfg.WhatsApp.SessionAutoRestart {
-		checkInterval := time.Duration(cfg.WhatsApp.SessionHealthCheckSec) * time.Second
-		if checkInterval <= 0 {
-			checkInterval = time.Duration(constants.DefaultSessionHealthCheckSec) * time.Second
-		}
+		checkInterval := getTimeoutDuration(cfg.WhatsApp.SessionHealthCheckSec, constants.DefaultSessionHealthCheckSec)
 
-		// Get startup timeout from config or environment variable
-		startupTimeout := time.Duration(cfg.WhatsApp.SessionStartupTimeoutSec) * time.Second
-		if envTimeout := os.Getenv("WHATSAPP_SESSION_STARTUP_TIMEOUT_SEC"); envTimeout != "" {
-			if timeoutSec, err := strconv.Atoi(envTimeout); err == nil && timeoutSec > 0 {
-				startupTimeout = time.Duration(timeoutSec) * time.Second
-				logger.WithField("timeout_sec", timeoutSec).Info("Using session startup timeout from environment variable")
-			}
+		// Get startup timeout from config or environment variable (env var takes precedence)
+		startupTimeoutSec := cfg.WhatsApp.SessionStartupTimeoutSec
+		if envTimeout := getEnvInt("WHATSAPP_SESSION_STARTUP_TIMEOUT_SEC"); envTimeout > 0 {
+			startupTimeoutSec = envTimeout
+			logger.WithField("timeout_sec", envTimeout).Info("Using session startup timeout from environment variable")
 		}
-		if startupTimeout <= 0 {
-			startupTimeout = time.Duration(constants.DefaultSessionStartupTimeoutSec) * time.Second
-		}
+		startupTimeout := getTimeoutDuration(startupTimeoutSec, constants.DefaultSessionStartupTimeoutSec)
 
 		sessionMonitor := service.NewSessionMonitorWithStartupTimeout(waClient, logger, checkInterval, startupTimeout)
 		sessionMonitor.Start(ctx)
@@ -255,10 +244,18 @@ func run(ctx context.Context) error {
 
 	if err := signalPoller.Start(ctxWithVerbose); err != nil {
 		logger.Warnf("Failed to start Signal poller: %v", err)
+	} else {
+		// Only defer Stop() if Start() succeeded
+		defer signalPoller.Stop()
 	}
-	defer signalPoller.Stop()
 
-	server := NewServer(cfg, messageService, logger, waClient, channelManager, db, sigClient.(*signalapi.SignalClient))
+	// Safe type assertion for SignalClient
+	signalClient, ok := sigClient.(*signalapi.SignalClient)
+	if !ok {
+		return fmt.Errorf("failed to assert sigClient as *signalapi.SignalClient")
+	}
+
+	server := NewServer(cfg, messageService, logger, waClient, channelManager, db, signalClient)
 	serverErrCh := make(chan error, constants.ServerErrorChannelSize)
 	go func() {
 		if err := server.Start(); err != nil {
@@ -299,7 +296,53 @@ func validateConfig(cfg *models.Config) error {
 	if cfg.Media.CacheDir == "" {
 		return fmt.Errorf("media cache directory is required")
 	}
+	if len(cfg.Channels) == 0 {
+		return fmt.Errorf("at least one channel must be configured")
+	}
+	// Validate first channel has a session name
+	if cfg.Channels[0].WhatsAppSessionName == "" {
+		return fmt.Errorf("first channel must have a WhatsApp session name")
+	}
 	return nil
+}
+
+// getTimeoutDuration returns a duration from config value (in seconds), falling back to default if <= 0
+func getTimeoutDuration(configValueSec int, defaultSec int) time.Duration {
+	if configValueSec <= 0 {
+		return time.Duration(defaultSec) * time.Second
+	}
+	return time.Duration(configValueSec) * time.Second
+}
+
+// getEnvInt reads an integer from environment variable, returning 0 if not set or invalid
+func getEnvInt(key string) int {
+	if val := os.Getenv(key); val != "" {
+		if intVal, err := strconv.Atoi(val); err == nil {
+			return intVal
+		}
+	}
+	return 0
+}
+
+// setLogLevel configures the logger's log level from config string, defaulting to Info
+func setLogLevel(logger *logrus.Logger, configLevel string) {
+	if configLevel == "" {
+		logger.SetLevel(logrus.InfoLevel)
+		return
+	}
+
+	level, err := logrus.ParseLevel(configLevel)
+	if err != nil {
+		logger.Warnf("Invalid log level %q, defaulting to info", configLevel)
+		logger.SetLevel(logrus.InfoLevel)
+		return
+	}
+
+	// Cap at InfoLevel unless explicitly set to debug/trace (verbose flag handles debug)
+	if level > logrus.InfoLevel {
+		level = logrus.InfoLevel
+	}
+	logger.SetLevel(level)
 }
 
 // syncParallelContacts performs contact sync for all sessions in parallel with bounded concurrency
@@ -310,12 +353,12 @@ func syncParallelContacts(ctx context.Context, cfg *models.Config, db *database.
 	}
 
 	// Use bounded concurrency to avoid overwhelming the system
-	maxConcurrency := constants.DefaultContactSyncBatchSize / 10 // Conservative limit based on batch size
+	maxConcurrency := constants.DefaultContactSyncBatchSize / constants.DefaultContactSyncConcurrencyDivisor
 	if maxConcurrency < 1 {
 		maxConcurrency = 1
 	}
-	if maxConcurrency > 5 {
-		maxConcurrency = 5 // Cap at 5 concurrent sessions
+	if maxConcurrency > constants.DefaultContactSyncMaxConcurrency {
+		maxConcurrency = constants.DefaultContactSyncMaxConcurrency
 	}
 
 	semaphore := make(chan struct{}, maxConcurrency)

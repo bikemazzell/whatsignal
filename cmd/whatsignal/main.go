@@ -132,17 +132,6 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
 	}
 
-	// Validate webhook secrets for security (both are mandatory)
-	whatsappWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-	if whatsappWebhookSecret == "" {
-		return fmt.Errorf("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable is required for webhook security")
-	}
-
-	signalWebhookSecret := os.Getenv("WHATSIGNAL_SIGNAL_WEBHOOK_SECRET")
-	if signalWebhookSecret == "" {
-		return fmt.Errorf("WHATSIGNAL_SIGNAL_WEBHOOK_SECRET environment variable is required for webhook security")
-	}
-
 	mediaHandler, err := media.NewHandlerWithServices(cfg.Media.CacheDir, cfg.Media, cfg.WhatsApp.APIBaseURL, apiKey, cfg.Signal.RPCURL)
 	if err != nil {
 		return fmt.Errorf("failed to initialize media handler: %w", err)

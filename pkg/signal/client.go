@@ -159,7 +159,8 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		// Check if this is a transient connection error that can be retried
 		isTransientError := strings.Contains(bodyStr, "Closed unexpectedly") ||
 			strings.Contains(bodyStr, "connection") ||
-			strings.Contains(bodyStr, "timeout")
+			strings.Contains(bodyStr, "timeout") ||
+			strings.Contains(bodyStr, "TimeoutException")
 
 		if isTransientError {
 			c.logger.WithFields(logrus.Fields{

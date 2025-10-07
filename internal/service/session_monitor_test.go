@@ -432,3 +432,193 @@ func TestSessionMonitor_RapidStateChanges(t *testing.T) {
 
 	client.AssertExpectations(t)
 }
+
+func TestSessionMonitor_StartingStatusTimeout(t *testing.T) {
+	tests := []struct {
+		name            string
+		startupTimeout  time.Duration
+		waitBeforeCheck time.Duration
+		expectRestart   bool
+		sessionStatus   string
+		sessionName     string
+	}{
+		{
+			name:            "session in STARTING within timeout - no restart",
+			startupTimeout:  100 * time.Millisecond,
+			waitBeforeCheck: 50 * time.Millisecond,
+			expectRestart:   false,
+			sessionStatus:   "STARTING",
+			sessionName:     "test-session",
+		},
+		{
+			name:            "session in STARTING beyond timeout - restart triggered",
+			startupTimeout:  50 * time.Millisecond,
+			waitBeforeCheck: 100 * time.Millisecond,
+			expectRestart:   true,
+			sessionStatus:   "STARTING",
+			sessionName:     "test-session",
+		},
+		{
+			name:            "session in WORKING - no restart",
+			startupTimeout:  50 * time.Millisecond,
+			waitBeforeCheck: 100 * time.Millisecond,
+			expectRestart:   false,
+			sessionStatus:   "WORKING",
+			sessionName:     "test-session",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &mockWhatsAppClient{}
+			logger := logrus.New()
+			logger.SetLevel(logrus.ErrorLevel)
+
+			// GetSessionName can be called multiple times
+			client.On("GetSessionName").Return(tt.sessionName).Maybe()
+
+			monitor := NewSessionMonitorWithStartupTimeout(client, logger, 30*time.Second, tt.startupTimeout)
+
+			// First check - record the timestamp
+			client.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+				Name:   tt.sessionName,
+				Status: types.SessionStatus(tt.sessionStatus),
+			}, nil).Once()
+
+			ctx := context.Background()
+			monitor.checkAndRecoverSession(ctx)
+
+			// Wait for the specified duration
+			time.Sleep(tt.waitBeforeCheck)
+
+			// Second check - should trigger restart if beyond timeout
+			client.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+				Name:   tt.sessionName,
+				Status: types.SessionStatus(tt.sessionStatus),
+			}, nil).Once()
+
+			if tt.expectRestart {
+				client.On("RestartSession", mock.Anything).Return(nil).Once()
+				client.On("WaitForSessionReady", mock.Anything, mock.AnythingOfType("time.Duration")).Return(nil).Once()
+			}
+
+			monitor.checkAndRecoverSession(ctx)
+
+			client.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSessionMonitor_StartingStatusTransition(t *testing.T) {
+	client := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	sessionName := "test-session"
+
+	// GetSessionName can be called multiple times
+	client.On("GetSessionName").Return(sessionName).Maybe()
+
+	monitor := NewSessionMonitorWithStartupTimeout(client, logger, 30*time.Second, 100*time.Millisecond)
+
+	ctx := context.Background()
+
+	// First check: Session in STARTING
+	client.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Name:   sessionName,
+		Status: "STARTING",
+	}, nil).Once()
+
+	monitor.checkAndRecoverSession(ctx)
+
+	// Second check: Session transitioned to WORKING (should reset timestamp)
+	client.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Name:   sessionName,
+		Status: "WORKING",
+	}, nil).Once()
+
+	monitor.checkAndRecoverSession(ctx)
+
+	// Third check: Session back to STARTING (new timestamp, no restart yet)
+	client.On("GetSessionStatus", mock.Anything).Return(&types.Session{
+		Name:   sessionName,
+		Status: "STARTING",
+	}, nil).Once()
+
+	monitor.checkAndRecoverSession(ctx)
+
+	// No restart should have been triggered
+	client.AssertExpectations(t)
+	client.AssertNotCalled(t, "RestartSession")
+}
+
+func TestSessionMonitor_UpdateAndCheckStartingTimeout(t *testing.T) {
+	client := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	sessionName := "test-session"
+	monitor := NewSessionMonitorWithStartupTimeout(client, logger, 30*time.Second, 50*time.Millisecond)
+
+	// First call - should record timestamp and return false (not stuck)
+	stuck, duration := monitor.updateAndCheckStartingTimeout(sessionName, "STARTING")
+	assert.False(t, stuck, "First check should not indicate stuck session")
+	assert.Equal(t, time.Duration(0), duration, "Duration should be 0 on first check")
+
+	// Immediate second call with same status - should return false (not enough time passed)
+	stuck, duration = monitor.updateAndCheckStartingTimeout(sessionName, "STARTING")
+	assert.False(t, stuck, "Second immediate check should not indicate stuck session")
+	assert.Greater(t, duration, time.Duration(0), "Duration should be > 0")
+	assert.Less(t, duration, 50*time.Millisecond, "Duration should be less than timeout")
+
+	// Wait beyond timeout
+	time.Sleep(60 * time.Millisecond)
+
+	// Third call - should return true (timeout exceeded)
+	stuck, duration = monitor.updateAndCheckStartingTimeout(sessionName, "STARTING")
+	assert.True(t, stuck, "Check after timeout should indicate stuck session")
+	assert.Greater(t, duration, 50*time.Millisecond, "Duration should exceed timeout")
+
+	// Check with different status - should reset and return false
+	stuck, duration = monitor.updateAndCheckStartingTimeout(sessionName, "WORKING")
+	assert.False(t, stuck, "Status change should reset tracking")
+	assert.Equal(t, time.Duration(0), duration, "Duration should be 0 after status change")
+
+	// Check WORKING status again - should still return false
+	stuck, duration = monitor.updateAndCheckStartingTimeout(sessionName, "WORKING")
+	assert.False(t, stuck, "Non-STARTING status should not indicate stuck session")
+	assert.Equal(t, time.Duration(0), duration, "Duration should be 0 for non-STARTING status")
+}
+
+func TestSessionMonitor_ResetSessionTracking(t *testing.T) {
+	client := &mockWhatsAppClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	sessionName := "test-session"
+	monitor := NewSessionMonitorWithStartupTimeout(client, logger, 30*time.Second, 100*time.Millisecond)
+
+	// Set up some tracking data
+	monitor.updateAndCheckStartingTimeout(sessionName, "STARTING")
+
+	// Verify data exists
+	monitor.mu.Lock()
+	_, timestampExists := monitor.sessionStateTimestamps[sessionName]
+	_, statusExists := monitor.lastKnownStatus[sessionName]
+	monitor.mu.Unlock()
+
+	assert.True(t, timestampExists, "Timestamp should exist before reset")
+	assert.True(t, statusExists, "Status should exist before reset")
+
+	// Reset tracking
+	monitor.resetSessionTracking(sessionName)
+
+	// Verify data is cleared
+	monitor.mu.Lock()
+	_, timestampExists = monitor.sessionStateTimestamps[sessionName]
+	_, statusExists = monitor.lastKnownStatus[sessionName]
+	monitor.mu.Unlock()
+
+	assert.False(t, timestampExists, "Timestamp should be cleared after reset")
+	assert.False(t, statusExists, "Status should be cleared after reset")
+}

@@ -35,8 +35,8 @@ Before starting whatsignal, ensure these environment variables are set:
   - Used to verify that webhook calls are coming from your Waha instance using the `X-Waha-Signature-256` header.
 
 - `whatsapp.timeout_ms`: Timeout for API requests in milliseconds
-  - Default: `10000` (10 seconds)
-  - Adjust based on network conditions
+  - Default: `30000` (30 seconds)
+  - Adjust based on network conditions and WAHA response times
 
 - `whatsapp.retry_count`: Maximum number of retry attempts for failed requests
   - Default: `3`
@@ -51,6 +51,60 @@ Before starting whatsignal, ensure these environment variables are set:
 - `whatsapp.contactCacheHours`: How many hours to cache contact info before refreshing
   - Default: `24` hours
   - Adjust based on how frequently contact names change
+
+### Session Health Monitoring
+
+WhatSignal includes automatic session health monitoring to detect and recover from WhatsApp session issues.
+
+- `whatsapp.sessionAutoRestart`: Enable automatic session restart when unhealthy
+  - Default: `false`
+  - Recommended: `true` for production deployments
+  - When enabled, monitors session health and automatically restarts sessions in unhealthy states
+
+- `whatsapp.sessionHealthCheckSec`: How often to check session health (in seconds)
+  - Default: `30` seconds
+  - Recommended: `30-60` seconds for most deployments
+  - Lower values = more responsive but higher API load
+
+- `whatsapp.sessionStartupTimeoutSec`: Maximum time a session can remain in STARTING status (in seconds)
+  - Default: `30` seconds
+  - **Purpose**: Prevents sessions from getting stuck during initialization
+  - **Environment variable override**: `WHATSAPP_SESSION_STARTUP_TIMEOUT_SEC`
+  - **How it works**:
+    - Monitors sessions in 'STARTING' status
+    - If a session remains in 'STARTING' for longer than this timeout, automatically triggers a restart
+    - Helps recover from WAHA initialization issues where sessions never transition to 'WORKING'
+  - **Recommended values**:
+    - Fast networks: `30` seconds
+    - Slow networks or high-latency connections: `60` seconds
+    - If you see frequent "session stuck in STARTING" warnings, increase this value
+
+**Example Configuration**:
+```json
+"whatsapp": {
+  "api_base_url": "http://192.168.1.23:3000",
+  "sessionAutoRestart": true,
+  "sessionHealthCheckSec": 30,
+  "sessionStartupTimeoutSec": 30
+}
+```
+
+**Session Status Flow**:
+```
+Session Created → STARTING → WORKING (healthy)
+                     ↓
+                  (timeout)
+                     ↓
+              Automatic Restart
+```
+
+**Monitored Unhealthy States**:
+- `STARTING` (if stuck beyond timeout threshold)
+- `OPENING` (stuck in opening state)
+- `STOPPED` (session stopped)
+- `FAILED` (session failed)
+- `error` (error state)
+- `disconnected` (disconnected from WhatsApp)
 
 ### WAHA Version Detection & Video Support
 
@@ -96,6 +150,54 @@ The routing is now session-aware: each WhatsApp session is mapped to a specific 
 - `signal.device_name`: Name for this Signal device
   - Default: "whatsignal-device"
   - Used during registration to identify this device
+
+### Signal Polling Configuration
+
+- `signal.pollIntervalSec`: How often to poll Signal for new messages (in seconds)
+  - Default: `5` seconds
+  - Recommended: `5-10` seconds for responsive message delivery
+  - Lower values = more responsive but higher API load
+
+- `signal.pollTimeoutSec`: Long-polling timeout for Signal message retrieval (in seconds)
+  - Default: `15` seconds
+  - **Important**: Must be greater than Signal-CLI's internal timeout (10 seconds)
+  - Recommended: `15-20` seconds to accommodate Signal-CLI's internal processing
+  - This is the `?timeout=` parameter sent to Signal-CLI REST API
+
+- `signal.httpTimeoutSec`: HTTP client timeout for all Signal API requests (in seconds)
+  - Default: `30` seconds (if not specified, uses 60 seconds)
+  - **Important**: Must be greater than `pollTimeoutSec` to prevent premature client timeouts
+  - Recommended: At least `pollTimeoutSec + 10` seconds for buffer
+  - This prevents "context deadline exceeded" errors during long-polling
+
+#### Timeout Relationship
+
+The timeout values must follow this hierarchy:
+```
+Signal-CLI Internal Timeout (10s, fixed)
+  < pollTimeoutSec (15s recommended)
+  < httpTimeoutSec (30s recommended)
+  < Polling Context Timeout (45s, internal constant)
+```
+
+**Example Configuration**:
+```json
+"signal": {
+  "rpc_url": "http://192.168.1.23:8081",
+  "intermediaryPhoneNumber": "+1234567890",
+  "pollIntervalSec": 5,
+  "pollTimeoutSec": 15,
+  "httpTimeoutSec": 30,
+  "pollingEnabled": true,
+  "attachmentsDir": "./signal-attachments"
+}
+```
+
+### Signal Polling Behavior
+
+- `signal.pollingEnabled`: Enable/disable automatic Signal message polling
+  - Default: `true`
+  - Set to `false` to disable automatic polling (messages won't be received from Signal)
 
 
 ## Retry Configuration

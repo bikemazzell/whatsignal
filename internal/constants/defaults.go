@@ -21,33 +21,35 @@ const (
 
 // Default timeout values
 const (
-	DefaultHTTPTimeoutSec             = 30
-	DefaultDatabaseRetryAttempts      = 3
-	DefaultGracefulShutdownSec        = 30
-	DefaultSessionReadyTimeoutSec     = 30
-	DefaultSessionHealthCheckSec      = 30
-	DefaultSessionMonitorInitDelaySec = 10
-	DefaultSessionRestartTimeoutSec   = 30
-	DefaultSessionWaitTimeoutSec      = 60
-	DefaultSessionStartupTimeoutSec   = 30
-	DefaultBackoffInitialMs           = 500
-	DefaultBackoffMaxSec              = 5
-	DefaultContactSyncBatchSize       = 100
-	DefaultContactSyncDelayMs         = 100
-	DefaultServerReadTimeoutSec       = 15
-	DefaultServerWriteTimeoutSec      = 15
-	DefaultServerIdleTimeoutSec       = 60
-	DefaultSessionStatusTimeoutSec    = 5
-	DefaultWebhookMaxSkewSec          = 300
-	DefaultWebhookMaxBytes            = 5 * 1024 * 1024
-	DefaultRateLimitPerMinute         = 100
-	DefaultRateLimitCleanupMinutes    = 5
-	DefaultDBMaxOpenConnections       = 25
-	DefaultDBMaxIdleConnections       = 5
-	DefaultDBConnMaxLifetimeSec       = 300 // 5 minutes
-	DefaultDBConnMaxIdleTimeSec       = 60  // 1 minute
-	DefaultMediaDownloadTimeoutSec    = 30  // 30 seconds
-	DefaultSignalHTTPTimeoutSec       = 60  // 60 seconds
+	DefaultHTTPTimeoutSec                = 30
+	DefaultDatabaseRetryAttempts         = 3
+	DefaultGracefulShutdownSec           = 30
+	DefaultSessionReadyTimeoutSec        = 30
+	DefaultSessionHealthCheckSec         = 30
+	DefaultSessionMonitorInitDelaySec    = 10
+	DefaultSessionRestartTimeoutSec      = 30
+	DefaultSessionWaitTimeoutSec         = 60
+	DefaultSessionStartupTimeoutSec      = 30
+	DefaultBackoffInitialMs              = 500
+	DefaultBackoffMaxSec                 = 5
+	DefaultContactSyncBatchSize          = 100
+	DefaultContactSyncDelayMs            = 100
+	DefaultContactSyncMaxConcurrency     = 5  // Maximum concurrent session syncs
+	DefaultContactSyncConcurrencyDivisor = 10 // Divisor for calculating concurrency from batch size
+	DefaultServerReadTimeoutSec          = 15
+	DefaultServerWriteTimeoutSec         = 15
+	DefaultServerIdleTimeoutSec          = 60
+	DefaultSessionStatusTimeoutSec       = 5
+	DefaultWebhookMaxSkewSec             = 300
+	DefaultWebhookMaxBytes               = 5 * 1024 * 1024
+	DefaultRateLimitPerMinute            = 100
+	DefaultRateLimitCleanupMinutes       = 5
+	DefaultDBMaxOpenConnections          = 25
+	DefaultDBMaxIdleConnections          = 5
+	DefaultDBConnMaxLifetimeSec          = 300 // 5 minutes
+	DefaultDBConnMaxIdleTimeSec          = 60  // 1 minute
+	DefaultMediaDownloadTimeoutSec       = 30  // 30 seconds
+	DefaultSignalHTTPTimeoutSec          = 60  // 60 seconds
 )
 
 // Privacy settings

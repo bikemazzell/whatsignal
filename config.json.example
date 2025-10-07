@@ -6,6 +6,11 @@
   // - webhook_secret: SECURITY CRITICAL - Set via WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable
   // - contactSyncOnStartup: Sync all contacts on startup for better performance (recommended: true)
   // - contactCacheHours: How many hours to cache contact info before refreshing (default: 24)
+  // - sessionHealthCheckSec: How often to check session health (default: 30 seconds)
+  // - sessionAutoRestart: Automatically restart unhealthy sessions (recommended: true)
+  // - sessionStartupTimeoutSec: Max time a session can stay in STARTING status before restart (default: 30 seconds)
+  //   * Prevents sessions from getting stuck during initialization
+  //   * Can be overridden with WHATSAPP_SESSION_STARTUP_TIMEOUT_SEC environment variable
   // - WAHA version is auto-detected: Plus = native videos, Core = document fallback
 
   "whatsapp": {
@@ -14,7 +19,10 @@
     "retry_count": 3,
     "webhook_secret": "MUST_BE_SET_VIA_WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET_ENV_VAR",
     "contactSyncOnStartup": true,
-    "contactCacheHours": 24
+    "contactCacheHours": 24,
+    "sessionHealthCheckSec": 30,
+    "sessionAutoRestart": true,
+    "sessionStartupTimeoutSec": 30
   },
 
   // Signal configuration

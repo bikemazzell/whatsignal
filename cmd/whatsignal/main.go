@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -222,10 +223,26 @@ func run(ctx context.Context) error {
 		if checkInterval <= 0 {
 			checkInterval = time.Duration(constants.DefaultSessionHealthCheckSec) * time.Second
 		}
-		sessionMonitor := service.NewSessionMonitor(waClient, logger, checkInterval)
+
+		// Get startup timeout from config or environment variable
+		startupTimeout := time.Duration(cfg.WhatsApp.SessionStartupTimeoutSec) * time.Second
+		if envTimeout := os.Getenv("WHATSAPP_SESSION_STARTUP_TIMEOUT_SEC"); envTimeout != "" {
+			if timeoutSec, err := strconv.Atoi(envTimeout); err == nil && timeoutSec > 0 {
+				startupTimeout = time.Duration(timeoutSec) * time.Second
+				logger.WithField("timeout_sec", timeoutSec).Info("Using session startup timeout from environment variable")
+			}
+		}
+		if startupTimeout <= 0 {
+			startupTimeout = time.Duration(constants.DefaultSessionStartupTimeoutSec) * time.Second
+		}
+
+		sessionMonitor := service.NewSessionMonitorWithStartupTimeout(waClient, logger, checkInterval, startupTimeout)
 		sessionMonitor.Start(ctx)
 		defer sessionMonitor.Stop()
-		logger.WithField("interval", checkInterval).Info("Session health monitor started")
+		logger.WithFields(logrus.Fields{
+			"interval":        checkInterval,
+			"startup_timeout": startupTimeout,
+		}).Info("Session health monitor started")
 	}
 
 	ctxWithVerbose := context.WithValue(ctx, service.VerboseContextKey, *verbose)

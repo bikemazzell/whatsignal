@@ -381,6 +381,13 @@ func validateBounds(c *models.Config) error {
 		}
 	}
 
+	// Validate WhatsApp session startup timeout
+	if c.WhatsApp.SessionStartupTimeoutSec > 0 {
+		if err := validation.ValidateTimeout(c.WhatsApp.SessionStartupTimeoutSec, "session startup timeout"); err != nil {
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
 	// Validate WhatsApp poll interval
 	if c.WhatsApp.PollIntervalSec > 0 {
 		if err := validation.ValidateTimeout(c.WhatsApp.PollIntervalSec, "WhatsApp poll interval"); err != nil {

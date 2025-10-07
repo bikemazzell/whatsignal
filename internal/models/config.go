@@ -18,15 +18,16 @@ type Config struct {
 
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
-	APIBaseURL            string        `json:"api_base_url" mapstructure:"api_base_url"`
-	Timeout               time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
-	RetryCount            int           `json:"retry_count" mapstructure:"retry_count"`
-	WebhookSecret         string        `json:"webhook_secret" mapstructure:"webhook_secret"`
-	PollIntervalSec       int           `json:"pollIntervalSec"`
-	ContactSyncOnStartup  bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
-	ContactCacheHours     int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
-	SessionHealthCheckSec int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
-	SessionAutoRestart    bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
+	APIBaseURL               string        `json:"api_base_url" mapstructure:"api_base_url"`
+	Timeout                  time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
+	RetryCount               int           `json:"retry_count" mapstructure:"retry_count"`
+	WebhookSecret            string        `json:"webhook_secret" mapstructure:"webhook_secret"`
+	PollIntervalSec          int           `json:"pollIntervalSec"`
+	ContactSyncOnStartup     bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
+	ContactCacheHours        int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
+	SessionHealthCheckSec    int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
+	SessionAutoRestart       bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
+	SessionStartupTimeoutSec int           `json:"sessionStartupTimeoutSec" mapstructure:"sessionStartupTimeoutSec"`
 }
 
 // SignalConfig holds Signal related configurations

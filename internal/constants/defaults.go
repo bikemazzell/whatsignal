@@ -29,6 +29,7 @@ const (
 	DefaultSessionMonitorInitDelaySec = 10
 	DefaultSessionRestartTimeoutSec   = 30
 	DefaultSessionWaitTimeoutSec      = 60
+	DefaultSessionStartupTimeoutSec   = 30
 	DefaultBackoffInitialMs           = 500
 	DefaultBackoffMaxSec              = 5
 	DefaultContactSyncBatchSize       = 100
@@ -57,7 +58,7 @@ const (
 
 // Time-related constants
 const (
-	DefaultSignalPollingTimeoutSec = 30
+	DefaultSignalPollingTimeoutSec = 45 // Increased to accommodate 15s poll timeout + retries
 	DefaultWhatsAppPollIntervalSec = 30
 	DefaultWhatsAppTimeoutMs       = 30000
 	DefaultWhatsAppRetryCount      = 3

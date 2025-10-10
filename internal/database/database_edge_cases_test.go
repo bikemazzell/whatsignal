@@ -305,7 +305,7 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 
 	// Test cleanup performance
 	start = time.Now()
-	err = db.CleanupOldRecords(30) // Keep last 30 days
+	err = db.CleanupOldRecords(ctx, 30) // Keep last 30 days
 	require.NoError(t, err)
 	cleanupDuration := time.Since(start)
 	t.Logf("Cleanup took %v", cleanupDuration)

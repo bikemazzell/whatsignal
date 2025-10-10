@@ -38,8 +38,8 @@ func (m *mockContactDatabaseService) GetContactByPhone(ctx context.Context, phon
 	return args.Get(0).(*models.Contact), args.Error(1)
 }
 
-func (m *mockContactDatabaseService) CleanupOldContacts(retentionDays int) error {
-	args := m.Called(retentionDays)
+func (m *mockContactDatabaseService) CleanupOldContacts(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
 	return args.Error(0)
 }
 
@@ -656,10 +656,11 @@ func TestContactService_CleanupOldContacts(t *testing.T) {
 		mockDB := &mockContactDatabaseService{}
 		mockWA := &mockWAClient{}
 		service := NewContactService(mockDB, mockWA)
+		ctx := context.Background()
 
-		mockDB.On("CleanupOldContacts", 30).Return(nil)
+		mockDB.On("CleanupOldContacts", ctx, 30).Return(nil)
 
-		err := service.CleanupOldContacts(30)
+		err := service.CleanupOldContacts(ctx, 30)
 
 		assert.NoError(t, err)
 		mockDB.AssertExpectations(t)
@@ -669,10 +670,11 @@ func TestContactService_CleanupOldContacts(t *testing.T) {
 		mockDB := &mockContactDatabaseService{}
 		mockWA := &mockWAClient{}
 		service := NewContactService(mockDB, mockWA)
+		ctx := context.Background()
 
-		mockDB.On("CleanupOldContacts", 30).Return(errors.New("database error"))
+		mockDB.On("CleanupOldContacts", ctx, 30).Return(errors.New("database error"))
 
-		err := service.CleanupOldContacts(30)
+		err := service.CleanupOldContacts(ctx, 30)
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "database error")

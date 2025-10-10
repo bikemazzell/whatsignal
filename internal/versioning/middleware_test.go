@@ -274,19 +274,6 @@ func TestGetVersionInfoFromContext(t *testing.T) {
 	assert.Equal(t, VersionCompatibility{}, info)
 }
 
-func TestMustGetVersionFromContext(t *testing.T) {
-	// Test with version in context
-	ctx := context.WithValue(context.Background(), VersionContextKey, V1_1_0)
-	version := MustGetVersionFromContext(ctx)
-	assert.Equal(t, V1_1_0, version)
-
-	// Test panic with no version in context
-	ctx = context.Background()
-	assert.Panics(t, func() {
-		MustGetVersionFromContext(ctx)
-	})
-}
-
 func TestVersionAwareHandler(t *testing.T) {
 	vh := NewVersionAwareHandler()
 

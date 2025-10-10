@@ -714,20 +714,20 @@ func TestCleanupOldRecords(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful cleanup
-	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", 7).Return(nil).Once()
+	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", ctx, 7).Return(nil).Once()
 	bridge.media.(*mockMediaHandler).On("CleanupOldFiles", int64(7*24*60*60)).Return(nil).Once()
 
 	err := bridge.CleanupOldRecords(ctx, 7)
 	assert.NoError(t, err)
 
 	// Test database cleanup error
-	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", 7).Return(assert.AnError).Once()
+	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", ctx, 7).Return(assert.AnError).Once()
 	err = bridge.CleanupOldRecords(ctx, 7)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to cleanup old records")
 
 	// Test media cleanup error
-	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", 7).Return(nil).Once()
+	bridge.db.(*mockDatabaseService).On("CleanupOldRecords", ctx, 7).Return(nil).Once()
 	bridge.media.(*mockMediaHandler).On("CleanupOldFiles", int64(7*24*60*60)).Return(assert.AnError).Once()
 	err = bridge.CleanupOldRecords(ctx, 7)
 	assert.Error(t, err)

@@ -489,7 +489,7 @@ func (m *mockContactDatabaseService) GetContactByPhone(ctx context.Context, phon
 	return args.Get(0).(*models.Contact), args.Error(1)
 }
 
-func (m *mockContactDatabaseService) CleanupOldContacts(retentionDays int) error {
-	args := m.Called(retentionDays)
+func (m *mockContactDatabaseService) CleanupOldContacts(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
 	return args.Error(0)
 }

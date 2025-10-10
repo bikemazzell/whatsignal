@@ -20,7 +20,7 @@ type ContactServiceInterface interface {
 	GetContactDisplayName(ctx context.Context, phoneNumber string) string
 	RefreshContact(ctx context.Context, phoneNumber string) error
 	SyncAllContacts(ctx context.Context) error
-	CleanupOldContacts(retentionDays int) error
+	CleanupOldContacts(ctx context.Context, retentionDays int) error
 }
 
 // ContactDatabaseService defines the database operations needed by ContactService
@@ -28,7 +28,7 @@ type ContactDatabaseService interface {
 	SaveContact(ctx context.Context, contact *models.Contact) error
 	GetContact(ctx context.Context, contactID string) (*models.Contact, error)
 	GetContactByPhone(ctx context.Context, phoneNumber string) (*models.Contact, error)
-	CleanupOldContacts(retentionDays int) error
+	CleanupOldContacts(ctx context.Context, retentionDays int) error
 }
 
 // ContactService provides contact caching and retrieval functionality
@@ -254,6 +254,6 @@ func (cs *ContactService) SyncAllContacts(ctx context.Context) error {
 }
 
 // CleanupOldContacts removes contacts older than the specified retention period
-func (cs *ContactService) CleanupOldContacts(retentionDays int) error {
-	return cs.db.CleanupOldContacts(retentionDays)
+func (cs *ContactService) CleanupOldContacts(ctx context.Context, retentionDays int) error {
+	return cs.db.CleanupOldContacts(ctx, retentionDays)
 }

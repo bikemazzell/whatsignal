@@ -42,7 +42,7 @@ type DatabaseService interface {
 	GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error)
 	HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
-	CleanupOldRecords(retentionDays int) error
+	CleanupOldRecords(ctx context.Context, retentionDays int) error
 }
 
 type bridge struct {
@@ -564,7 +564,7 @@ func (b *bridge) UpdateDeliveryStatus(ctx context.Context, msgID string, status 
 }
 
 func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error {
-	if err := b.db.CleanupOldRecords(retentionDays); err != nil {
+	if err := b.db.CleanupOldRecords(ctx, retentionDays); err != nil {
 		return fmt.Errorf("failed to cleanup old records: %w", err)
 	}
 

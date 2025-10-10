@@ -314,8 +314,8 @@ func (m *mockDatabaseService) UpdateDeliveryStatus(ctx context.Context, id strin
 	return args.Error(0)
 }
 
-func (m *mockDatabaseService) CleanupOldRecords(retentionDays int) error {
-	args := m.Called(retentionDays)
+func (m *mockDatabaseService) CleanupOldRecords(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
 	return args.Error(0)
 }
 
@@ -341,8 +341,8 @@ func (m *mockDatabaseService) GetContactByPhone(ctx context.Context, phoneNumber
 	return args.Get(0).(*models.Contact), args.Error(1)
 }
 
-func (m *mockDatabaseService) CleanupOldContacts(retentionDays int) error {
-	args := m.Called(retentionDays)
+func (m *mockDatabaseService) CleanupOldContacts(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
 	return args.Error(0)
 }
 
@@ -390,8 +390,8 @@ func (m *mockContactService) GetAllContacts(ctx context.Context, limit, offset i
 	return args.Get(0).([]models.Contact), args.Error(1)
 }
 
-func (m *mockContactService) CleanupOldContacts(retentionDays int) error {
-	args := m.Called(retentionDays)
+func (m *mockContactService) CleanupOldContacts(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
 	return args.Error(0)
 }
 

@@ -295,7 +295,8 @@ func TestCleanupOldRecordsErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	// This should return an error
-	err = db.CleanupOldRecords(7)
+	ctx := context.Background()
+	err = db.CleanupOldRecords(ctx, 7)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to cleanup old records")
 }
@@ -460,7 +461,7 @@ func TestCleanupOldRecords(t *testing.T) {
 	require.NoError(t, err)
 
 	// Cleanup records older than 1 day
-	err = db.CleanupOldRecords(1)
+	err = db.CleanupOldRecords(ctx, 1)
 	require.NoError(t, err)
 
 	// Verify old record is gone and new record remains
@@ -925,7 +926,7 @@ func TestDatabase_CleanupOldContacts(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run cleanup with 30 day retention
-	err = db.CleanupOldContacts(30)
+	err = db.CleanupOldContacts(ctx, 30)
 	assert.NoError(t, err)
 
 	// Verify old contact was deleted

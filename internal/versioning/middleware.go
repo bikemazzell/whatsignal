@@ -239,14 +239,6 @@ func GetVersionInfoFromContext(ctx context.Context) (VersionCompatibility, bool)
 	return info, ok
 }
 
-// MustGetVersionFromContext extracts version from context, panicking if not found
-func MustGetVersionFromContext(ctx context.Context) APIVersion {
-	if version, ok := GetVersionFromContext(ctx); ok {
-		return version
-	}
-	panic("API version not found in context")
-}
-
 // VersionAwareHandler wraps a handler with version-specific logic
 type VersionAwareHandler struct {
 	handlers map[string]http.HandlerFunc // version string -> handler

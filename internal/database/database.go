@@ -570,10 +570,10 @@ func (d *Database) GetLatestMessageMappingBySession(ctx context.Context, session
 	return mapping, nil
 }
 
-func (d *Database) CleanupOldRecords(retentionDays int) error {
+func (d *Database) CleanupOldRecords(ctx context.Context, retentionDays int) error {
 	query := DeleteOldMessageMappingsQuery
 
-	_, err := d.db.Exec(query, retentionDays)
+	_, err := d.db.ExecContext(ctx, query, retentionDays)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old records: %w", err)
 	}
@@ -677,10 +677,10 @@ func (d *Database) GetContactByPhone(ctx context.Context, phoneNumber string) (*
 }
 
 // CleanupOldContacts removes contacts older than the specified days
-func (d *Database) CleanupOldContacts(retentionDays int) error {
+func (d *Database) CleanupOldContacts(ctx context.Context, retentionDays int) error {
 	query := DeleteOldContactsQuery
 
-	_, err := d.db.Exec(query, retentionDays)
+	_, err := d.db.ExecContext(ctx, query, retentionDays)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old contacts: %w", err)
 	}

@@ -11,6 +11,16 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	// Save and restore environment variables that might interfere with tests
+	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+	defer func() {
+		if originalWebhookSecret != "" {
+			os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
+		} else {
+			os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+		}
+	}()
+
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "whatsignal-config-test")
 	require.NoError(t, err)
@@ -120,6 +130,12 @@ func TestLoadConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Clear environment variables that would override config file values
+			// unless the test explicitly sets them
+			if tt.setEnv == nil || tt.setEnv["WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET"] == "" {
+				os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+			}
+
 			// Set environment variables
 			if tt.setEnv != nil {
 				for k, v := range tt.setEnv {

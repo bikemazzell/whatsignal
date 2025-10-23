@@ -70,7 +70,19 @@ func NewContactServiceWithConfig(db ContactDatabaseService, waClient types.WACli
 
 // GetContactDisplayName retrieves the display name for a phone number/contact ID
 // It first checks the cache, then fetches from WhatsApp API if needed
+// For group chats, it returns the phone number directly without API calls
 func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber string) string {
+	// Check if this is a group chat - groups use @g.us suffix
+	// Groups don't have contact info in WAHA's Contacts API, only in Groups API
+	if strings.HasSuffix(phoneNumber, "@g.us") || strings.Contains(phoneNumber, "@g.us") {
+		cs.logger.WithContext(logrus.Fields{
+			"phone_number": phoneNumber,
+			"type":         "group",
+		}).Debug("Skipping contact lookup for group chat")
+		// Return the group ID as-is; groups don't have display names in contacts API
+		return phoneNumber
+	}
+
 	// Try to get from cache first
 	contact, err := cs.db.GetContactByPhone(ctx, phoneNumber)
 	if err != nil {
@@ -92,7 +104,7 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 	// Record cache miss - need to fetch from API
 	metrics.IncrementCounter("contact_cache_misses_total", nil, "Total contact cache misses")
 
-	// Fetch from WhatsApp API
+	// Fetch from WhatsApp API - only for individual contacts (@c.us)
 	contactID := phoneNumber
 	if !strings.HasSuffix(contactID, "@c.us") {
 		contactID = phoneNumber + "@c.us"

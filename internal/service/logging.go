@@ -94,22 +94,30 @@ func LogWithContext(ctx context.Context, logger *logrus.Logger) *logrus.Entry {
 
 // ValidatePhoneNumber performs basic phone number validation
 // Accepts phone numbers with or without + prefix (WhatsApp API compatibility)
+// Also accepts WhatsApp group IDs (numeric with @g.us suffix, up to 25 digits)
 func ValidatePhoneNumber(phone string) error {
 	if phone == "" {
 		return fmt.Errorf("phone number cannot be empty")
 	}
 
+	// Check if this is a group ID first - groups have different validation rules
+	isGroup := strings.HasSuffix(phone, "@g.us") || strings.Contains(phone, "@g.us")
+
 	// Remove @c.us or @g.us suffix for validation
 	cleaned := strings.TrimSuffix(phone, "@c.us")
 	cleaned = strings.TrimSuffix(cleaned, "@g.us")
 
-	// Handle group IDs (they start with digits followed by a hyphen)
+	// Handle group IDs with hyphens (some groups have format like "120363-1234567890@g.us")
 	if strings.Contains(cleaned, "-") {
-		// This is a group ID, not a phone number
-		// Group IDs like "120363012345678901@g.us" are valid
+		// This is a compound group ID, not a phone number
 		parts := strings.Split(cleaned, "-")
 		if len(parts) >= 2 && len(parts[0]) > 0 {
-			// Basic validation for group ID
+			// Basic validation for compound group ID - just check first part has digits
+			for _, char := range parts[0] {
+				if char < '0' || char > '9' {
+					return fmt.Errorf("invalid group ID format: non-numeric characters")
+				}
+			}
 			return nil
 		}
 		return fmt.Errorf("invalid group ID format")
@@ -129,15 +137,28 @@ func ValidatePhoneNumber(phone string) error {
 		return fmt.Errorf("phone number must contain digits")
 	}
 
-	// Check length (minimum 7, maximum 15 digits for phone numbers)
-	// Note: Some WhatsApp IDs can be longer (e.g., business accounts)
-	if len(digits) < 7 || len(digits) > 20 {
-		return fmt.Errorf("phone number must be between 7 and 20 digits")
+	// Different length validation for groups vs individual contacts
+	// Groups can have longer IDs (up to 25 digits observed in the wild)
+	// Individual phone numbers: 7-15 digits (E.164 standard)
+	// WhatsApp business/special accounts: up to 20 digits
+	maxLength := 20
+	if isGroup {
+		maxLength = 25 // Groups can have longer numeric IDs
+	}
+
+	if len(digits) < 7 || len(digits) > maxLength {
+		if isGroup {
+			return fmt.Errorf("group ID must be between 7 and %d digits, got %d", maxLength, len(digits))
+		}
+		return fmt.Errorf("phone number must be between 7 and %d digits, got %d", maxLength, len(digits))
 	}
 
 	// Check if all characters are digits
 	for _, char := range digits {
 		if char < '0' || char > '9' {
+			if isGroup {
+				return fmt.Errorf("group ID must contain only digits")
+			}
 			return fmt.Errorf("phone number must contain only digits")
 		}
 	}

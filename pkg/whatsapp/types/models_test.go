@@ -346,3 +346,196 @@ func TestContactsResponse_SingleContact(t *testing.T) {
 	assert.Equal(t, contact.Number, unmarshaled.Contact.Number)
 	assert.Equal(t, contact.Name, unmarshaled.Contact.Name)
 }
+
+func TestMessagePayload_IsGroupMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  MessagePayload
+		expected bool
+	}{
+		{
+			name: "group message with @g.us suffix",
+			payload: MessagePayload{
+				ChatID: "123456789@g.us",
+			},
+			expected: true,
+		},
+		{
+			name: "direct message with @c.us suffix",
+			payload: MessagePayload{
+				ChatID: "1234567890@c.us",
+			},
+			expected: false,
+		},
+		{
+			name: "empty chatID",
+			payload: MessagePayload{
+				ChatID: "",
+			},
+			expected: false,
+		},
+		{
+			name: "chatID without suffix",
+			payload: MessagePayload{
+				ChatID: "1234567890",
+			},
+			expected: false,
+		},
+		{
+			name: "chatID with partial @g.us",
+			payload: MessagePayload{
+				ChatID: "1234567890@g.u",
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.payload.IsGroupMessage()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestMessagePayload_ExtractGroupID(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  MessagePayload
+		expected string
+	}{
+		{
+			name: "group message returns group ID",
+			payload: MessagePayload{
+				ChatID: "123456789@g.us",
+			},
+			expected: "123456789@g.us",
+		},
+		{
+			name: "direct message returns empty string",
+			payload: MessagePayload{
+				ChatID: "1234567890@c.us",
+			},
+			expected: "",
+		},
+		{
+			name: "empty chatID returns empty string",
+			payload: MessagePayload{
+				ChatID: "",
+			},
+			expected: "",
+		},
+		{
+			name: "invalid format returns empty string",
+			payload: MessagePayload{
+				ChatID: "invalid-format",
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.payload.ExtractGroupID()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGroup_GetDisplayName(t *testing.T) {
+	tests := []struct {
+		name     string
+		group    Group
+		expected string
+	}{
+		{
+			name: "with subject",
+			group: Group{
+				ID:      "123456789@g.us",
+				Subject: "Family Group",
+			},
+			expected: "Family Group",
+		},
+		{
+			name: "without subject returns ID",
+			group: Group{
+				ID:      "123456789@g.us",
+				Subject: "",
+			},
+			expected: "123456789@g.us",
+		},
+		{
+			name: "empty subject returns ID",
+			group: Group{
+				ID:      "987654321@g.us",
+				Subject: "",
+			},
+			expected: "987654321@g.us",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.group.GetDisplayName()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGroup_Marshal(t *testing.T) {
+	group := Group{
+		ID:          "123456789@g.us",
+		Subject:     "Test Group",
+		Description: "A test group",
+		Participants: []GroupParticipant{
+			{
+				ID:      "1111111111@c.us",
+				Role:    "admin",
+				IsAdmin: true,
+			},
+			{
+				ID:      "2222222222@c.us",
+				Role:    "member",
+				IsAdmin: false,
+			},
+		},
+		InviteLink: "https://chat.whatsapp.com/invite123",
+		CreatedAt:  1234567890,
+	}
+
+	data, err := json.Marshal(group)
+	require.NoError(t, err)
+
+	var unmarshaled Group
+	err = json.Unmarshal(data, &unmarshaled)
+	require.NoError(t, err)
+
+	assert.Equal(t, group.ID, unmarshaled.ID)
+	assert.Equal(t, group.Subject, unmarshaled.Subject)
+	assert.Equal(t, group.Description, unmarshaled.Description)
+	assert.Equal(t, group.InviteLink, unmarshaled.InviteLink)
+	assert.Equal(t, group.CreatedAt, unmarshaled.CreatedAt)
+	assert.Len(t, unmarshaled.Participants, 2)
+	assert.Equal(t, group.Participants[0].ID, unmarshaled.Participants[0].ID)
+	assert.Equal(t, group.Participants[0].Role, unmarshaled.Participants[0].Role)
+	assert.Equal(t, group.Participants[0].IsAdmin, unmarshaled.Participants[0].IsAdmin)
+}
+
+func TestGroupParticipant_Marshal(t *testing.T) {
+	participant := GroupParticipant{
+		ID:      "1234567890@c.us",
+		Role:    "admin",
+		IsAdmin: true,
+	}
+
+	data, err := json.Marshal(participant)
+	require.NoError(t, err)
+
+	var unmarshaled GroupParticipant
+	err = json.Unmarshal(data, &unmarshaled)
+	require.NoError(t, err)
+
+	assert.Equal(t, participant.ID, unmarshaled.ID)
+	assert.Equal(t, participant.Role, unmarshaled.Role)
+	assert.Equal(t, participant.IsAdmin, unmarshaled.IsAdmin)
+}

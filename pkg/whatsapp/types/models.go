@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -164,4 +165,42 @@ type ServerVersion struct {
 	Engine  string `json:"engine"`
 	Tier    string `json:"tier"`
 	Browser string `json:"browser"`
+}
+
+// Group represents a WhatsApp group from WAHA API
+type Group struct {
+	ID           string             `json:"id"`
+	Subject      string             `json:"subject"`
+	Description  string             `json:"description"`
+	Participants []GroupParticipant `json:"participants"`
+	InviteLink   string             `json:"invite"`
+	CreatedAt    int64              `json:"createdAt"`
+}
+
+// GroupParticipant represents a participant in a WhatsApp group
+type GroupParticipant struct {
+	ID      string `json:"id"`
+	Role    string `json:"role"`
+	IsAdmin bool   `json:"isAdmin"`
+}
+
+// GetDisplayName returns the best available display name for the group
+func (g *Group) GetDisplayName() string {
+	if g.Subject != "" {
+		return g.Subject
+	}
+	return g.ID
+}
+
+// IsGroupMessage returns true if the message is from a group chat
+func (m *MessagePayload) IsGroupMessage() bool {
+	return strings.HasSuffix(m.ChatID, "@g.us")
+}
+
+// ExtractGroupID extracts and validates a group ID from the chatID field
+func (m *MessagePayload) ExtractGroupID() string {
+	if m.IsGroupMessage() {
+		return m.ChatID
+	}
+	return ""
 }

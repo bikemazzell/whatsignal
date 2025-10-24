@@ -33,6 +33,10 @@ type WAClient interface {
 	GetContact(ctx context.Context, contactID string) (*Contact, error)
 	GetAllContacts(ctx context.Context, limit, offset int) ([]Contact, error)
 
+	// Group methods
+	GetGroup(ctx context.Context, groupID string) (*Group, error)
+	GetAllGroups(ctx context.Context, limit, offset int) ([]Group, error)
+
 	// Message acknowledgment
 	AckMessage(ctx context.Context, chatID, sessionName string) error
 

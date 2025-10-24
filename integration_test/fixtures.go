@@ -52,6 +52,28 @@ func (f *TestFixtures) Contacts() map[string]models.Contact {
 			IsMyContact: false,
 			CachedAt:    time.Now().Add(-2 * time.Hour),
 		},
+		"group_family": {
+			ContactID:   "120363028987654321@g.us",
+			PhoneNumber: "",
+			Name:        "Family Group",
+			PushName:    "",
+			ShortName:   "Family Group",
+			IsBlocked:   false,
+			IsGroup:     true,
+			IsMyContact: false,
+			CachedAt:    time.Now().Add(-1 * time.Hour),
+		},
+		"group_work": {
+			ContactID:   "120363029999888777@g.us",
+			PhoneNumber: "",
+			Name:        "Work Group",
+			PushName:    "",
+			ShortName:   "Work Group",
+			IsBlocked:   false,
+			IsGroup:     true,
+			IsMyContact: false,
+			CachedAt:    time.Now().Add(-3 * time.Hour),
+		},
 		"blocked": {
 			ContactID:   "5555555555@c.us",
 			PhoneNumber: "+5555555555",
@@ -99,6 +121,30 @@ func (f *TestFixtures) WhatsAppContacts() map[string]types.Contact {
 			Name:        "Test Group",
 			PushName:    "",
 			ShortName:   "Test Group",
+			IsMe:        false,
+			IsGroup:     true,
+			IsWAContact: false,
+			IsMyContact: false,
+			IsBlocked:   false,
+		},
+		"group_family": {
+			ID:          "120363028987654321@g.us",
+			Number:      "",
+			Name:        "Family Group",
+			PushName:    "",
+			ShortName:   "Family Group",
+			IsMe:        false,
+			IsGroup:     true,
+			IsWAContact: false,
+			IsMyContact: false,
+			IsBlocked:   false,
+		},
+		"group_work": {
+			ID:          "120363029999888777@g.us",
+			Number:      "",
+			Name:        "Work Group",
+			PushName:    "",
+			ShortName:   "Work Group",
 			IsMe:        false,
 			IsGroup:     true,
 			IsWAContact: false,
@@ -160,6 +206,42 @@ func (f *TestFixtures) MessageMappings() map[string]models.MessageMapping {
 			ForwardedAt:     now.Add(-29 * time.Minute),
 			CreatedAt:       now.Add(-30 * time.Minute),
 			UpdatedAt:       now.Add(-29 * time.Minute),
+		},
+		"group_message": {
+			WhatsAppChatID:  "120363028123456789@g.us", // Group chat ID
+			WhatsAppMsgID:   "wamid.group123",
+			SignalMsgID:     "signal-group-123",
+			SessionName:     "personal",
+			DeliveryStatus:  models.DeliveryStatusDelivered,
+			MediaType:       "",
+			SignalTimestamp: now.Add(-15 * time.Minute),
+			ForwardedAt:     now.Add(-14 * time.Minute),
+			CreatedAt:       now.Add(-15 * time.Minute),
+			UpdatedAt:       now.Add(-14 * time.Minute),
+		},
+		"group_family_message": {
+			WhatsAppChatID:  "120363028987654321@g.us", // Family Group chat ID
+			WhatsAppMsgID:   "wamid.family456",
+			SignalMsgID:     "signal-family-456",
+			SessionName:     "personal",
+			DeliveryStatus:  models.DeliveryStatusDelivered,
+			MediaType:       "",
+			SignalTimestamp: now.Add(-20 * time.Minute),
+			ForwardedAt:     now.Add(-19 * time.Minute),
+			CreatedAt:       now.Add(-20 * time.Minute),
+			UpdatedAt:       now.Add(-19 * time.Minute),
+		},
+		"group_work_message": {
+			WhatsAppChatID:  "120363029999888777@g.us", // Work Group chat ID
+			WhatsAppMsgID:   "wamid.work789",
+			SignalMsgID:     "signal-work-789",
+			SessionName:     "personal",
+			DeliveryStatus:  models.DeliveryStatusDelivered,
+			MediaType:       "",
+			SignalTimestamp: now.Add(-25 * time.Minute),
+			ForwardedAt:     now.Add(-24 * time.Minute),
+			CreatedAt:       now.Add(-25 * time.Minute),
+			UpdatedAt:       now.Add(-24 * time.Minute),
 		},
 	}
 }
@@ -310,6 +392,134 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 					Text:      "👍",
 					MessageID: "wamid.test123",
 				},
+			},
+		},
+		"group_message": {
+			Session: "personal",
+			Event:   models.EventMessage,
+			Payload: struct {
+				ID        string `json:"id"`
+				Timestamp int64  `json:"timestamp"`
+				From      string `json:"from"`
+				FromMe    bool   `json:"fromMe"`
+				To        string `json:"to"`
+				Body      string `json:"body"`
+				HasMedia  bool   `json:"hasMedia"`
+				Media     *struct {
+					URL      string `json:"url"`
+					MimeType string `json:"mimetype"`
+					Filename string `json:"filename"`
+				} `json:"media"`
+				Reaction *struct {
+					Text      string `json:"text"`
+					MessageID string `json:"messageId"`
+				} `json:"reaction"`
+				EditedMessageID *string `json:"editedMessageId,omitempty"`
+				ACK             *int    `json:"ack,omitempty"`
+			}{
+				ID:        "wamid.group123",
+				Timestamp: time.Now().Unix(),
+				From:      "120363028123456789@g.us",
+				FromMe:    false,
+				To:        "personal@c.us",
+				Body:      "Hey everyone, group meeting at 3pm!",
+				HasMedia:  false,
+			},
+		},
+		"group_family_message": {
+			Session: "personal",
+			Event:   models.EventMessage,
+			Payload: struct {
+				ID        string `json:"id"`
+				Timestamp int64  `json:"timestamp"`
+				From      string `json:"from"`
+				FromMe    bool   `json:"fromMe"`
+				To        string `json:"to"`
+				Body      string `json:"body"`
+				HasMedia  bool   `json:"hasMedia"`
+				Media     *struct {
+					URL      string `json:"url"`
+					MimeType string `json:"mimetype"`
+					Filename string `json:"filename"`
+				} `json:"media"`
+				Reaction *struct {
+					Text      string `json:"text"`
+					MessageID string `json:"messageId"`
+				} `json:"reaction"`
+				EditedMessageID *string `json:"editedMessageId,omitempty"`
+				ACK             *int    `json:"ack,omitempty"`
+			}{
+				ID:        "wamid.family456",
+				Timestamp: time.Now().Unix(),
+				From:      "120363028987654321@g.us",
+				FromMe:    false,
+				To:        "personal@c.us",
+				Body:      "Don't forget dinner on Sunday!",
+				HasMedia:  false,
+			},
+		},
+		"group_work_message": {
+			Session: "personal",
+			Event:   models.EventMessage,
+			Payload: struct {
+				ID        string `json:"id"`
+				Timestamp int64  `json:"timestamp"`
+				From      string `json:"from"`
+				FromMe    bool   `json:"fromMe"`
+				To        string `json:"to"`
+				Body      string `json:"body"`
+				HasMedia  bool   `json:"hasMedia"`
+				Media     *struct {
+					URL      string `json:"url"`
+					MimeType string `json:"mimetype"`
+					Filename string `json:"filename"`
+				} `json:"media"`
+				Reaction *struct {
+					Text      string `json:"text"`
+					MessageID string `json:"messageId"`
+				} `json:"reaction"`
+				EditedMessageID *string `json:"editedMessageId,omitempty"`
+				ACK             *int    `json:"ack,omitempty"`
+			}{
+				ID:        "wamid.work789",
+				Timestamp: time.Now().Unix(),
+				From:      "120363029999888777@g.us",
+				FromMe:    false,
+				To:        "personal@c.us",
+				Body:      "@Alice can you review the PR?",
+				HasMedia:  false,
+			},
+		},
+		"group_message_quoted": {
+			Session: "personal",
+			Event:   models.EventMessage,
+			Payload: struct {
+				ID        string `json:"id"`
+				Timestamp int64  `json:"timestamp"`
+				From      string `json:"from"`
+				FromMe    bool   `json:"fromMe"`
+				To        string `json:"to"`
+				Body      string `json:"body"`
+				HasMedia  bool   `json:"hasMedia"`
+				Media     *struct {
+					URL      string `json:"url"`
+					MimeType string `json:"mimetype"`
+					Filename string `json:"filename"`
+				} `json:"media"`
+				Reaction *struct {
+					Text      string `json:"text"`
+					MessageID string `json:"messageId"`
+				} `json:"reaction"`
+				EditedMessageID *string `json:"editedMessageId,omitempty"`
+				ACK             *int    `json:"ack,omitempty"`
+			}{
+				ID:        "wamid.groupquoted999",
+				Timestamp: time.Now().Unix(),
+				From:      "120363028123456789@g.us",
+				FromMe:    false,
+				To:        "personal@c.us",
+				Body:      "I agree with that suggestion!",
+				HasMedia:  false,
 			},
 		},
 	}
@@ -508,8 +718,8 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 			Description:     "Message in a WhatsApp group",
 			Config:          configs["minimal"],
 			Contacts:        []models.Contact{contacts["group"]},
-			Mappings:        []models.MessageMapping{mappings["text_message"]},
-			WhatsAppWebhook: webhooks["text_message"],
+			Mappings:        []models.MessageMapping{mappings["group_message"]},
+			WhatsAppWebhook: webhooks["group_message"],
 			ExpectedFlow:    "Group message → Processing → Signal delivery",
 		},
 		"signal_text": {
@@ -589,6 +799,45 @@ func (f *TestFixtures) Scenarios() map[string]TestScenario {
 				Account: "+1111111111",
 			},
 			ExpectedFlow: "Signal reply → Database → WhatsApp delivery",
+		},
+		"signal_group_reply": {
+			Name:        "Signal Reply to Group Message",
+			Description: "Reply from Signal to WhatsApp group",
+			Config:      configs["minimal"],
+			Contacts:    []models.Contact{contacts["group"]},
+			Mappings:    []models.MessageMapping{mappings["group_message"]},
+			SignalWebhook: SignalWebhookPayload{
+				Envelope: struct {
+					Source      string `json:"source"`
+					SourceName  string `json:"sourceName"`
+					SourceUuid  string `json:"sourceUuid"`
+					Timestamp   int64  `json:"timestamp"`
+					DataMessage struct {
+						Timestamp int64  `json:"timestamp"`
+						Message   string `json:"message"`
+						ExpiresIn int    `json:"expiresIn"`
+						ViewOnce  bool   `json:"viewOnce"`
+					} `json:"dataMessage"`
+				}{
+					Source:     "+1111111111",
+					SourceName: "Signal User",
+					SourceUuid: "test-uuid-group",
+					Timestamp:  time.Now().UnixMilli(),
+					DataMessage: struct {
+						Timestamp int64  `json:"timestamp"`
+						Message   string `json:"message"`
+						ExpiresIn int    `json:"expiresIn"`
+						ViewOnce  bool   `json:"viewOnce"`
+					}{
+						Timestamp: time.Now().UnixMilli(),
+						Message:   "I'll be there for the group meeting!",
+						ExpiresIn: 0,
+						ViewOnce:  false,
+					},
+				},
+				Account: "+1111111111",
+			},
+			ExpectedFlow: "Signal reply → Database → WhatsApp group delivery",
 		},
 	}
 }

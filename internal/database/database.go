@@ -688,6 +688,92 @@ func (d *Database) CleanupOldContacts(ctx context.Context, retentionDays int) er
 	return nil
 }
 
+// Group operations
+
+// SaveGroup saves or updates a group in the database
+func (d *Database) SaveGroup(ctx context.Context, group *models.Group) error {
+	// Encrypt group_id with deterministic encryption for lookups
+	encryptedGroupID, err := d.encryptor.EncryptForLookupIfEnabled(group.GroupID)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt group ID: %w", err)
+	}
+
+	encryptedSubject, err := d.encryptor.EncryptIfEnabled(group.Subject)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt subject: %w", err)
+	}
+
+	encryptedDescription, err := d.encryptor.EncryptIfEnabled(group.Description)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt description: %w", err)
+	}
+
+	query := InsertOrReplaceGroupQuery
+
+	_, err = d.db.ExecContext(ctx, query,
+		encryptedGroupID, encryptedSubject, encryptedDescription,
+		group.ParticipantCount, group.SessionName)
+	if err != nil {
+		return fmt.Errorf("failed to save group: %w", err)
+	}
+
+	return nil
+}
+
+// GetGroup retrieves a group by group ID and session name
+func (d *Database) GetGroup(ctx context.Context, groupID, sessionName string) (*models.Group, error) {
+	encryptedGroupID, err := d.encryptor.EncryptForLookupIfEnabled(groupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt group ID: %w", err)
+	}
+
+	query := SelectGroupByIDQuery
+
+	row := d.db.QueryRowContext(ctx, query, encryptedGroupID, sessionName)
+
+	var group models.Group
+	var encryptedSubject, encryptedDescription string
+
+	err = row.Scan(&group.ID, &group.GroupID, &encryptedSubject, &encryptedDescription,
+		&group.ParticipantCount, &group.SessionName, &group.CachedAt, &group.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to scan group: %w", err)
+	}
+
+	// Decrypt fields
+	group.GroupID, err = d.encryptor.DecryptIfEnabled(group.GroupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt group ID: %w", err)
+	}
+
+	group.Subject, err = d.encryptor.DecryptIfEnabled(encryptedSubject)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt subject: %w", err)
+	}
+
+	group.Description, err = d.encryptor.DecryptIfEnabled(encryptedDescription)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt description: %w", err)
+	}
+
+	return &group, nil
+}
+
+// CleanupOldGroups removes groups older than the specified days
+func (d *Database) CleanupOldGroups(ctx context.Context, retentionDays int) error {
+	query := DeleteOldGroupsQuery
+
+	_, err := d.db.ExecContext(ctx, query, retentionDays)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup old groups: %w", err)
+	}
+
+	return nil
+}
+
 // HasMessageHistoryBetween checks if there's any message history between a session and Signal sender
 func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error) {
 	if sessionName == "" {

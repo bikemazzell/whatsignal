@@ -308,6 +308,22 @@ func (m *mockMultiSessionWAClient) GetAllContacts(ctx context.Context, limit, of
 	return args.Get(0).([]types.Contact), args.Error(1)
 }
 
+func (m *mockMultiSessionWAClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
+	args := m.Called(ctx, groupID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Group), args.Error(1)
+}
+
+func (m *mockMultiSessionWAClient) GetAllGroups(ctx context.Context, limit, offset int) ([]types.Group, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]types.Group), args.Error(1)
+}
+
 func (m *mockMultiSessionWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
 	args := m.Called(ctx, maxWaitTime)
 	return args.Error(0)

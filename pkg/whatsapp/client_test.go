@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,7 +212,33 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 			if err := json.NewEncoder(w).Encode(contacts); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
+		case "/api/groups":
+			// All groups
+			groups := []types.Group{
+				{ID: "group1@g.us", Subject: "Group 1"},
+				{ID: "group2@g.us", Subject: "Group 2"},
+			}
+			if err := json.NewEncoder(w).Encode(groups); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			}
 		default:
+			// Check if it's a single group request: /api/groups/{groupId}
+			if strings.HasPrefix(r.URL.Path, "/api/groups/") {
+				groupID := strings.TrimPrefix(r.URL.Path, "/api/groups/")
+				group := types.Group{
+					ID:          groupID,
+					Subject:     "Test Group",
+					Description: "Test Description",
+					Participants: []types.GroupParticipant{
+						{ID: "user1@c.us", Role: "admin", IsAdmin: true},
+						{ID: "user2@c.us", Role: "member", IsAdmin: false},
+					},
+				}
+				if err := json.NewEncoder(w).Encode(group); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -1469,4 +1496,40 @@ func TestWAHAResponseParsing(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClient_GetGroup(t *testing.T) {
+	client, server := setupTestClient(t)
+	defer server.Close()
+
+	ctx := context.Background()
+
+	// Test successful group retrieval
+	group, err := client.GetGroup(ctx, "group123@g.us")
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	assert.Equal(t, "group123@g.us", group.ID)
+	assert.Equal(t, "Test Group", group.Subject)
+	assert.Equal(t, "Test Description", group.Description)
+	assert.Len(t, group.Participants, 2)
+	assert.Equal(t, "user1@c.us", group.Participants[0].ID)
+	assert.True(t, group.Participants[0].IsAdmin)
+	assert.Equal(t, "user2@c.us", group.Participants[1].ID)
+	assert.False(t, group.Participants[1].IsAdmin)
+}
+
+func TestClient_GetAllGroups(t *testing.T) {
+	client, server := setupTestClient(t)
+	defer server.Close()
+
+	ctx := context.Background()
+
+	// Test successful groups retrieval
+	groups, err := client.GetAllGroups(ctx, 10, 0)
+	require.NoError(t, err)
+	assert.Len(t, groups, 2)
+	assert.Equal(t, "group1@g.us", groups[0].ID)
+	assert.Equal(t, "Group 1", groups[0].Subject)
+	assert.Equal(t, "group2@g.us", groups[1].ID)
+	assert.Equal(t, "Group 2", groups[1].Subject)
 }

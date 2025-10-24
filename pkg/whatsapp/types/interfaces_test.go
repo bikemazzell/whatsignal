@@ -165,6 +165,22 @@ func (m *MockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([
 	return args.Get(0).([]Contact), args.Error(1)
 }
 
+func (m *MockWAClient) GetGroup(ctx context.Context, groupID string) (*Group, error) {
+	args := m.Called(ctx, groupID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*Group), args.Error(1)
+}
+
+func (m *MockWAClient) GetAllGroups(ctx context.Context, limit, offset int) ([]Group, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]Group), args.Error(1)
+}
+
 func (m *MockWAClient) RestartSession(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)

@@ -95,3 +95,24 @@ const (
 		WHERE cached_at < datetime('now', '-' || ? || ' days')
 	`
 )
+
+// Group queries
+const (
+	InsertOrReplaceGroupQuery = `
+		INSERT OR REPLACE INTO groups (
+			group_id, subject, description, participant_count, session_name, cached_at
+		) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+
+	SelectGroupByIDQuery = `
+		SELECT id, group_id, subject, description, participant_count, session_name,
+		       cached_at, updated_at
+		FROM groups
+		WHERE group_id = ? AND session_name = ?
+	`
+
+	DeleteOldGroupsQuery = `
+		DELETE FROM groups
+		WHERE cached_at < datetime('now', '-' || ? || ' days')
+	`
+)

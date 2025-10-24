@@ -24,4 +24,8 @@ const (
 	// Contact endpoints
 	EndpointContactsAll = "/contacts/all"
 	EndpointContacts    = "/contacts"
+
+	// Group endpoints
+	EndpointGroups    = "/groups"
+	EndpointGroupsAll = "/groups"
 )

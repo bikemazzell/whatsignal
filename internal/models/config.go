@@ -28,6 +28,13 @@ type WhatsAppConfig struct {
 	SessionHealthCheckSec    int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
 	SessionAutoRestart       bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
 	SessionStartupTimeoutSec int           `json:"sessionStartupTimeoutSec" mapstructure:"sessionStartupTimeoutSec"`
+	Groups                   GroupConfig   `json:"groups" mapstructure:"groups"`
+}
+
+// GroupConfig holds group chat related configurations
+type GroupConfig struct {
+	CacheHours    int  `json:"cacheHours" mapstructure:"cacheHours"`
+	SyncOnStartup bool `json:"syncOnStartup" mapstructure:"syncOnStartup"`
 }
 
 // SignalConfig holds Signal related configurations

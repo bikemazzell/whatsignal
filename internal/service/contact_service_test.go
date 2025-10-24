@@ -61,6 +61,22 @@ func (m *mockWAClient) GetAllContacts(ctx context.Context, limit, offset int) ([
 	return args.Get(0).([]types.Contact), args.Error(1)
 }
 
+func (m *mockWAClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
+	args := m.Called(ctx, groupID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Group), args.Error(1)
+}
+
+func (m *mockWAClient) GetAllGroups(ctx context.Context, limit, offset int) ([]types.Group, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]types.Group), args.Error(1)
+}
+
 // Implement other required methods for WAClient interface
 func (m *mockWAClient) SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, message)

@@ -161,6 +161,12 @@ func validate(c *models.Config) error {
 	if c.Server.WebhookMaxSkewSec <= 0 {
 		c.Server.WebhookMaxSkewSec = constants.DefaultWebhookMaxSkewSec
 	}
+
+	// Set default groups configuration if not provided
+	if c.WhatsApp.Groups.CacheHours <= 0 {
+		c.WhatsApp.Groups.CacheHours = 24
+	}
+
 	return nil
 }
 
@@ -370,6 +376,13 @@ func validateBounds(c *models.Config) error {
 	// Validate WhatsApp contact cache hours
 	if c.WhatsApp.ContactCacheHours > 0 {
 		if err := validation.ValidateNumericRange(c.WhatsApp.ContactCacheHours, "contact cache hours", 1, 168); err != nil { // Max 1 week
+			return models.ConfigError{Message: err.Error()}
+		}
+	}
+
+	// Validate WhatsApp groups cache hours
+	if c.WhatsApp.Groups.CacheHours > 0 {
+		if err := validation.ValidateNumericRange(c.WhatsApp.Groups.CacheHours, "groups cache hours", 1, 168); err != nil { // Max 1 week
 			return models.ConfigError{Message: err.Error()}
 		}
 	}

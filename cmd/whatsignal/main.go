@@ -189,11 +189,30 @@ func run(ctx context.Context) error {
 		logger.Info("Contact sync on startup is disabled")
 	}
 
+	// Initialize GroupService (always enabled)
+	groupCacheHours := cfg.WhatsApp.Groups.CacheHours
+	if groupCacheHours <= 0 {
+		groupCacheHours = constants.DefaultContactCacheHours
+	}
+	groupService := service.NewGroupServiceWithConfig(db, waClient, groupCacheHours)
+	logger.WithField("cache_hours", groupCacheHours).Info("GroupService initialized")
+
+	// Optionally sync all groups on startup if configured
+	if cfg.WhatsApp.Groups.SyncOnStartup {
+		// Sync groups for the default session
+		logger.WithField("session", defaultSessionName).Info("Starting group sync on startup...")
+		if err := groupService.SyncAllGroups(ctx, defaultSessionName); err != nil {
+			logger.Warnf("Failed to sync groups on startup: %v. Group names may not be available immediately.", err)
+		} else {
+			logger.Info("Group sync completed successfully")
+		}
+	}
+
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, models.RetryConfig{
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:      cfg.Retry.MaxAttempts,
-	}, cfg.Media, channelManager, contactService)
+	}, cfg.Media, channelManager, contactService, groupService)
 
 	logger.WithField("channels", len(cfg.Channels)).Info("Multi-channel bridge initialized")
 

@@ -24,7 +24,7 @@ whatsignal-deploy/
 ├── docker-compose.yml    # Service orchestration
 ├── .env                  # Environment variables (with generated secrets)
 ├── config.json          # Application configuration
-├── env.example          # Environment template
+├── .env.example          # Environment template
 └── config.json.example  # Configuration template
 ```
 

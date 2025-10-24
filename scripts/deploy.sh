@@ -45,7 +45,7 @@ echo "📥 Downloading configuration files..."
 
 # Download required files
 curl -fsSL "$REPO_URL/docker-compose.yml" -o docker-compose.yml
-curl -fsSL "$REPO_URL/env.example" -o env.example
+curl -fsSL "$REPO_URL/.env.example" -o .env.example
 curl -fsSL "$REPO_URL/config.json.example" -o config.json.example
 
 echo "✅ Downloaded configuration files"
@@ -53,7 +53,7 @@ echo "✅ Downloaded configuration files"
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
     echo "📝 Creating .env file..."
-    cp env.example .env
+    cp .env.example .env
     
     # Generate secure secrets
     echo "🔐 Generating secure secrets..."

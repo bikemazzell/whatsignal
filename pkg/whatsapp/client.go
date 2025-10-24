@@ -798,6 +798,92 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 	return contacts, nil
 }
 
+// GetGroup retrieves a specific group by group ID
+func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
+	// Build the URL: /api/groups/{groupId}?session={sessionName}
+	endpoint := fmt.Sprintf("%s%s/%s", types.APIBase, types.EndpointGroups, groupID)
+	url := fmt.Sprintf("%s%s?session=%s", c.baseURL, endpoint, c.sessionName)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // Group not found
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
+	}
+
+	var group types.Group
+	if err := json.NewDecoder(resp.Body).Decode(&group); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &group, nil
+}
+
+// GetAllGroups retrieves all groups with pagination
+func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([]types.Group, error) {
+	// Build the URL: /api/groups?session={sessionName}&limit={limit}&offset={offset}
+	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointGroupsAll)
+	url := fmt.Sprintf("%s%s?session=%s&limit=%d&offset=%d",
+		c.baseURL, endpoint, c.sessionName, limit, offset)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Read response body for better error diagnostics
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("request failed with status %d (failed to read error response: %w)", resp.StatusCode, err)
+		}
+
+		// Try to decode structured error response
+		var errorResp map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &errorResp); err == nil {
+			if errMsg, ok := errorResp["error"].(string); ok {
+				return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errMsg)
+			}
+		}
+
+		// Fallback to raw response body for debugging
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var groups []types.Group
+	if err := json.NewDecoder(resp.Body).Decode(&groups); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return groups, nil
+}
+
 // getServerVersion retrieves the WAHA server version info
 func (c *WhatsAppClient) getServerVersion(ctx context.Context) (*types.ServerVersion, error) {
 	url := fmt.Sprintf("%s/api/server/version", c.baseURL)

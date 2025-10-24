@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.13] - 2025-10-24
+
+### Added
+- **WhatsApp group chat support** - Messages from WhatsApp groups now forward to Signal with format "Sender in GroupName: message"
+- **Group message reply support** - Signal users can reply to group messages, responses are sent back to the WhatsApp group
+- **Comprehensive integration tests** - Added full test coverage for group message bidirectional flow and reply functionality
+
 ## [1.1.12] - 2025-10-07
 
 ### Fixed

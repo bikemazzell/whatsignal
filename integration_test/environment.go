@@ -701,6 +701,7 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 		cfg.Media,
 		channelManager,
 		contactService,
+		nil, // No group service for integration tests yet
 	)
 
 	// Create message service

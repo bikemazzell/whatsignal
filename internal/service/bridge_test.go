@@ -56,8 +56,8 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	channelManager, err := NewChannelManager(channels)
 	require.NoError(t, err)
 
-	// Create bridge without contact service for basic tests (contact service has its own tests)
-	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil).(*bridge)
+	// Create bridge without contact service and group service for basic tests (those services have their own tests)
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil).(*bridge)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -163,7 +163,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			content: "Hello, World!",
 			wantErr: false,
 			setup: func() {
-				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
+				bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
 					MessageID: "sig123",
 					Timestamp: time.Now().UnixMilli(),
 				}
@@ -185,7 +185,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			wantErr:   false,
 			setup: func() {
 				bridge.media.(*mockMediaHandler).On("ProcessMedia", mediaPath).Return(mediaPath, nil).Once()
-				bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
+				bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
 					MessageID: "sig124",
 					Timestamp: time.Now().UnixMilli(),
 				}
@@ -950,8 +950,8 @@ func TestNewBridge(t *testing.T) {
 	channelManager, err := NewChannelManager(channels)
 	require.NoError(t, err)
 
-	// For constructor test, use nil contact service to keep test simple
-	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil)
+	// For constructor test, use nil contact service and group service to keep test simple
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil)
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
@@ -1270,7 +1270,7 @@ func TestSendSignalNotificationForSession(t *testing.T) {
 
 		// The setupTestBridge creates a channel manager with "default" session -> "+1234567890"
 		// So we can test with this valid session
-		bridge.sigClient.(*mockSignalClient).sendMessageResp = &signaltypes.SendMessageResponse{
+		bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
 			MessageID: "notif123",
 			Timestamp: time.Now().UnixMilli(),
 		}
@@ -1302,5 +1302,97 @@ func TestSendSignalNotificationForSession(t *testing.T) {
 		err := bridge.SendSignalNotificationForSession(ctx, "default", "Test notification")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to send Signal notification")
+	})
+}
+
+func TestBridge_HandleWhatsAppMessage_GroupMessage(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	// Create a mock group service
+	mockGroupService := new(mockGroupService)
+	bridge.groupService = mockGroupService
+
+	// Create a mock contact service
+	mockContactService := new(mockContactService)
+	bridge.contactService = mockContactService
+
+	ctx := context.Background()
+
+	t.Run("Group message with GroupService enabled", func(t *testing.T) {
+		// Setup mocks
+		mockContactService.On("GetContactDisplayName", ctx, "1234567890").Return("John Doe")
+		mockGroupService.On("GetGroupName", ctx, "group123@g.us", "default").Return("Family Group")
+
+		bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
+			MessageID: "sig-msg-123",
+			Timestamp: time.Now().Unix() * 1000,
+		}
+		bridge.sigClient.(*mockSignalClient).sendMessageErr = nil
+
+		bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
+
+		// Call with group chat ID
+		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "group123@g.us", "wa-msg-123", "1234567890@c.us", "Hello everyone", "")
+
+		assert.NoError(t, err)
+		mockContactService.AssertExpectations(t)
+		mockGroupService.AssertExpectations(t)
+
+		// Verify the message sent to Signal has the correct format
+		mockSigClient := bridge.sigClient.(*mockSignalClient)
+		assert.Contains(t, mockSigClient.lastMessage, "John Doe in Family Group:")
+		assert.Contains(t, mockSigClient.lastMessage, "Hello everyone")
+	})
+
+	t.Run("Group message without GroupService (nil)", func(t *testing.T) {
+		// Disable group service
+		bridge.groupService = nil
+
+		mockContactService.On("GetContactDisplayName", ctx, "9876543210").Return("Jane Smith")
+
+		bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
+			MessageID: "sig-msg-456",
+			Timestamp: time.Now().Unix() * 1000,
+		}
+		bridge.sigClient.(*mockSignalClient).sendMessageErr = nil
+		bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
+
+		// Call with group chat ID but no group service
+		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "group456@g.us", "wa-msg-456", "9876543210@c.us", "Hi there", "")
+
+		assert.NoError(t, err)
+		mockContactService.AssertExpectations(t)
+
+		// Verify the message sent to Signal falls back to direct message format
+		mockSigClient := bridge.sigClient.(*mockSignalClient)
+		assert.Contains(t, mockSigClient.lastMessage, "Jane Smith:")
+		assert.NotContains(t, mockSigClient.lastMessage, " in ")
+	})
+
+	t.Run("Direct message still works normally", func(t *testing.T) {
+		// Re-enable group service
+		bridge.groupService = mockGroupService
+
+		mockContactService.On("GetContactDisplayName", ctx, "5555555555").Return("Bob Wilson")
+
+		bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
+			MessageID: "sig-msg-789",
+			Timestamp: time.Now().Unix() * 1000,
+		}
+		bridge.sigClient.(*mockSignalClient).sendMessageErr = nil
+		bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
+
+		// Call with direct chat ID (not a group)
+		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "5555555555@c.us", "wa-msg-789", "5555555555@c.us", "Direct message", "")
+
+		assert.NoError(t, err)
+		mockContactService.AssertExpectations(t)
+
+		// GroupService should NOT be called for direct messages
+		// Verify the message sent to Signal uses direct message format
+		mockSigClient := bridge.sigClient.(*mockSignalClient)
+		assert.Equal(t, "Bob Wilson: Direct message", mockSigClient.lastMessage)
+		assert.NotContains(t, mockSigClient.lastMessage, " in ")
 	})
 }

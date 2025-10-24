@@ -118,6 +118,11 @@ func TestSignalToWhatsAppMessageFlow(t *testing.T) {
 			scenario:      "signal_reply",
 			expectedSends: 1,
 		},
+		{
+			name:          "signal_group_reply",
+			scenario:      "signal_group_reply",
+			expectedSends: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -360,4 +365,107 @@ func TestHighVolumeMessageFlow(t *testing.T) {
 	if memory.HeapInuse > 50*1024*1024 {
 		t.Errorf("Memory usage too high after bulk processing: %d bytes", memory.HeapInuse)
 	}
+}
+
+func TestGroupMessageBidirectionalFlow(t *testing.T) {
+	env := NewTestEnvironment(t, "group_bidirectional", IsolationProcess)
+	defer env.Cleanup()
+
+	env.StartMessageFlowServer()
+
+	t.Run("whatsapp_group_to_signal", func(t *testing.T) {
+		env.ResetMockAPICounters()
+
+		scenario := env.fixtures.Scenarios()["group_message"]
+		webhook := scenario.WhatsAppWebhook
+		webhook.Payload.ID = fmt.Sprintf("group_msg_%d", time.Now().UnixNano())
+		webhook.Payload.Timestamp = time.Now().Unix()
+
+		webhookData, err := json.Marshal(webhook)
+		if err != nil {
+			t.Fatalf("Failed to marshal group webhook: %v", err)
+		}
+
+		resp, err := http.Post(
+			fmt.Sprintf("%s/webhook/whatsapp", env.httpServer.URL),
+			"application/json",
+			strings.NewReader(string(webhookData)),
+		)
+		if err != nil {
+			t.Fatalf("Failed to send webhook: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", resp.StatusCode)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+
+		acks := env.CountMockAPIRequests("ack")
+		sends := env.CountMockAPIRequests("send")
+
+		if acks != 1 {
+			t.Errorf("Expected 1 ACK for group message, got %d", acks)
+		}
+		if sends != 1 {
+			t.Errorf("Expected 1 Signal send for group message, got %d", sends)
+		}
+
+		ctx := context.Background()
+		mapping, err := env.db.GetMessageMapping(ctx, webhook.Payload.ID)
+		if err != nil {
+			t.Errorf("Failed to get message mapping: %v", err)
+		}
+		if mapping == nil {
+			t.Error("Message mapping not found in database")
+		} else {
+			if mapping.WhatsAppChatID != "120363028123456789@g.us" {
+				t.Errorf("Expected group chat ID 120363028123456789@g.us, got %s", mapping.WhatsAppChatID)
+			}
+		}
+	})
+
+	t.Run("signal_reply_to_group", func(t *testing.T) {
+		env.ResetMockAPICounters()
+
+		ctx := context.Background()
+		groupMapping := env.fixtures.MessageMappings()["group_message"]
+		if err := env.db.SaveMessageMapping(ctx, &groupMapping); err != nil {
+			t.Fatalf("Failed to save group mapping: %v", err)
+		}
+
+		scenario := env.fixtures.Scenarios()["signal_group_reply"]
+		signalPayload := scenario.SignalWebhook
+		signalPayload.Envelope.Timestamp = time.Now().UnixMilli()
+		signalPayload.Envelope.DataMessage.Timestamp = time.Now().UnixMilli()
+
+		webhookData, err := json.Marshal(signalPayload)
+		if err != nil {
+			t.Fatalf("Failed to marshal Signal webhook: %v", err)
+		}
+
+		resp, err := http.Post(
+			fmt.Sprintf("%s/webhook/signal", env.httpServer.URL),
+			"application/json",
+			strings.NewReader(string(webhookData)),
+		)
+		if err != nil {
+			t.Fatalf("Failed to send Signal webhook: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200 for Signal reply to group, got %d", resp.StatusCode)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+
+		whatsappSends := env.CountMockAPIRequests("whatsapp_send")
+		if whatsappSends != 1 {
+			t.Errorf("Expected 1 WhatsApp send to group, got %d", whatsappSends)
+		}
+
+		t.Log("Successfully verified Signal reply is sent back to WhatsApp group")
+	})
 }

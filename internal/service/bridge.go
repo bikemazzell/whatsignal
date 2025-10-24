@@ -55,11 +55,12 @@ type bridge struct {
 	mediaRouter    intmedia.Router
 	logger         *logrus.Logger
 	contactService ContactServiceInterface
+	groupService   GroupServiceInterface
 	channelManager *ChannelManager
 }
 
 // NewBridge creates a new bridge with channel manager (channels are required)
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface, groupService GroupServiceInterface) MessageBridge {
 	return &bridge{
 		waClient:       waClient,
 		sigClient:      sigClient,
@@ -70,6 +71,7 @@ func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseServ
 		mediaRouter:    intmedia.NewRouter(mc),
 		logger:         logrus.New(),
 		contactService: contactService,
+		groupService:   groupService,
 		channelManager: channelManager,
 	}
 }
@@ -136,6 +138,10 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 	senderPhone := sender
 	if strings.HasSuffix(sender, "@c.us") {
 		senderPhone = strings.TrimSuffix(sender, "@c.us")
+	} else if strings.HasSuffix(sender, "@g.us") {
+		// For group messages, sender might be in format "groupID@g.us"
+		// The actual participant phone is in a different field, but for now we handle chatID
+		senderPhone = strings.TrimSuffix(sender, "@g.us")
 	}
 
 	displayName := senderPhone // fallback
@@ -143,7 +149,18 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 		displayName = b.contactService.GetContactDisplayName(ctx, senderPhone)
 	}
 
-	message := fmt.Sprintf("%s: %s", displayName, content)
+	// Detect if this is a group message and format accordingly
+	var message string
+	isGroupMsg := strings.HasSuffix(chatID, "@g.us")
+	if isGroupMsg && b.groupService != nil {
+		// Get group name
+		groupName := b.groupService.GetGroupName(ctx, chatID, sessionName)
+		// Format: "John Doe in Family Group: hi there"
+		message = fmt.Sprintf("%s in %s: %s", displayName, groupName, content)
+	} else {
+		// Direct message formatting (existing behavior)
+		message = fmt.Sprintf("%s: %s", displayName, content)
+	}
 	var attachments []string
 
 	if mediaPath != "" {

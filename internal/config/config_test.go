@@ -969,3 +969,98 @@ func TestApplyEnvironmentOverrides_EmptyEnv(t *testing.T) {
 	assert.Equal(t, "/original/path/to/db.sqlite", config.Database.Path)
 	assert.Equal(t, "/original/path/to/cache", config.Media.CacheDir)
 }
+
+func TestConfig_GroupsDefaults(t *testing.T) {
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL: "https://whatsapp.example.com",
+			Groups:     models.GroupConfig{
+				// Empty, should get defaults
+			},
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://signal.example.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/path/to/cache",
+		},
+		Channels: []models.Channel{
+			{
+				WhatsAppSessionName:          "default",
+				SignalDestinationPhoneNumber: "+1234567890",
+			},
+		},
+	}
+
+	err := validate(config)
+	assert.NoError(t, err)
+	assert.Equal(t, 24, config.WhatsApp.Groups.CacheHours)
+}
+
+func TestConfig_GroupsEnabled(t *testing.T) {
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL: "https://whatsapp.example.com",
+			Groups: models.GroupConfig{
+				CacheHours:    48,
+				SyncOnStartup: true,
+			},
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://signal.example.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/path/to/cache",
+		},
+		Channels: []models.Channel{
+			{
+				WhatsAppSessionName:          "default",
+				SignalDestinationPhoneNumber: "+1234567890",
+			},
+		},
+	}
+
+	err := validate(config)
+	assert.NoError(t, err)
+	assert.Equal(t, 48, config.WhatsApp.Groups.CacheHours)
+	assert.True(t, config.WhatsApp.Groups.SyncOnStartup)
+}
+
+func TestConfig_GroupsCacheHoursInvalid(t *testing.T) {
+	config := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			APIBaseURL: "https://whatsapp.example.com",
+			Groups: models.GroupConfig{
+				CacheHours: 200, // Invalid: exceeds max of 168 (1 week)
+			},
+		},
+		Signal: models.SignalConfig{
+			RPCURL: "https://signal.example.com",
+		},
+		Database: models.DatabaseConfig{
+			Path: "/path/to/db.sqlite",
+		},
+		Media: models.MediaConfig{
+			CacheDir: "/path/to/cache",
+		},
+		Channels: []models.Channel{
+			{
+				WhatsAppSessionName:          "default",
+				SignalDestinationPhoneNumber: "+1234567890",
+			},
+		},
+	}
+
+	err := validate(config)
+	assert.NoError(t, err) // validate() doesn't check bounds
+
+	err = validateBounds(config)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "groups cache hours")
+}

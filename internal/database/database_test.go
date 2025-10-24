@@ -90,6 +90,35 @@ END;`
 	err = os.WriteFile(filepath.Join(migrationsPath, "001_initial_schema.sql"), []byte(schemaContent), 0644)
 	require.NoError(t, err)
 
+	// Create migration 002 for groups table
+	groupsContent := `-- Add groups table for caching WhatsApp group metadata
+CREATE TABLE IF NOT EXISTS groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    description TEXT,
+    participant_count INTEGER,
+    session_name TEXT NOT NULL,
+    cached_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(group_id, session_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_groups_group_id ON groups(group_id);
+CREATE INDEX IF NOT EXISTS idx_groups_session_name ON groups(session_name);
+CREATE INDEX IF NOT EXISTS idx_groups_cached_at ON groups(cached_at);
+CREATE INDEX IF NOT EXISTS idx_groups_session_group ON groups(session_name, group_id);
+
+CREATE TRIGGER IF NOT EXISTS groups_updated_at
+AFTER UPDATE ON groups
+BEGIN
+    UPDATE groups SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
+END;`
+
+	err = os.WriteFile(filepath.Join(migrationsPath, "002_add_groups_table.sql"), []byte(groupsContent), 0644)
+	require.NoError(t, err)
+
 	return migrationsPath
 }
 
@@ -1520,4 +1549,200 @@ func TestDatabase_SchemaUpgrade(t *testing.T) {
 		testData[0].whatsappMsgID, testData[1].whatsappMsgID).Scan(&oldRecordsWithoutHashes)
 	require.NoError(t, err)
 	assert.Equal(t, 2, oldRecordsWithoutHashes, "Old data should not have hash values populated")
+}
+
+func TestDatabase_SaveGroup(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	group := &models.Group{
+		GroupID:          "123456789@g.us",
+		Subject:          "Test Group",
+		Description:      "A test group",
+		ParticipantCount: 5,
+		SessionName:      "default",
+	}
+
+	// Test saving a group
+	err := db.SaveGroup(ctx, group)
+	assert.NoError(t, err)
+
+	// Test updating existing group (INSERT OR REPLACE)
+	group.Subject = "Updated Group"
+	group.ParticipantCount = 7
+	err = db.SaveGroup(ctx, group)
+	assert.NoError(t, err)
+}
+
+func TestDatabase_GetGroup(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Save a group first
+	group := &models.Group{
+		GroupID:          "123456789@g.us",
+		Subject:          "Test Group",
+		Description:      "Test Description",
+		ParticipantCount: 3,
+		SessionName:      "default",
+	}
+	err := db.SaveGroup(ctx, group)
+	require.NoError(t, err)
+
+	// Retrieve the group
+	retrieved, err := db.GetGroup(ctx, "123456789@g.us", "default")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+
+	assert.Equal(t, "123456789@g.us", retrieved.GroupID)
+	assert.Equal(t, "Test Group", retrieved.Subject)
+	assert.Equal(t, "Test Description", retrieved.Description)
+	assert.Equal(t, 3, retrieved.ParticipantCount)
+	assert.Equal(t, "default", retrieved.SessionName)
+	assert.False(t, retrieved.CachedAt.IsZero())
+	assert.False(t, retrieved.UpdatedAt.IsZero())
+}
+
+func TestDatabase_GetGroup_NotFound(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Try to retrieve a non-existent group
+	retrieved, err := db.GetGroup(ctx, "999999999@g.us", "default")
+	assert.NoError(t, err)
+	assert.Nil(t, retrieved)
+}
+
+func TestDatabase_GetGroup_DifferentSessions(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Save same group ID but different sessions
+	group1 := &models.Group{
+		GroupID:          "123456789@g.us",
+		Subject:          "Session 1 Group",
+		Description:      "Group in session 1",
+		ParticipantCount: 3,
+		SessionName:      "session1",
+	}
+	err := db.SaveGroup(ctx, group1)
+	require.NoError(t, err)
+
+	group2 := &models.Group{
+		GroupID:          "123456789@g.us",
+		Subject:          "Session 2 Group",
+		Description:      "Group in session 2",
+		ParticipantCount: 5,
+		SessionName:      "session2",
+	}
+	err = db.SaveGroup(ctx, group2)
+	require.NoError(t, err)
+
+	// Retrieve from session1
+	retrieved1, err := db.GetGroup(ctx, "123456789@g.us", "session1")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved1)
+	assert.Equal(t, "Session 1 Group", retrieved1.Subject)
+	assert.Equal(t, 3, retrieved1.ParticipantCount)
+
+	// Retrieve from session2
+	retrieved2, err := db.GetGroup(ctx, "123456789@g.us", "session2")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved2)
+	assert.Equal(t, "Session 2 Group", retrieved2.Subject)
+	assert.Equal(t, 5, retrieved2.ParticipantCount)
+}
+
+func TestDatabase_SaveGroup_Encryption(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	group := &models.Group{
+		GroupID:          "123456789@g.us",
+		Subject:          "Sensitive Group",
+		Description:      "Sensitive Description",
+		ParticipantCount: 10,
+		SessionName:      "default",
+	}
+
+	err := db.SaveGroup(ctx, group)
+	require.NoError(t, err)
+
+	// Query the database directly to verify encryption
+	var storedGroupID, storedSubject, storedDescription string
+	err = db.db.QueryRow(`
+		SELECT group_id, subject, description
+		FROM groups
+		WHERE session_name = ?
+	`, "default").Scan(&storedGroupID, &storedSubject, &storedDescription)
+	require.NoError(t, err)
+
+	// Verify that stored values are encrypted (not plain text)
+	assert.NotEqual(t, "123456789@g.us", storedGroupID, "Group ID should be encrypted")
+	assert.NotEqual(t, "Sensitive Group", storedSubject, "Subject should be encrypted")
+	assert.NotEqual(t, "Sensitive Description", storedDescription, "Description should be encrypted")
+
+	// Verify we can still retrieve and decrypt
+	retrieved, err := db.GetGroup(ctx, "123456789@g.us", "default")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, "123456789@g.us", retrieved.GroupID)
+	assert.Equal(t, "Sensitive Group", retrieved.Subject)
+	assert.Equal(t, "Sensitive Description", retrieved.Description)
+}
+
+func TestDatabase_CleanupOldGroups(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Save a recent group
+	recentGroup := &models.Group{
+		GroupID:          "recent@g.us",
+		Subject:          "Recent Group",
+		Description:      "Recent",
+		ParticipantCount: 5,
+		SessionName:      "default",
+	}
+	err := db.SaveGroup(ctx, recentGroup)
+	require.NoError(t, err)
+
+	// Manually insert an old group by manipulating the timestamp
+	oldGroupID, err := db.encryptor.EncryptForLookupIfEnabled("old@g.us")
+	require.NoError(t, err)
+	oldSubject, err := db.encryptor.EncryptIfEnabled("Old Group")
+	require.NoError(t, err)
+	oldDescription, err := db.encryptor.EncryptIfEnabled("Old")
+	require.NoError(t, err)
+
+	_, err = db.db.ExecContext(ctx, `
+		INSERT INTO groups (group_id, subject, description, participant_count, session_name, cached_at)
+		VALUES (?, ?, ?, ?, ?, datetime('now', '-30 days'))
+	`, oldGroupID, oldSubject, oldDescription, 3, "default")
+	require.NoError(t, err)
+
+	// Cleanup groups older than 14 days
+	err = db.CleanupOldGroups(ctx, 14)
+	assert.NoError(t, err)
+
+	// Verify old group was deleted
+	oldRetrieved, err := db.GetGroup(ctx, "old@g.us", "default")
+	assert.NoError(t, err)
+	assert.Nil(t, oldRetrieved, "Old group should be deleted")
+
+	// Verify recent group still exists
+	recentRetrieved, err := db.GetGroup(ctx, "recent@g.us", "default")
+	assert.NoError(t, err)
+	assert.NotNil(t, recentRetrieved, "Recent group should still exist")
 }

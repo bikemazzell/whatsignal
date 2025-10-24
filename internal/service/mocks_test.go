@@ -177,6 +177,22 @@ func (m *mockWhatsAppClient) GetAllContacts(ctx context.Context, limit, offset i
 	return args.Get(0).([]types.Contact), args.Error(1)
 }
 
+func (m *mockWhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
+	args := m.Called(ctx, groupID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.Group), args.Error(1)
+}
+
+func (m *mockWhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([]types.Group, error) {
+	args := m.Called(ctx, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]types.Group), args.Error(1)
+}
+
 func (m *mockWhatsAppClient) GetSessionName() string {
 	return "test-session"
 }
@@ -194,14 +210,18 @@ func (m *mockWhatsAppClient) AckMessage(ctx context.Context, chatID, sessionName
 // Mock Signal client
 type mockSignalClient struct {
 	mock.Mock
-	sendMessageResp     *signaltypes.SendMessageResponse
+	sendMessageResponse *signaltypes.SendMessageResponse
 	sendMessageErr      error
 	initializeDeviceErr error
+	lastMessage         string
+	lastRecipient       string
 }
 
 func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*signaltypes.SendMessageResponse, error) {
-	if m.sendMessageResp != nil || m.sendMessageErr != nil {
-		return m.sendMessageResp, m.sendMessageErr
+	m.lastMessage = message
+	m.lastRecipient = recipient
+	if m.sendMessageResponse != nil || m.sendMessageErr != nil {
+		return m.sendMessageResponse, m.sendMessageErr
 	}
 	args := m.Called(ctx, recipient, message, attachments)
 	if args.Get(0) == nil {
@@ -388,6 +408,31 @@ func (m *mockContactService) GetAllContacts(ctx context.Context, limit, offset i
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]models.Contact), args.Error(1)
+}
+
+// mockGroupService mocks the GroupServiceInterface
+type mockGroupService struct {
+	mock.Mock
+}
+
+func (m *mockGroupService) GetGroupName(ctx context.Context, groupID, sessionName string) string {
+	args := m.Called(ctx, groupID, sessionName)
+	return args.String(0)
+}
+
+func (m *mockGroupService) RefreshGroup(ctx context.Context, groupID, sessionName string) error {
+	args := m.Called(ctx, groupID, sessionName)
+	return args.Error(0)
+}
+
+func (m *mockGroupService) SyncAllGroups(ctx context.Context, sessionName string) error {
+	args := m.Called(ctx, sessionName)
+	return args.Error(0)
+}
+
+func (m *mockGroupService) CleanupOldGroups(ctx context.Context, retentionDays int) error {
+	args := m.Called(ctx, retentionDays)
+	return args.Error(0)
 }
 
 func (m *mockContactService) CleanupOldContacts(ctx context.Context, retentionDays int) error {

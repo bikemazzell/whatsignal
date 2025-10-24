@@ -1,6 +1,6 @@
 # WhatSignal
 
-[![Version](https://img.shields.io/badge/version-1.1.12-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.13-blue.svg)](CHANGELOG.md)
 [![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -9,9 +9,10 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 ## Features
 
 - WhatsApp ↔ Signal one-to-one bridge with preserved context (replies, quotes, metadata)
-- Smart contacts: show names (not numbers), warm cache at startup, periodic refresh, graceful fallback
-- Media that just works: images, videos, documents, voice notes; config-driven types; binary sniffing; WAHA Plus/Core‑aware routing
-- WAHA integration: auto version detection, typing indicators, seen status, session management and recovery
+- Group chat support: WhatsApp groups → Signal messages & reply support
+- Smart contacts: show names (not just numbers), warm cache at startup, periodic refresh, graceful fallback
+- Media support: images, videos, documents, voice notes
+- Status support: typing indicators, seen status
 - Message extras: reactions, auto‑reply to last sender, delivery status tracking
 - Security by default: encrypted storage, webhook auth/validation, configurable retention, automated cleanup
 - Operational hygiene: health endpoint, structured JSON logs, graceful retries
@@ -22,8 +23,8 @@ WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and
 To use WhatSignal, you must have:
 
 1. **WhatsApp Number**: Registered and active, activated as a session on WAHA.
-2. **Signal Bridge Number**: Dedicated for the bridge, used by Signal-CLI, and different from the destination number.
-3. **Signal Destination Number**: The final recipient, typically on your mobile or desktop Signal app. This must not be the same as the bridge number.
+2. **Signal Bridge Number**: Dedicated for the bridge, used by Signal-CLI, and different from the _destination_ number.
+3. **Signal Destination Number**: The final recipient, typically on your mobile or desktop Signal app. This must not be the same as the _bridge_ number.
 
 ## Quick Start
 

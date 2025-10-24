@@ -81,6 +81,7 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 				models.MediaConfig{},
 				channelManager,
 				mockContacts,
+				nil, // No group service for this test
 			)
 
 			ctx := context.Background()
@@ -210,6 +211,7 @@ func TestBridge_MultiChannel_HandleSignalMessage(t *testing.T) {
 				models.MediaConfig{},
 				channelManager,
 				mockContacts,
+				nil, // No group service for this test
 			)
 
 			ctx := context.Background()
@@ -283,6 +285,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 		models.MediaConfig{},
 		channelManager,
 		mockContacts,
+		nil, // No group service for this test
 	)
 
 	ctx := context.Background()

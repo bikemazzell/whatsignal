@@ -26,7 +26,7 @@ echo "✅ Docker is installed"
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
     echo "📝 Creating .env file..."
-    cp env.example .env
+    cp .env.example .env
     
     # Generate secure secrets
     echo "🔐 Generating secure secrets..."

@@ -51,7 +51,6 @@ signal-attachments/
 
 # Environment variables
 .env
-!env.example
 
 # Debug files
 __debug_bin

@@ -56,3 +56,5 @@ signal-attachments/
 # Debug files
 __debug_bin
 debug.test
+
+Claude.md

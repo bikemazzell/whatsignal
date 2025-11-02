@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	signaltypes "whatsignal/pkg/signal/types"
 	"whatsignal/pkg/whatsapp/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -56,8 +58,12 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	channelManager, err := NewChannelManager(channels)
 	require.NoError(t, err)
 
+	// Create test logger
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard) // Suppress test output
+
 	// Create bridge without contact service and group service for basic tests (those services have their own tests)
-	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil).(*bridge)
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, testLogger).(*bridge)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)
@@ -950,8 +956,12 @@ func TestNewBridge(t *testing.T) {
 	channelManager, err := NewChannelManager(channels)
 	require.NoError(t, err)
 
+	// Create test logger
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard)
+
 	// For constructor test, use nil contact service and group service to keep test simple
-	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil)
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, testLogger)
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface

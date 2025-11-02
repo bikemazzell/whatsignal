@@ -60,7 +60,7 @@ type bridge struct {
 }
 
 // NewBridge creates a new bridge with channel manager (channels are required)
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface, groupService GroupServiceInterface) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface, groupService GroupServiceInterface, logger *logrus.Logger) MessageBridge {
 	return &bridge{
 		waClient:       waClient,
 		sigClient:      sigClient,
@@ -69,7 +69,7 @@ func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseServ
 		retryConfig:    rc,
 		mediaConfig:    mc,
 		mediaRouter:    intmedia.NewRouter(mc),
-		logger:         logrus.New(),
+		logger:         logger,
 		contactService: contactService,
 		groupService:   groupService,
 		channelManager: channelManager,

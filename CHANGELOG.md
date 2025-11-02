@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.14]
+
+### Fixed
+- **Critical: Duplicate logging bug** - Fixed severe log corruption causing duplicate log entries for webhook requests
+  - Root cause 1: Bridge service was creating its own unconfigured logger instance instead of using the shared application logger
+  - Root cause 2: Webhook endpoints had both global `ObservabilityMiddleware` and `WebhookObservabilityMiddleware` applied, causing every webhook request to be logged twice
+  - Solution: Modified `NewBridge()` to accept a logger parameter and pass the configured logger from main application
+  - Solution: Removed global middleware from webhook routes, keeping only the webhook-specific middleware for better context
+  - Impact: Eliminates duplicate log entries, ensures consistent log formatting across all components, and improves log readability
+  - Updated all test files to pass test loggers to bridge constructor
+
 ## [1.1.13] - 2025-10-24
 
 ### Added

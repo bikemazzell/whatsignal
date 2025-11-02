@@ -89,15 +89,16 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 }
 
 func (s *Server) setupRoutes() {
-	// Add global observability middleware for all routes
-	s.router.Use(middleware.ObservabilityMiddleware(s.logger))
-
-	// Public endpoints (no rate limiting for health checks)
-	s.router.HandleFunc("/health", s.handleHealth()).Methods(http.MethodGet)
-	s.router.HandleFunc("/session/status", s.handleSessionStatus()).Methods(http.MethodGet)
-	s.router.HandleFunc("/metrics", s.handleMetrics()).Methods(http.MethodGet)
+	// Public endpoints with observability middleware
+	public := s.router.PathPrefix("").Subrouter()
+	public.Use(middleware.ObservabilityMiddleware(s.logger))
+	public.HandleFunc("/health", s.handleHealth()).Methods(http.MethodGet)
+	public.HandleFunc("/session/status", s.handleSessionStatus()).Methods(http.MethodGet)
+	public.HandleFunc("/metrics", s.handleMetrics()).Methods(http.MethodGet)
 
 	// Webhook endpoints with security middleware and webhook-specific observability
+	// Note: We use WebhookObservabilityMiddleware instead of the general ObservabilityMiddleware
+	// to avoid duplicate logging and provide webhook-specific context
 	whatsapp := s.router.PathPrefix("/webhook/whatsapp").Subrouter()
 	whatsapp.Use(s.securityMiddleware)
 	whatsapp.Use(middleware.WebhookObservabilityMiddleware(s.logger, "whatsapp"))

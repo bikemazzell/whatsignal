@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	signaltypes "whatsignal/pkg/signal/types"
 	watypes "whatsignal/pkg/whatsapp/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -67,6 +69,10 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 			mockMedia := new(mockMediaHandler)
 			mockContacts := new(mockContactService)
 
+			// Create test logger
+			testLogger := logrus.New()
+			testLogger.SetOutput(io.Discard)
+
 			// Create bridge with channel manager
 			bridge := NewBridge(
 				mockWAClient,
@@ -82,6 +88,7 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 				channelManager,
 				mockContacts,
 				nil, // No group service for this test
+				testLogger,
 			)
 
 			ctx := context.Background()
@@ -197,6 +204,10 @@ func TestBridge_MultiChannel_HandleSignalMessage(t *testing.T) {
 			mockMedia := new(mockMediaHandler)
 			mockContacts := new(mockContactService)
 
+			// Create test logger
+			testLogger := logrus.New()
+			testLogger.SetOutput(io.Discard)
+
 			// Create bridge with channel manager
 			bridge := NewBridge(
 				mockWAClient,
@@ -212,6 +223,7 @@ func TestBridge_MultiChannel_HandleSignalMessage(t *testing.T) {
 				channelManager,
 				mockContacts,
 				nil, // No group service for this test
+				testLogger,
 			)
 
 			ctx := context.Background()
@@ -271,6 +283,10 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 	mockMedia := new(mockMediaHandler)
 	mockContacts := new(mockContactService)
 
+	// Create test logger
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard)
+
 	// Create bridge
 	bridge := NewBridge(
 		mockWAClient,
@@ -286,6 +302,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 		channelManager,
 		mockContacts,
 		nil, // No group service for this test
+		testLogger,
 	)
 
 	ctx := context.Background()

@@ -687,6 +687,10 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 		env.t.Fatalf("Failed to create channel manager: %v", err)
 	}
 
+	// Create test logger
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard) // Suppress test output unless verbose
+
 	// Create bridge - use the existing database instance from test environment
 	bridge := service.NewBridge(
 		waClient,
@@ -702,6 +706,7 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 		channelManager,
 		contactService,
 		nil, // No group service for integration tests yet
+		testLogger,
 	)
 
 	// Create message service

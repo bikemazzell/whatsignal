@@ -212,7 +212,7 @@ func run(ctx context.Context) error {
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:      cfg.Retry.MaxAttempts,
-	}, cfg.Media, channelManager, contactService, groupService)
+	}, cfg.Media, channelManager, contactService, groupService, logger)
 
 	logger.WithField("channels", len(cfg.Channels)).Info("Multi-channel bridge initialized")
 

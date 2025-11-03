@@ -56,6 +56,7 @@ type SendMessageRequest struct {
 	ChatID  string `json:"chatId"`
 	Text    string `json:"text"`
 	Session string `json:"session"`
+	ReplyTo string `json:"reply_to,omitempty"`
 }
 
 // FileData represents file information for media messages

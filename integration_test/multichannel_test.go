@@ -363,6 +363,23 @@ func (m *mockMultiSessionWAClient) SendVoice(ctx context.Context, chatID, voiceP
 func (m *mockMultiSessionWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }
+
+func (m *mockMultiSessionWAClient) SendTextWithSessionReply(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+func (m *mockMultiSessionWAClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return nil, nil
+}
+
 func (m *mockMultiSessionWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }

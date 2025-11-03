@@ -570,6 +570,77 @@ func (d *Database) GetLatestMessageMappingBySession(ctx context.Context, session
 	return mapping, nil
 }
 
+func (d *Database) GetLatestGroupMessageMappingBySession(ctx context.Context, sessionName string, searchLimit int) (*models.MessageMapping, error) {
+	if sessionName == "" {
+		return nil, fmt.Errorf("session name is required")
+	}
+	if searchLimit <= 0 {
+		searchLimit = 10
+	}
+
+	rows, err := d.db.QueryContext(ctx, SelectRecentMessageMappingsBySessionQuery, sessionName, searchLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query recent message mappings by session: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			mapping                             models.MessageMapping
+			encryptedWAChatID, encryptedWAMsgID string
+			encryptedSignalMsgID                string
+			encryptedMediaPath                  *string
+		)
+
+		err := rows.Scan(
+			&mapping.ID,
+			&encryptedWAChatID,
+			&encryptedWAMsgID,
+			&encryptedSignalMsgID,
+			&mapping.SignalTimestamp,
+			&mapping.ForwardedAt,
+			&mapping.DeliveryStatus,
+			&encryptedMediaPath,
+			&mapping.SessionName,
+			&mapping.MediaType,
+			&mapping.CreatedAt,
+			&mapping.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan recent mapping row: %w", err)
+		}
+
+		// Decrypt fields
+		mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedWAChatID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt WhatsApp chat ID: %w", err)
+		}
+		mapping.WhatsAppMsgID, err = d.encryptor.DecryptIfEnabled(encryptedWAMsgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt WhatsApp message ID: %w", err)
+		}
+		mapping.SignalMsgID, err = d.encryptor.DecryptIfEnabled(encryptedSignalMsgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt Signal message ID: %w", err)
+		}
+		if encryptedMediaPath != nil {
+			decryptedPath, err := d.encryptor.DecryptIfEnabled(*encryptedMediaPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt media path: %w", err)
+			}
+			mapping.MediaPath = &decryptedPath
+		}
+
+		// Choose the first group mapping
+		if strings.HasSuffix(mapping.WhatsAppChatID, "@g.us") {
+			return &mapping, nil
+		}
+	}
+
+	// If none matched, return nil without error
+	return nil, nil
+}
+
 func (d *Database) CleanupOldRecords(ctx context.Context, retentionDays int) error {
 	query := DeleteOldMessageMappingsQuery
 

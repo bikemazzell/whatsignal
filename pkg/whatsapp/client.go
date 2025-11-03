@@ -384,6 +384,43 @@ func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, 
 	return c.sendRequest(ctx, types.APIBase+types.EndpointSendText, payload)
 }
 
+func (c *WhatsAppClient) SendTextWithSessionReply(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	// Validate session status before sending (skip in test mode)
+	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
+			return nil, err
+		}
+	}
+
+	// Optional UX signals
+	if err := c.sendSeenWithSession(ctx, chatID, sessionName); err != nil {
+		if c.logger != nil {
+			c.logger.WithError(err).Debug("optional: sendSeen failed")
+		}
+	}
+	if err := c.startTypingWithSession(ctx, chatID, sessionName); err != nil {
+		if c.logger != nil {
+			c.logger.WithError(err).Debug("optional: startTyping failed")
+		}
+	}
+
+	defer func() {
+		if err := c.stopTypingWithSession(ctx, chatID, sessionName); err != nil {
+			if c.logger != nil {
+				c.logger.WithError(err).Debug("optional: stopTyping failed")
+			}
+		}
+	}()
+
+	payload := types.SendMessageRequest{
+		ChatID:  chatID,
+		Text:    text,
+		Session: sessionName,
+		ReplyTo: replyTo,
+	}
+	return c.sendRequest(ctx, types.APIBase+types.EndpointSendText, payload)
+}
+
 func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType) (*types.SendMessageResponse, error) {
 	return c.SendMediaWithSession(ctx, chatID, mediaPath, caption, mediaType, c.sessionName)
 }
@@ -477,6 +514,93 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 
 	endpoint := types.APIBase + apiActionPath
 	return c.sendRequest(ctx, endpoint, payload)
+}
+func (c *WhatsAppClient) SendMediaWithSessionReply(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	// Validate session status before sending (skip in test mode)
+	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := security.ValidateFilePath(mediaPath); err != nil {
+		return nil, fmt.Errorf("invalid media path: %w", err)
+	}
+
+	fileInfo, err := os.Stat(mediaPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+	const maxRecommendedSize = 50 * 1024 * 1024 // 50MB
+	if fileInfo.Size() > maxRecommendedSize {
+		if c.logger != nil {
+			c.logger.WithField("size_mb", fileInfo.Size()/(1024*1024)).Warn("Large file detected; may cause performance issues")
+		}
+	}
+
+	fileData, err := os.ReadFile(mediaPath) // #nosec G304 - Path validated by security.ValidateFilePath above
+	if err != nil {
+		return nil, fmt.Errorf("failed to read media file: %w", err)
+	}
+	base64Data := base64.StdEncoding.EncodeToString(fileData)
+
+	ext := strings.ToLower(filepath.Ext(mediaPath))
+	mimeType, ok := constants.MimeTypes[ext]
+	if !ok {
+		mimeType = constants.DefaultMimeType
+	}
+	filename := filepath.Base(mediaPath)
+
+	payload := types.MediaMessageRequest{
+		ChatID:  chatID,
+		Session: sessionName,
+		File: types.FileData{
+			Mimetype: mimeType,
+			Data:     base64Data,
+			Filename: filename,
+		},
+		Caption: caption,
+		ReplyTo: replyTo,
+	}
+
+	if mediaType == types.MediaTypeVideo {
+		convertFalse := false
+		asNoteFalse := false
+		payload.Convert = &convertFalse
+		payload.AsNote = &asNoteFalse
+	}
+
+	var apiActionPath string
+	switch mediaType {
+	case types.MediaTypeImage:
+		apiActionPath = types.EndpointSendImage
+	case types.MediaTypeFile:
+		apiActionPath = types.EndpointSendFile
+	case types.MediaTypeVoice:
+		apiActionPath = types.EndpointSendVoice
+	case types.MediaTypeVideo:
+		apiActionPath = types.EndpointSendVideo
+	default:
+		return nil, fmt.Errorf("unsupported media type: %s", mediaType)
+	}
+	endpoint := types.APIBase + apiActionPath
+	return c.sendRequest(ctx, endpoint, payload)
+}
+
+func (c *WhatsAppClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSessionReply(ctx, chatID, imagePath, caption, types.MediaTypeImage, replyTo, sessionName)
+}
+
+func (c *WhatsAppClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSessionReply(ctx, chatID, videoPath, caption, types.MediaTypeVideo, replyTo, sessionName)
+}
+
+func (c *WhatsAppClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSessionReply(ctx, chatID, docPath, caption, types.MediaTypeFile, replyTo, sessionName)
+}
+
+func (c *WhatsAppClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSessionReply(ctx, chatID, voicePath, "", types.MediaTypeVoice, replyTo, sessionName)
 }
 
 func (c *WhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {

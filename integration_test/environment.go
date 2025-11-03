@@ -564,9 +564,117 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
 				return
 			}
+			// Track send and inspect payload for reply_to
 			env.mockAPIRequests["whatsapp_send"]++
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				if v, ok := payload["reply_to"]; ok {
+					if s, ok2 := v.(string); ok2 && s != "" {
+						env.mockAPIRequests["whatsapp_reply_to"]++
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"id": "wamid.test123", "status": "sent"}`))
+
+		case strings.Contains(r.URL.Path, "/sendImage"):
+			failures := env.mockAPIFailures["whatsapp_send_image"]
+			if failures > 0 {
+				env.mockAPIFailures["whatsapp_send_image"]--
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+				return
+			}
+			env.mockAPIRequests["whatsapp_send"]++
+			env.mockAPIRequests["whatsapp_send_image"]++
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				if v, ok := payload["reply_to"]; ok {
+					if s, ok2 := v.(string); ok2 && s != "" {
+						env.mockAPIRequests["whatsapp_reply_to"]++
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id": "wamid.testIMG", "status": "sent"}`))
+
+		case strings.Contains(r.URL.Path, "/sendVideo"):
+			failures := env.mockAPIFailures["whatsapp_send_video"]
+			if failures > 0 {
+				env.mockAPIFailures["whatsapp_send_video"]--
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+				return
+			}
+			env.mockAPIRequests["whatsapp_send"]++
+			env.mockAPIRequests["whatsapp_send_video"]++
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				if v, ok := payload["reply_to"]; ok {
+					if s, ok2 := v.(string); ok2 && s != "" {
+						env.mockAPIRequests["whatsapp_reply_to"]++
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id": "wamid.testVID", "status": "sent"}`))
+
+		case strings.Contains(r.URL.Path, "/sendVoice"):
+			failures := env.mockAPIFailures["whatsapp_send_voice"]
+			if failures > 0 {
+				env.mockAPIFailures["whatsapp_send_voice"]--
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+				return
+			}
+			env.mockAPIRequests["whatsapp_send"]++
+			env.mockAPIRequests["whatsapp_send_voice"]++
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				if v, ok := payload["reply_to"]; ok {
+					if s, ok2 := v.(string); ok2 && s != "" {
+						env.mockAPIRequests["whatsapp_reply_to"]++
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id": "wamid.testVOC", "status": "sent"}`))
+
+		case strings.Contains(r.URL.Path, "/sendDocument"):
+			failures := env.mockAPIFailures["whatsapp_send_document"]
+			if failures > 0 {
+				env.mockAPIFailures["whatsapp_send_document"]--
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
+				return
+			}
+			env.mockAPIRequests["whatsapp_send"]++
+			env.mockAPIRequests["whatsapp_send_document"]++
+			body, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				if v, ok := payload["reply_to"]; ok {
+					if s, ok2 := v.(string); ok2 && s != "" {
+						env.mockAPIRequests["whatsapp_reply_to"]++
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id": "wamid.testDOC", "status": "sent"}`))
 
 		case strings.Contains(r.URL.Path, "/sendSeen"):
 			env.mockAPIRequests["ack"]++
@@ -870,8 +978,10 @@ func (env *TestEnvironment) handleSignalWebhook() http.HandlerFunc {
 				SourceName  string `json:"sourceName"`
 				Timestamp   int64  `json:"timestamp"`
 				DataMessage *struct {
-					Message   string `json:"message"`
-					Timestamp int64  `json:"timestamp"`
+					Message     string                              `json:"message"`
+					Timestamp   int64                               `json:"timestamp"`
+					Attachments []signaltypes.RestMessageAttachment `json:"attachments"`
+					Quote       *signaltypes.RestMessageQuote       `json:"quote,omitempty"`
 				} `json:"dataMessage"`
 			} `json:"envelope"`
 		}
@@ -890,15 +1000,36 @@ func (env *TestEnvironment) handleSignalWebhook() http.HandlerFunc {
 
 		if env.messageService != nil {
 			ctx := context.Background()
-			if message.Envelope.DataMessage != nil && message.Envelope.DataMessage.Message != "" {
+			if message.Envelope.DataMessage != nil && (message.Envelope.DataMessage.Message != "" || len(message.Envelope.DataMessage.Attachments) > 0) {
 				logger.Info("Processing Signal message through ProcessIncomingSignalMessageWithDestination")
 
-				// Convert the webhook format to signaltypes.SignalMessage
+				// Convert the webhook format to signaltypes.SignalMessage (with attachments and quote)
 				signalMsg := &signaltypes.SignalMessage{
 					MessageID: fmt.Sprintf("signal_%d", message.Envelope.Timestamp),
 					Sender:    message.Envelope.Source,
 					Message:   message.Envelope.DataMessage.Message,
 					Timestamp: message.Envelope.DataMessage.Timestamp,
+				}
+				// Map attachments by taking the filename field as a path (tests may provide absolute paths)
+				for _, att := range message.Envelope.DataMessage.Attachments {
+					if att.Filename != "" {
+						signalMsg.Attachments = append(signalMsg.Attachments, att.Filename)
+					}
+				}
+				// Map quote to QuotedMessage if provided
+				if message.Envelope.DataMessage.Quote != nil {
+					q := message.Envelope.DataMessage.Quote
+					signalMsg.QuotedMessage = &struct {
+						ID        string `json:"id"`
+						Author    string `json:"author"`
+						Text      string `json:"text"`
+						Timestamp int64  `json:"timestamp"`
+					}{
+						ID:        fmt.Sprintf("%d", q.ID),
+						Author:    q.Author,
+						Text:      q.Text,
+						Timestamp: 0,
+					}
 				}
 
 				// Use the account as the destination (Signal phone number receiving the message)

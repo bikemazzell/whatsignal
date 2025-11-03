@@ -33,6 +33,26 @@ func (m *mockWhatsAppClient) SendTextWithSession(ctx context.Context, chatID, te
 	return m.sendTextResp, m.sendTextErr
 }
 
+func (m *mockWhatsAppClient) SendTextWithSessionReply(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return m.sendTextResp, m.sendTextErr
+}
+
+func (m *mockWhatsAppClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return m.sendImageResp, m.sendImageErr
+}
+
+func (m *mockWhatsAppClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return m.sendVideoResp, m.sendVideoErr
+}
+
+func (m *mockWhatsAppClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return m.sendDocumentResp, m.sendDocumentErr
+}
+
+func (m *mockWhatsAppClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return m.sendVoiceResp, m.sendVoiceErr
+}
+
 func (m *mockWhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
 	return m.sendImageResp, m.sendImageErr
 }
@@ -368,6 +388,14 @@ func (m *mockDatabaseService) CleanupOldContacts(ctx context.Context, retentionD
 
 func (m *mockDatabaseService) GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.MessageMapping), args.Error(1)
+}
+
+func (m *mockDatabaseService) GetLatestGroupMessageMappingBySession(ctx context.Context, sessionName string, limit int) (*models.MessageMapping, error) {
+	args := m.Called(ctx, sessionName, limit)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

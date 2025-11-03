@@ -50,23 +50,34 @@ const (
 	`
 
 	SelectLatestMessageMappingQuery = `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
 		       forwarded_at, delivery_status, media_path,
 		       created_at, updated_at
-		FROM message_mappings 
-		ORDER BY forwarded_at DESC 
+		FROM message_mappings
+		ORDER BY forwarded_at DESC
 		LIMIT 1
 	`
 
 	SelectLatestMessageMappingBySessionQuery = `
-		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, 
+		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
 		       forwarded_at, delivery_status, media_path, session_name, media_type,
 		       created_at, updated_at
-		FROM message_mappings 
+		FROM message_mappings
 		WHERE session_name = ?
-		ORDER BY forwarded_at DESC 
+		ORDER BY forwarded_at DESC
 		LIMIT 1
 	`
+
+	// Select a recent window of message mappings for a session (for post-filtering in code)
+	SelectRecentMessageMappingsBySessionQuery = `
+			SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
+			       forwarded_at, delivery_status, media_path, session_name, media_type,
+			       created_at, updated_at
+			FROM message_mappings
+			WHERE session_name = ?
+			ORDER BY forwarded_at DESC
+			LIMIT ?
+		`
 
 	DeleteOldMessageMappingsQuery = `
 		DELETE FROM message_mappings

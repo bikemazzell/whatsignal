@@ -5,6 +5,27 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.16] - 2025-11-03
+
+### Added
+- Signal → WhatsApp group forwarding with text and media (image, video, voice, document), with persisted message mappings
+- Reply threading for Signal quotes using WAHA `reply_to` across text and media
+
+### Changed
+- WhatsApp client gained session-aware send methods that support `reply_to`; test mocks updated
+
+### Fixed
+- Media routing: extension handling normalized (supports entries with and without leading dot) to select correct WAHA endpoints
+- Group fallback: when no quote, resolve latest group chat (`@g.us`) for the session via recent mapping scan to avoid misrouting/server errors
+
+### Docs
+- Configuration guide updated with Groups & Reply Threading section and WAHA payload examples (`/api/sendText` and media endpoints)
+- Clarified media extension rules (dot or no dot; case-insensitive)
+
+### Testing
+- Integration tests for real Signal group flows (quoted text/media with `reply_to`, no-quote fallback, and error paths)
+- Build and tests verified; coverage maintained near baseline
+
 
 ## [1.1.15] - 2025-11-03
 

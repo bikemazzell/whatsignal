@@ -82,7 +82,9 @@ func (r *router) GetMaxSizeForMediaType(mediaType string) int64 {
 func (r *router) hasAllowedExtension(path string, allowedExtensions []string) bool {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 	for _, allowedExt := range allowedExtensions {
-		if ext == strings.ToLower(allowedExt) {
+		// Support both ".png" and "png" style entries in config
+		normAllowed := strings.TrimPrefix(strings.ToLower(allowedExt), ".")
+		if ext == normAllowed {
 			return true
 		}
 	}

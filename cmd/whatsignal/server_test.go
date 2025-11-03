@@ -167,6 +167,46 @@ func (m *mockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePa
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockWAClient) SendTextWithSessionReply(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, message, replyTo, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, imagePath, caption, replyTo, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, videoPath, caption, replyTo, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, docPath, caption, replyTo, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
+func (m *mockWAClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	args := m.Called(ctx, chatID, voicePath, replyTo, sessionName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+}
+
 func (m *mockWAClient) CreateSession(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)

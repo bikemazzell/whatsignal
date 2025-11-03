@@ -111,7 +111,7 @@ Session Created → STARTING → WORKING (healthy)
 WhatSignal automatically detects your WAHA version and capabilities:
 
 - **WAHA Plus Detection**: Automatically detects if you're running WAHA Plus with Chrome browser support
-- **Intelligent Video Handling**: 
+- **Intelligent Video Handling**:
   - If WAHA Plus is detected → videos are sent as native video messages
   - If WAHA Core is detected → videos are automatically sent as document attachments for better compatibility
 - **Automatic Fallback**: No configuration needed - WhatSignal adapts to your WAHA instance capabilities
@@ -247,7 +247,7 @@ An array of channel configurations, each containing:
 ### Validation Rules
 
 1. **Unique Session Names**: Each `whatsappSessionName` must be unique
-2. **Unique Destinations**: Each `signalDestinationPhoneNumber` must be unique  
+2. **Unique Destinations**: Each `signalDestinationPhoneNumber` must be unique
 3. **Non-empty Values**: Both fields are required and cannot be empty
 4. **At Least One Channel**: The `channels` array must contain at least one channel
 
@@ -260,7 +260,7 @@ When a message is received from WhatsApp:
 3. Forwards the message to the correct Signal number
 4. Stores the mapping with session context for reply routing
 
-#### Signal → WhatsApp  
+#### Signal → WhatsApp
 When a message is received from Signal:
 1. WhatSignal identifies which Signal destination number received the message
 2. Looks up the corresponding WhatsApp session using the channel configuration
@@ -293,7 +293,7 @@ Each channel operates independently:
     "signalDestinationPhoneNumber": "+1234567890"
   },
   {
-    "whatsappSessionName": "business", 
+    "whatsappSessionName": "business",
     "signalDestinationPhoneNumber": "+0987654321"
   }
 ]
@@ -311,11 +311,48 @@ Each channel operates independently:
     "signalDestinationPhoneNumber": "+2222222222"
   },
   {
-    "whatsappSessionName": "marketing", 
+    "whatsappSessionName": "marketing",
     "signalDestinationPhoneNumber": "+3333333333"
   }
 ]
 ```
+
+## Groups & Reply Threading
+
+This section describes how WhatSignal handles Signal → WhatsApp group routing and reply threading using WAHA.
+
+### Signal → WhatsApp Groups
+- Detection: Signal group messages are identified when the Signal sender begins with `group.`.
+- Target: WhatsApp group chats always end with `@g.us` (e.g., `12036...@g.us`). WhatSignal enforces group-only routing for Signal group messages.
+- Fallback (no quote): If a Signal group message has no quote, WhatSignal resolves the target group by scanning the most recent mappings for the session and selecting the latest group chat (`@g.us`). If none exists, the message is rejected (no WA send).
+
+### Reply Threading
+- When the Signal message quotes a previous message and a mapping exists, WhatSignal resolves the original WhatsApp message ID and passes it to WAHA via `reply_to`.
+- Applies to both text and media messages.
+- If the mapping for a quoted message does not exist, the message is rejected to avoid mis-threading.
+
+### WAHA Payloads (best practices)
+- Text (`/api/sendText`):
+  ```json
+  { "chatId": "12036...@g.us", "text": "Hello group", "session": "personal", "reply_to": "wamid.groupMsgId" }
+  ```
+- Media (`/api/sendImage`, `/api/sendVideo`, `/api/sendVoice`, `/api/sendDocument`):
+  ```json
+  {
+    "chatId": "12036...@g.us",
+    "session": "personal",
+    "caption": "Optional caption",
+    "reply_to": "wamid.groupMsgId",
+    "file": { "data": "<base64>", "mimetype": "image/png", "filename": "pic.png" }
+  }
+  ```
+- Always send media via the dedicated media endpoints (do not use `/api/sendText` for media).
+- Ensure your WAHA version supports `reply_to` on these endpoints; WhatSignal includes it when present.
+
+### Security & Media
+- Local media paths are validated to prevent directory traversal.
+- Media type detection is configuration-driven (see Media Configuration). File extensions can include or omit the leading dot; matching is case-insensitive.
+
 
 ## Database Configuration
 
@@ -345,7 +382,7 @@ Each channel operates independently:
 
 **Important**: WhatSignal uses a config-driven approach for file type detection. You can add new file formats without rebuilding the application.
 
-- `media.allowedTypes`: File extensions for each media type (case-insensitive, no dots required)
+- `media.allowedTypes`: File extensions for each media type (case-insensitive; entries may include or omit the leading dot)
   - `image`: Files sent as images that display in chat (default: ["jpg", "jpeg", "png"])
   - `video`: Files sent as videos that display in chat (default: ["mp4", "mov"])
   - `voice`: Files sent as voice messages with audio player (default: ["ogg"])
@@ -358,7 +395,7 @@ Each channel operates independently:
 This means you can send files like:
 - **SVG files** → sent as documents (better than images since SVG doesn't display in chat)
 - **ZIP files** → sent as documents
-- **Text files** → sent as documents  
+- **Text files** → sent as documents
 - **Any other format** → sent as documents
 
 #### Adding New File Types

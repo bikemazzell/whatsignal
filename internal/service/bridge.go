@@ -40,6 +40,7 @@ type DatabaseService interface {
 	GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error)
 	GetLatestMessageMapping(ctx context.Context) (*models.MessageMapping, error)
 	GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error)
+	GetLatestGroupMessageMappingBySession(ctx context.Context, sessionName string, searchLimit int) (*models.MessageMapping, error)
 	HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
@@ -286,7 +287,7 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error {
 
 	if strings.HasPrefix(msg.Sender, "group.") {
-		return b.handleSignalGroupMessage(ctx, msg)
+		return b.handleSignalGroupMessage(ctx, msg, destination)
 	}
 
 	// Determine the WhatsApp session based on the Signal destination first
@@ -406,6 +407,12 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	var resp *types.SendMessageResponse
 	var sendErr error
 
+	// Determine reply target (WhatsApp message ID) when quoting
+	replyTo := ""
+	if msg.QuotedMessage != nil && mapping != nil && mapping.WhatsAppMsgID != "" {
+		replyTo = mapping.WhatsAppMsgID
+	}
+
 	switch {
 	case len(attachments) > 0 && b.mediaRouter.IsImageAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
@@ -413,7 +420,11 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			"method":      "SendImage",
 			"sessionName": sessionName,
 		}).Debug("Sending image to WhatsApp")
-		resp, sendErr = b.waClient.SendImageWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendImageWithSessionReply(ctx, whatsappChatID, attachments[0], msg.Message, replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendImageWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		}
 	case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID":   msg.MessageID,
@@ -421,14 +432,22 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			"sessionName": sessionName,
 		}).Debug("Sending video to WhatsApp")
 		// The WhatsApp client will automatically handle video support detection
-		resp, sendErr = b.waClient.SendVideoWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendVideoWithSessionReply(ctx, whatsappChatID, attachments[0], msg.Message, replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendVideoWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		}
 	case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
 		b.logger.WithFields(logrus.Fields{
 			"messageID":   msg.MessageID,
 			"method":      "SendVoice",
 			"sessionName": sessionName,
 		}).Debug("Sending voice to WhatsApp")
-		resp, sendErr = b.waClient.SendVoiceWithSession(ctx, whatsappChatID, attachments[0], sessionName)
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendVoiceWithSessionReply(ctx, whatsappChatID, attachments[0], replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendVoiceWithSession(ctx, whatsappChatID, attachments[0], sessionName)
+		}
 	case len(attachments) > 0:
 		// Default: treat all other attachments (including configured documents and unrecognized files) as documents
 		b.logger.WithFields(logrus.Fields{
@@ -437,7 +456,11 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			"filePath":    attachments[0],
 			"sessionName": sessionName,
 		}).Debug("Sending attachment as document to WhatsApp")
-		resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendDocumentWithSessionReply(ctx, whatsappChatID, attachments[0], msg.Message, replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		}
 	default:
 		// Only send text if there's actually text content
 		if msg.Message != "" {
@@ -446,7 +469,11 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 				"method":      "SendText",
 				"sessionName": sessionName,
 			}).Debug("Sending text to WhatsApp")
-			resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, whatsappChatID, msg.Message, replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
+			}
 		} else {
 
 			b.logger.WithFields(logrus.Fields{
@@ -592,11 +619,121 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 	return nil
 }
 
-func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.SignalMessage) error {
+func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error {
+	// Resolve WhatsApp session from Signal destination
+	sessionName, err := b.channelManager.GetWhatsAppSession(destination)
+	if err != nil {
+		return fmt.Errorf("failed to determine WhatsApp session for Signal destination %s: %w", destination, err)
+	}
+
 	b.logger.WithFields(logrus.Fields{
 		"messageID": msg.MessageID,
 		"sender":    msg.Sender,
-	}).Warn("Group messages are not yet supported - message ignored")
+		"session":   sessionName,
+	}).Debug("Processing Signal group message")
+
+	// Determine target WhatsApp group chat ID
+	var mapping *models.MessageMapping
+	if msg.QuotedMessage != nil {
+		b.logger.WithField("quotedMessageID", msg.QuotedMessage.ID).Debug("Looking up mapping for quoted message in group")
+		mapping, err = b.db.GetMessageMapping(ctx, msg.QuotedMessage.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get message mapping for quoted message: %w", err)
+		}
+		if mapping == nil {
+			return fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
+		}
+	} else {
+		b.logger.WithField("sessionName", sessionName).Debug("Resolving latest group mapping for session")
+		mapping, err = b.db.GetLatestGroupMessageMappingBySession(ctx, sessionName, 25)
+		if err != nil {
+			return fmt.Errorf("failed to get latest group message mapping for session: %w", err)
+		}
+		if mapping == nil {
+			return fmt.Errorf("no group context found for session %s", sessionName)
+		}
+	}
+
+	whatsappChatID := mapping.WhatsAppChatID
+	if !strings.HasSuffix(whatsappChatID, "@g.us") {
+		return fmt.Errorf("resolved chat is not a group: %s", whatsappChatID)
+	}
+
+	attachments, err := b.processSignalAttachments(msg.Attachments)
+	if err != nil {
+		return fmt.Errorf("failed to process attachments: %w", err)
+	}
+
+	var resp *types.SendMessageResponse
+	var sendErr error
+
+	// Determine reply target (WhatsApp message ID) when quoting
+	replyTo := ""
+	if msg.QuotedMessage != nil && mapping != nil && mapping.WhatsAppMsgID != "" {
+		replyTo = mapping.WhatsAppMsgID
+	}
+
+	switch {
+	case len(attachments) > 0 && b.mediaRouter.IsImageAttachment(attachments[0]):
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendImageWithSessionReply(ctx, whatsappChatID, attachments[0], msg.Message, replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendImageWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		}
+	case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendVideoWithSessionReply(ctx, whatsappChatID, attachments[0], msg.Message, replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendVideoWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		}
+	case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendVoiceWithSessionReply(ctx, whatsappChatID, attachments[0], replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendVoiceWithSession(ctx, whatsappChatID, attachments[0], sessionName)
+		}
+	case len(attachments) > 0:
+		if replyTo != "" {
+			resp, sendErr = b.waClient.SendDocumentWithSessionReply(ctx, whatsappChatID, attachments[0], msg.Message, replyTo, sessionName)
+		} else {
+			resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
+		}
+	default:
+		if msg.Message != "" {
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, whatsappChatID, msg.Message, replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
+			}
+		} else {
+			// Nothing to send
+			return nil
+		}
+	}
+
+	if sendErr != nil {
+		return fmt.Errorf("failed to send whatsapp message: %w", sendErr)
+	}
+	if resp == nil {
+		return fmt.Errorf("received nil response from WhatsApp client")
+	}
+
+	newMapping := &models.MessageMapping{
+		WhatsAppChatID:  whatsappChatID,
+		WhatsAppMsgID:   resp.MessageID,
+		SignalMsgID:     msg.MessageID,
+		SignalTimestamp: time.Unix(msg.Timestamp/constants.MillisecondsPerSecond, 0),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     sessionName,
+	}
+	if len(attachments) > 0 {
+		newMapping.MediaPath = &attachments[0]
+		newMapping.MediaType = b.mediaRouter.GetMediaType(attachments[0])
+	}
+	if err := b.db.SaveMessageMapping(ctx, newMapping); err != nil {
+		return fmt.Errorf("failed to save message mapping: %w", err)
+	}
 
 	return nil
 }

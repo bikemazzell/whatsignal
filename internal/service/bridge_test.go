@@ -746,15 +746,39 @@ func TestHandleSignalGroupMessage(t *testing.T) {
 
 	ctx := context.Background()
 
+	// Quoted message mapping pointing to a WhatsApp group chat
+	mapping := &models.MessageMapping{
+		WhatsAppChatID: "group123@g.us",
+		WhatsAppMsgID:  "wa_msg_1",
+		SignalMsgID:    "sig_orig",
+		ForwardedAt:    time.Now(),
+	}
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "wa_msg_1").Return(mapping, nil).Once()
+
+	// Expect a WhatsApp text send and mapping save
+	bridge.waClient.(*mockWhatsAppClient).sendTextResp = &types.SendMessageResponse{
+		MessageID: "wa_msg_reply",
+		Status:    "sent",
+	}
+	bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil).Once()
+
 	msg := &signaltypes.SignalMessage{
-		MessageID: "group123",
+		MessageID: "sig_reply_1",
 		Sender:    "group.123",
-		Message:   "Group message",
+		Message:   "Group reply",
 		Timestamp: time.Now().UnixMilli(),
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID: "wa_msg_1",
+		},
 	}
 
-	err := bridge.handleSignalGroupMessage(ctx, msg)
-	assert.NoError(t, err) // Should not error with graceful degradation
+	err := bridge.HandleSignalMessage(ctx, msg)
+	assert.NoError(t, err)
 }
 
 func TestHandleNewSignalThread(t *testing.T) {

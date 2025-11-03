@@ -258,9 +258,12 @@ func isRetryableError(err error) bool {
 		return false
 	}
 
-	// Don't retry context errors - these indicate cancellation or timeout
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	// Treat context.Canceled as non-retryable (shutdown), but retry context.DeadlineExceeded (HTTP/client timeout)
+	if errors.Is(err, context.Canceled) {
 		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
 	}
 
 	errStr := strings.ToLower(err.Error())

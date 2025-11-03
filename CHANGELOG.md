@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.1.15] - 2025-11-03
+
+### Fixed
+- Signal poller: treat context.DeadlineExceeded as retryable to avoid premature termination on HTTP client timeouts; improves resilience during slow Signal-CLI REST API responses
+
+### Testing
+- Updated unit tests to reflect new retry classification and verified via `make ci`
+
+
 ## [1.1.14]
 
 ### Fixed
@@ -193,7 +202,7 @@ Docker internal hostname and the port matches
 - **Configuration hot-reload capability** - Added polling-based configuration watcher for runtime config changes
 - **Extracted webhook JSON field constants** - Centralized hardcoded JSON field names in webhook processing
 
-### Observability and Monitoring  
+### Observability and Monitoring
 - **Comprehensive metrics collection system** with counters, timers, and gauges for operational insights
 - **Request tracing and correlation IDs** for debugging multi-session deployments and request flows
 - **Privacy-aware structured logging** with automatic masking of sensitive data (phone numbers, chat IDs, message IDs)
@@ -217,7 +226,7 @@ Docker internal hostname and the port matches
 
 ### Changed
 - File permissions and PBKDF2 iterations now use named constants instead of magic numbers
-- Media type detection logic centralized in `internal/media/router.go` 
+- Media type detection logic centralized in `internal/media/router.go`
 - Logging field names standardized (e.g., `ip` → `remote_ip`) with documented standards in `internal/service/logging_standards.go`
 - Encryption salts can now be set via `WHATSIGNAL_ENCRYPTION_SALT` and `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`
 - HTTP endpoints now include observability middleware for automatic metrics collection and request tracing

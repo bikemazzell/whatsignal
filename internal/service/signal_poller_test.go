@@ -471,7 +471,7 @@ func TestSignalPoller_ErrorClassification(t *testing.T) {
 		{
 			name:      "Context deadline exceeded",
 			err:       context.DeadlineExceeded,
-			retryable: false,
+			retryable: true,
 		},
 		{
 			name:      "Connection refused",

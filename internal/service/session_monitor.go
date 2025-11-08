@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/sirupsen/logrus"
@@ -24,6 +25,12 @@ type SessionMonitor struct {
 	running                bool
 	stopCh                 chan struct{}
 	unhealthyStatusSet     map[string]struct{} // Pre-computed set for O(1) lookup
+
+	// Container restart tracking
+	consecutiveFailures      int
+	lastContainerRestartTime time.Time
+	containerRestartConfig   models.ContainerRestartConfig
+	containerRestarter       ContainerRestarter
 }
 
 // NewSessionMonitor creates a new session monitor
@@ -33,11 +40,30 @@ func NewSessionMonitor(waClient types.WAClient, logger *logrus.Logger, checkInte
 
 // NewSessionMonitorWithStartupTimeout creates a new session monitor with custom startup timeout
 func NewSessionMonitorWithStartupTimeout(waClient types.WAClient, logger *logrus.Logger, checkInterval time.Duration, startupTimeout time.Duration) *SessionMonitor {
+	return NewSessionMonitorWithContainerRestart(waClient, logger, checkInterval, startupTimeout, models.ContainerRestartConfig{})
+}
+
+// NewSessionMonitorWithContainerRestart creates a new session monitor with container restart support
+func NewSessionMonitorWithContainerRestart(waClient types.WAClient, logger *logrus.Logger, checkInterval time.Duration, startupTimeout time.Duration, containerRestartConfig models.ContainerRestartConfig) *SessionMonitor {
 	if checkInterval <= 0 {
 		checkInterval = time.Duration(constants.DefaultSessionHealthCheckSec) * time.Second
 	}
 	if startupTimeout <= 0 {
 		startupTimeout = time.Duration(constants.DefaultSessionStartupTimeoutSec) * time.Second
+	}
+
+	// Apply defaults to container restart config
+	if containerRestartConfig.MaxConsecutiveFailures <= 0 {
+		containerRestartConfig.MaxConsecutiveFailures = constants.DefaultContainerRestartMaxConsecutiveFailures
+	}
+	if containerRestartConfig.CooldownMinutes <= 0 {
+		containerRestartConfig.CooldownMinutes = constants.DefaultContainerRestartCooldownMinutes
+	}
+	if containerRestartConfig.Method == "" {
+		containerRestartConfig.Method = constants.DefaultContainerRestartMethod
+	}
+	if containerRestartConfig.ContainerName == "" {
+		containerRestartConfig.ContainerName = constants.DefaultContainerRestartContainerName
 	}
 
 	// Pre-compute unhealthy status set for O(1) lookup
@@ -47,6 +73,24 @@ func NewSessionMonitorWithStartupTimeout(waClient types.WAClient, logger *logrus
 		"FAILED":       {},
 		"error":        {},
 		"disconnected": {},
+	}
+
+	// Create appropriate container restarter based on config
+	var restarter ContainerRestarter
+	if containerRestartConfig.Enabled {
+		switch containerRestartConfig.Method {
+		case "webhook":
+			restarter = NewWebhookContainerRestarter(containerRestartConfig, logger)
+		case "docker":
+			// Docker SDK implementation will be added later
+			logger.Warn("Docker method not yet implemented, falling back to no-op")
+			restarter = NewNoOpContainerRestarter()
+		default:
+			logger.WithField("method", containerRestartConfig.Method).Warn("Unknown container restart method, disabling feature")
+			restarter = NewNoOpContainerRestarter()
+		}
+	} else {
+		restarter = NewNoOpContainerRestarter()
 	}
 
 	return &SessionMonitor{
@@ -59,6 +103,9 @@ func NewSessionMonitorWithStartupTimeout(waClient types.WAClient, logger *logrus
 		sessionName:            waClient.GetSessionName(),
 		stopCh:                 make(chan struct{}),
 		unhealthyStatusSet:     unhealthyStatusSet,
+		consecutiveFailures:    0,
+		containerRestartConfig: containerRestartConfig,
+		containerRestarter:     restarter,
 	}
 }
 
@@ -182,9 +229,11 @@ func (sm *SessionMonitor) checkAndRecoverSession(ctx context.Context) {
 func (sm *SessionMonitor) handleSessionRestart(ctx context.Context, sessionName, reason string) {
 	if err := sm.restartSession(ctx); err != nil {
 		sm.logger.WithError(err).WithField("reason", reason).Error("Failed to restart session")
+		sm.trackRestartFailure(ctx)
 	} else {
 		sm.logger.WithField("reason", reason).Info("Session restart initiated successfully")
 		sm.resetSessionTracking(sessionName)
+		sm.resetFailureTracking()
 	}
 }
 
@@ -266,4 +315,78 @@ func (sm *SessionMonitor) restartSession(ctx context.Context) error {
 
 	// Wait for session to be ready after restart
 	return sm.waClient.WaitForSessionReady(restartCtx, waitTimeout)
+}
+
+// trackRestartFailure tracks consecutive session restart failures and triggers container restart if threshold exceeded
+func (sm *SessionMonitor) trackRestartFailure(ctx context.Context) {
+	sm.mu.Lock()
+	sm.consecutiveFailures++
+	currentFailures := sm.consecutiveFailures
+	sm.mu.Unlock()
+
+	sm.logger.WithFields(logrus.Fields{
+		"consecutive_failures": currentFailures,
+		"threshold":            sm.containerRestartConfig.MaxConsecutiveFailures,
+	}).Warn("Session restart failed")
+
+	// Check if we've reached the threshold for container restart
+	if sm.containerRestartConfig.Enabled && currentFailures >= sm.containerRestartConfig.MaxConsecutiveFailures {
+		sm.attemptContainerRestart(ctx)
+	}
+}
+
+// resetFailureTracking resets the consecutive failure counter
+func (sm *SessionMonitor) resetFailureTracking() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if sm.consecutiveFailures > 0 {
+		sm.logger.WithField("previous_failures", sm.consecutiveFailures).Info("Session restart successful, resetting failure counter")
+		sm.consecutiveFailures = 0
+	}
+}
+
+// attemptContainerRestart attempts to restart the WAHA container
+func (sm *SessionMonitor) attemptContainerRestart(ctx context.Context) {
+	sm.mu.Lock()
+
+	// Check cooldown period
+	if !sm.lastContainerRestartTime.IsZero() {
+		cooldownDuration := time.Duration(sm.containerRestartConfig.CooldownMinutes) * time.Minute
+		timeSinceLastRestart := time.Since(sm.lastContainerRestartTime)
+
+		if timeSinceLastRestart < cooldownDuration {
+			remainingCooldown := cooldownDuration - timeSinceLastRestart
+			sm.logger.WithFields(logrus.Fields{
+				"remaining_cooldown_seconds": remainingCooldown.Seconds(),
+				"cooldown_minutes":           sm.containerRestartConfig.CooldownMinutes,
+			}).Warn("Container restart in cooldown period, skipping")
+			sm.mu.Unlock()
+			return
+		}
+	}
+
+	sm.lastContainerRestartTime = time.Now()
+	sm.mu.Unlock()
+
+	sm.logger.WithFields(logrus.Fields{
+		"consecutive_failures": sm.consecutiveFailures,
+		"container_name":       sm.containerRestartConfig.ContainerName,
+		"method":               sm.containerRestartConfig.Method,
+	}).Warn("Attempting WAHA container restart due to repeated session restart failures")
+
+	// Attempt container restart
+	restartCtx, cancel := context.WithTimeout(ctx, time.Duration(constants.DefaultContainerRestartWebhookTimeoutSec)*time.Second)
+	defer cancel()
+
+	if err := sm.containerRestarter.RestartContainer(restartCtx); err != nil {
+		sm.logger.WithError(err).Error("Failed to restart WAHA container")
+		return
+	}
+
+	sm.logger.WithField("container_name", sm.containerRestartConfig.ContainerName).Info("WAHA container restart initiated successfully")
+
+	// Reset failure counter after successful container restart
+	sm.mu.Lock()
+	sm.consecutiveFailures = 0
+	sm.mu.Unlock()
 }

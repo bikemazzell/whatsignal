@@ -22,7 +22,20 @@
     "contactCacheHours": 24,
     "sessionHealthCheckSec": 30,
     "sessionAutoRestart": true,
-    "sessionStartupTimeoutSec": 30
+    "sessionStartupTimeoutSec": 30,
+
+    // Container restart configuration (OPTIONAL - Advanced feature)
+    // Automatically restart WAHA container when session restarts repeatedly fail
+    // This helps recover from WAHA service-level issues that prevent session recovery
+    "containerRestart": {
+      "enabled": false,  // Set to true to enable container restart on repeated failures
+      "maxConsecutiveFailures": 3,  // Number of consecutive session restart failures before triggering container restart
+      "cooldownMinutes": 5,  // Minimum time between container restart attempts (prevents restart loops)
+      "method": "webhook",  // "webhook" (recommended) or "docker" (requires Docker socket access)
+      "webhookURL": "http://localhost:9000/restart-waha",  // Webhook endpoint to trigger container restart
+      "containerName": "waha",  // Name of the WAHA container to restart
+      "dockerSocketPath": "/var/run/docker.sock"  // Path to Docker socket (only for "docker" method)
+    }
   },
 
   // Signal configuration

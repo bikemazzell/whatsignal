@@ -5,6 +5,41 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.17]
+
+### Added
+- **Container Restart Recovery**: Enhanced SessionMonitor with automatic WAHA container restart capability when session restarts repeatedly fail
+  - Tracks consecutive session restart failures with configurable threshold (default: 3 failures)
+  - Triggers WAHA container restart after threshold is exceeded to recover from service-level issues
+  - Implements cooldown mechanism (default: 5 minutes) to prevent restart loops
+  - Supports two restart methods:
+    - **Webhook method** (recommended): Calls external webhook endpoint for maximum flexibility and security
+    - **Docker SDK method** (future): Direct Docker API integration for advanced users
+  - Feature is disabled by default and must be explicitly enabled in configuration
+  - Comprehensive logging for all container restart events and failure tracking
+  - Resets failure counter on successful session restart
+  - Configuration options:
+    - `whatsapp.containerRestart.enabled`: Enable/disable feature (default: false)
+    - `whatsapp.containerRestart.maxConsecutiveFailures`: Failure threshold (default: 3)
+    - `whatsapp.containerRestart.cooldownMinutes`: Cooldown period (default: 5)
+    - `whatsapp.containerRestart.method`: Restart method - "webhook" or "docker" (default: "webhook")
+    - `whatsapp.containerRestart.webhookURL`: Webhook endpoint URL for container restart
+    - `whatsapp.containerRestart.containerName`: WAHA container name (default: "waha")
+    - `whatsapp.containerRestart.dockerSocketPath`: Docker socket path (default: "/var/run/docker.sock")
+
+### Changed
+- SessionMonitor now accepts ContainerRestartConfig parameter in constructor
+- Added ContainerRestarter interface with webhook and no-op implementations
+
+### Testing
+- Added comprehensive unit tests for failure tracking, threshold detection, and cooldown mechanism
+- Added tests for webhook-based container restart with success, failure, and timeout scenarios
+- All tests passing with full coverage of new functionality
+
+### Documentation
+- Updated config.json.example with detailed container restart configuration examples
+- Added inline documentation explaining each configuration option and use cases
+
 ## [1.1.16] - 2025-11-03
 
 ### Added

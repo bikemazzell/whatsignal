@@ -106,6 +106,224 @@ Session Created → STARTING → WORKING (healthy)
 - `error` (error state)
 - `disconnected` (disconnected from WhatsApp)
 
+### Container Restart Recovery (Advanced)
+
+**NEW**: WhatSignal can automatically restart the WAHA container when session restarts repeatedly fail, helping recover from WAHA service-level issues.
+
+#### When to Use This Feature
+
+This feature is designed for scenarios where:
+- WAHA sessions get stuck and session-level restarts don't help
+- The WAHA service itself is in a bad state
+- You want fully automated recovery without manual intervention
+- You're running in a containerized environment (Docker, Docker Compose, Kubernetes)
+
+#### Configuration Options
+
+- `whatsapp.containerRestart.enabled`: Enable/disable container restart feature
+  - Default: `false` (disabled)
+  - **Important**: This is an opt-in feature for safety
+  - Only enable if you understand the implications and have proper monitoring
+
+- `whatsapp.containerRestart.maxConsecutiveFailures`: Number of consecutive session restart failures before triggering container restart
+  - Default: `3`
+  - Recommended: `3-5` for most deployments
+  - Higher values = more tolerant of transient failures
+  - Lower values = faster recovery but more aggressive
+
+- `whatsapp.containerRestart.cooldownMinutes`: Minimum time between container restart attempts
+  - Default: `5` minutes
+  - **Purpose**: Prevents restart loops
+  - Recommended: `5-10` minutes for most deployments
+  - If container restart also fails, this prevents continuous restart attempts
+
+- `whatsapp.containerRestart.method`: How to restart the container
+  - Default: `"webhook"`
+  - Options:
+    - `"webhook"` (recommended): Calls external webhook endpoint
+    - `"docker"` (future): Direct Docker API integration
+
+- `whatsapp.containerRestart.webhookURL`: Webhook endpoint URL for container restart
+  - Required when `method` is `"webhook"`
+  - Example: `"http://localhost:9000/restart-waha"`
+  - The webhook should handle the actual container restart logic
+  - See "Webhook Implementation" section below
+
+- `whatsapp.containerRestart.containerName`: Name of the WAHA container
+  - Default: `"waha"`
+  - Must match your actual WAHA container name
+  - Used in webhook payload and Docker API calls
+
+- `whatsapp.containerRestart.dockerSocketPath`: Path to Docker socket
+  - Default: `"/var/run/docker.sock"`
+  - Only used when `method` is `"docker"`
+  - Requires Docker socket to be mounted in whatsignal container
+
+#### Example Configuration
+
+```json
+"whatsapp": {
+  "api_base_url": "http://waha:3000",
+  "sessionAutoRestart": true,
+  "sessionHealthCheckSec": 30,
+  "sessionStartupTimeoutSec": 30,
+
+  "containerRestart": {
+    "enabled": true,
+    "maxConsecutiveFailures": 3,
+    "cooldownMinutes": 5,
+    "method": "webhook",
+    "webhookURL": "http://restart-service:9000/restart-waha",
+    "containerName": "waha"
+  }
+}
+```
+
+#### Recovery Flow
+
+```
+Session Restart Fails (1st time)
+  ↓
+Session Restart Fails (2nd time)
+  ↓
+Session Restart Fails (3rd time)
+  ↓
+Threshold Reached (3 consecutive failures)
+  ↓
+Check Cooldown Period
+  ↓
+Trigger Container Restart (via webhook or Docker API)
+  ↓
+Reset Failure Counter
+  ↓
+Wait for Container to Restart
+  ↓
+Session Monitor Resumes Normal Operation
+```
+
+#### Webhook Implementation
+
+When using the webhook method, you need to implement a webhook endpoint that handles container restart requests.
+
+**Webhook Request Format**:
+```json
+POST /restart-waha
+Content-Type: application/json
+User-Agent: whatsignal-container-restarter
+
+{
+  "action": "restart",
+  "container_name": "waha",
+  "timestamp": "2025-11-08T12:34:56Z"
+}
+```
+
+**Example Webhook Implementation (Python/Flask)**:
+```python
+from flask import Flask, request, jsonify
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/restart-waha', methods=['POST'])
+def restart_waha():
+    data = request.json
+    container_name = data.get('container_name', 'waha')
+
+    try:
+        # Restart the container using Docker CLI
+        subprocess.run(['docker', 'restart', container_name], check=True)
+        return jsonify({"status": "success"}), 200
+    except subprocess.CalledProcessError as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=9000)
+```
+
+**Example Webhook Implementation (Bash Script)**:
+```bash
+#!/bin/bash
+# restart-waha-webhook.sh
+
+# Simple HTTP server that restarts WAHA container
+while true; do
+  echo -e "HTTP/1.1 200 OK\n\n" | nc -l -p 9000 -q 1 > /dev/null
+  docker restart waha
+  echo "$(date): WAHA container restarted"
+done
+```
+
+**Docker Compose Integration**:
+```yaml
+services:
+  restart-service:
+    image: python:3.11-slim
+    container_name: restart-service
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./restart-webhook.py:/app/restart-webhook.py
+    command: python /app/restart-webhook.py
+    ports:
+      - "9000:9000"
+    networks:
+      - whatsignal-network
+```
+
+#### Security Considerations
+
+1. **Webhook Method** (Recommended):
+   - ✅ Better security isolation
+   - ✅ Works in any deployment scenario
+   - ✅ No Docker socket access needed in whatsignal container
+   - ⚠️ Requires separate webhook service
+   - ⚠️ Webhook endpoint should be secured (authentication, rate limiting)
+
+2. **Docker Method** (Future):
+   - ⚠️ Requires Docker socket mount (`/var/run/docker.sock`)
+   - ⚠️ Gives whatsignal container control over Docker daemon
+   - ⚠️ Security risk if whatsignal is compromised
+   - ✅ No external dependencies
+
+#### Monitoring and Logging
+
+The container restart feature logs all events:
+
+```
+INFO  Session restart successful, resetting failure counter
+WARN  Session restart failed consecutive_failures=1 threshold=3
+WARN  Session restart failed consecutive_failures=2 threshold=3
+WARN  Session restart failed consecutive_failures=3 threshold=3
+WARN  Attempting WAHA container restart due to repeated session restart failures
+INFO  WAHA container restart initiated successfully
+```
+
+Monitor these logs to:
+- Track session restart failures
+- Verify container restart triggers
+- Identify patterns in failures
+- Adjust thresholds if needed
+
+#### Troubleshooting
+
+**Container restart not triggering**:
+- Verify `enabled` is set to `true`
+- Check that consecutive failures reach the threshold
+- Ensure cooldown period has elapsed since last restart
+- Check logs for failure tracking
+
+**Webhook failures**:
+- Verify webhook URL is accessible from whatsignal container
+- Check webhook service logs
+- Test webhook endpoint manually: `curl -X POST http://webhook-url/restart-waha`
+- Ensure webhook returns 2xx status code
+
+**Container restart fails**:
+- Check webhook service has Docker socket access
+- Verify container name matches actual WAHA container
+- Check Docker daemon is running
+- Review webhook service logs for errors
+
 ### WAHA Version Detection & Video Support
 
 WhatSignal automatically detects your WAHA version and capabilities:

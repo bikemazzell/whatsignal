@@ -52,6 +52,17 @@ const (
 	DefaultSignalHTTPTimeoutSec          = 60  // 60 seconds
 )
 
+// Default container restart values
+const (
+	DefaultContainerRestartEnabled                = false
+	DefaultContainerRestartMaxConsecutiveFailures = 3
+	DefaultContainerRestartCooldownMinutes        = 5
+	DefaultContainerRestartMethod                 = "webhook"
+	DefaultContainerRestartContainerName          = "waha"
+	DefaultContainerRestartDockerSocketPath       = "/var/run/docker.sock"
+	DefaultContainerRestartWebhookTimeoutSec      = 10
+)
+
 // Privacy settings
 const (
 	DefaultPhoneMaskLength = 4

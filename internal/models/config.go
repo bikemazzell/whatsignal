@@ -18,23 +18,35 @@ type Config struct {
 
 // WhatsAppConfig holds WhatsApp related configurations
 type WhatsAppConfig struct {
-	APIBaseURL               string        `json:"api_base_url" mapstructure:"api_base_url"`
-	Timeout                  time.Duration `json:"timeout_ms" mapstructure:"timeout_ms"`
-	RetryCount               int           `json:"retry_count" mapstructure:"retry_count"`
-	WebhookSecret            string        `json:"webhook_secret" mapstructure:"webhook_secret"`
-	PollIntervalSec          int           `json:"pollIntervalSec"`
-	ContactSyncOnStartup     bool          `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
-	ContactCacheHours        int           `json:"contactCacheHours" mapstructure:"contactCacheHours"`
-	SessionHealthCheckSec    int           `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
-	SessionAutoRestart       bool          `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
-	SessionStartupTimeoutSec int           `json:"sessionStartupTimeoutSec" mapstructure:"sessionStartupTimeoutSec"`
-	Groups                   GroupConfig   `json:"groups" mapstructure:"groups"`
+	APIBaseURL               string                 `json:"api_base_url" mapstructure:"api_base_url"`
+	Timeout                  time.Duration          `json:"timeout_ms" mapstructure:"timeout_ms"`
+	RetryCount               int                    `json:"retry_count" mapstructure:"retry_count"`
+	WebhookSecret            string                 `json:"webhook_secret" mapstructure:"webhook_secret"`
+	PollIntervalSec          int                    `json:"pollIntervalSec"`
+	ContactSyncOnStartup     bool                   `json:"contactSyncOnStartup" mapstructure:"contactSyncOnStartup"`
+	ContactCacheHours        int                    `json:"contactCacheHours" mapstructure:"contactCacheHours"`
+	SessionHealthCheckSec    int                    `json:"sessionHealthCheckSec" mapstructure:"sessionHealthCheckSec"`
+	SessionAutoRestart       bool                   `json:"sessionAutoRestart" mapstructure:"sessionAutoRestart"`
+	SessionStartupTimeoutSec int                    `json:"sessionStartupTimeoutSec" mapstructure:"sessionStartupTimeoutSec"`
+	ContainerRestart         ContainerRestartConfig `json:"containerRestart" mapstructure:"containerRestart"`
+	Groups                   GroupConfig            `json:"groups" mapstructure:"groups"`
 }
 
 // GroupConfig holds group chat related configurations
 type GroupConfig struct {
 	CacheHours    int  `json:"cacheHours" mapstructure:"cacheHours"`
 	SyncOnStartup bool `json:"syncOnStartup" mapstructure:"syncOnStartup"`
+}
+
+// ContainerRestartConfig holds WAHA container restart configurations
+type ContainerRestartConfig struct {
+	Enabled                bool   `json:"enabled" mapstructure:"enabled"`
+	MaxConsecutiveFailures int    `json:"maxConsecutiveFailures" mapstructure:"maxConsecutiveFailures"`
+	CooldownMinutes        int    `json:"cooldownMinutes" mapstructure:"cooldownMinutes"`
+	Method                 string `json:"method" mapstructure:"method"` // "webhook" or "docker"
+	WebhookURL             string `json:"webhookURL" mapstructure:"webhookURL"`
+	ContainerName          string `json:"containerName" mapstructure:"containerName"`
+	DockerSocketPath       string `json:"dockerSocketPath" mapstructure:"dockerSocketPath"`
 }
 
 // SignalConfig holds Signal related configurations

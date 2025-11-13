@@ -5,6 +5,16 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.18]
+
+### Fixed
+- **Signal-to-WhatsApp Message Forwarding**: Fixed 422 Unprocessable Entity error when forwarding Signal messages with empty or whitespace-only text content
+  - Added whitespace trimming for message text before sending to WAHA API
+  - Skip empty or whitespace-only messages without attachments to prevent API errors
+  - Enhanced logging to capture full WAHA API request payload and error response for better diagnostics
+  - Added detailed logging for skipped messages showing original message content and length
+  - Applied fix to both direct messages and group message handling
+
 ## [1.1.17]
 
 ### Added

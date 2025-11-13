@@ -462,24 +462,27 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 			resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 		}
 	default:
-		// Only send text if there's actually text content
-		if msg.Message != "" {
+		// Trim whitespace and check if there's actually text content
+		trimmedMessage := strings.TrimSpace(msg.Message)
+		if trimmedMessage != "" {
 			b.logger.WithFields(logrus.Fields{
-				"messageID":   msg.MessageID,
-				"method":      "SendText",
-				"sessionName": sessionName,
+				"messageID":     msg.MessageID,
+				"method":        "SendText",
+				"sessionName":   sessionName,
+				"messageLength": len(trimmedMessage),
 			}).Debug("Sending text to WhatsApp")
 			if replyTo != "" {
-				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, whatsappChatID, msg.Message, replyTo, sessionName)
+				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, whatsappChatID, trimmedMessage, replyTo, sessionName)
 			} else {
-				resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
+				resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, trimmedMessage, sessionName)
 			}
 		} else {
-
 			b.logger.WithFields(logrus.Fields{
-				"messageID":   msg.MessageID,
-				"sessionName": sessionName,
-			}).Warn("Skipping empty message with no attachments")
+				"messageID":       msg.MessageID,
+				"sessionName":     sessionName,
+				"originalMessage": msg.Message,
+				"messageLength":   len(msg.Message),
+			}).Warn("Skipping empty or whitespace-only message with no attachments")
 			return nil // Skip empty messages
 		}
 	}
@@ -699,14 +702,21 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 			resp, sendErr = b.waClient.SendDocumentWithSession(ctx, whatsappChatID, attachments[0], msg.Message, sessionName)
 		}
 	default:
-		if msg.Message != "" {
+		// Trim whitespace and check if there's actually text content
+		trimmedMessage := strings.TrimSpace(msg.Message)
+		if trimmedMessage != "" {
 			if replyTo != "" {
-				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, whatsappChatID, msg.Message, replyTo, sessionName)
+				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, whatsappChatID, trimmedMessage, replyTo, sessionName)
 			} else {
-				resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, msg.Message, sessionName)
+				resp, sendErr = b.waClient.SendTextWithSession(ctx, whatsappChatID, trimmedMessage, sessionName)
 			}
 		} else {
-			// Nothing to send
+			// Nothing to send - skip empty or whitespace-only messages
+			b.logger.WithFields(logrus.Fields{
+				"messageID":       msg.MessageID,
+				"originalMessage": msg.Message,
+				"messageLength":   len(msg.Message),
+			}).Debug("Skipping empty or whitespace-only group message with no attachments")
 			return nil
 		}
 	}

@@ -785,7 +785,27 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		// Error details logged in structured error message below
+		// Log detailed error information for debugging
+		if c.logger != nil {
+			// Create a sanitized version of the payload for logging (truncate base64 data)
+			var sanitizedPayload interface{}
+			if mediaReq, ok := payload.(types.MediaMessageRequest); ok {
+				sanitizedMediaReq := mediaReq
+				if len(sanitizedMediaReq.File.Data) > 100 {
+					sanitizedMediaReq.File.Data = sanitizedMediaReq.File.Data[:100] + "...[truncated]"
+				}
+				sanitizedPayload = sanitizedMediaReq
+			} else {
+				sanitizedPayload = payload
+			}
+
+			c.logger.WithFields(logrus.Fields{
+				"endpoint":        endpoint,
+				"status_code":     resp.StatusCode,
+				"response_body":   string(bodyBytes),
+				"request_payload": sanitizedPayload,
+			}).Error("WAHA API request failed")
+		}
 
 		// Try to parse error response
 		var errorResult types.WAHAErrorResponse

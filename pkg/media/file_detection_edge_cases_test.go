@@ -13,7 +13,7 @@ func TestDetectFileTypeFromContent_EdgeCases(t *testing.T) {
 	// Create temporary files with different content types for testing
 	tmpDir, err := os.MkdirTemp("", "media-content-detection-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name            string
@@ -187,7 +187,7 @@ func TestFileDetection_ErrorCases(t *testing.T) {
 		// Create temporary directory
 		tmpDir, err := os.MkdirTemp("", "media-detection-test")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		// Try to detect file type of directory
 		ext, err := h.detectFileTypeFromContent(tmpDir)
@@ -199,7 +199,7 @@ func TestFileDetection_ErrorCases(t *testing.T) {
 		// Create temporary file with large content but valid signature
 		tmpDir, err := os.MkdirTemp("", "media-detection-test")
 		require.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		// Create content with JPEG signature followed by large data
 		content := make([]byte, 1024*1024) // 1MB

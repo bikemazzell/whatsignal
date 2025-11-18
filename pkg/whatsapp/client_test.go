@@ -19,7 +19,7 @@ import (
 
 func init() {
 	// Disable typing delays in tests to prevent timeouts
-	os.Setenv("WHATSIGNAL_TEST_MODE", "true")
+	_ = os.Setenv("WHATSIGNAL_TEST_MODE", "true")
 }
 
 // Define constants in the test file for clarity if they are used in switch cases
@@ -153,12 +153,13 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
 		case testEndpointSessions:
-			if r.Method == http.MethodPost {
+			switch r.Method {
+			case http.MethodPost:
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(map[string]string{"status": "success"}); err != nil {
 					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 				}
-			} else if r.Method == http.MethodGet {
+			case http.MethodGet:
 				// Return a list of sessions
 				sessions := []types.Session{
 					{
@@ -169,7 +170,7 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				if err := json.NewEncoder(w).Encode(sessions); err != nil {
 					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 				}
-			} else {
+			default:
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
 		case testEndpointSessionDefault:
@@ -327,12 +328,12 @@ func TestClient_SendImage(t *testing.T) {
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "test-image-*.jpg")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write some test data
 	_, err = tmpFile.Write([]byte("test image data"))
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -403,12 +404,12 @@ func TestClient_SendFile(t *testing.T) {
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "test-file-*.pdf")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write some test data
 	_, err = tmpFile.Write([]byte("test file data"))
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -474,12 +475,12 @@ func TestClient_SendVoice(t *testing.T) {
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "test-voice-*.ogg")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write some test data
 	_, err = tmpFile.Write([]byte("test voice data"))
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Set up test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -544,12 +545,12 @@ func TestClient_SendVideo(t *testing.T) {
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "test-video-*.mp4")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write some test data
 	_, err = tmpFile.Write([]byte("test video data"))
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Set up test server that handles version check and defaults to no video support
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -686,12 +687,12 @@ func TestSendDocument(t *testing.T) {
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "test-doc-*.pdf")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write some test data
 	_, err = tmpFile.Write([]byte("test document content"))
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
@@ -1186,11 +1187,11 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 	// Create a temporary video file
 	tmpFile, err := os.CreateTemp("", "test-video-*.mp4")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	_, err = tmpFile.Write([]byte("test video data"))
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	tests := []struct {
 		name            string

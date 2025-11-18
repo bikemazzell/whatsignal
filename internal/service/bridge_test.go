@@ -66,7 +66,7 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, testLogger).(*bridge)
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return bridge, tmpDir, cleanup
@@ -989,7 +989,7 @@ func TestNewBridge(t *testing.T) {
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
-	var _ MessageBridge = b
+	var _ = b
 
 	// Test that the bridge has the correct fields
 	bridgeImpl := b.(*bridge)

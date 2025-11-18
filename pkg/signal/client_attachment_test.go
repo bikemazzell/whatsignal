@@ -22,7 +22,7 @@ func TestExtractAttachmentPaths_WithRealFiles(t *testing.T) {
 	// Create temporary directory with test files
 	tmpDir, err := os.MkdirTemp("", "signal-extract-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create test files with different extensions
 	testFiles := map[string][]byte{
@@ -89,7 +89,7 @@ func TestExtractAttachmentPaths_WithHTTPDownloads(t *testing.T) {
 	// Create temporary directory
 	tmpDir, err := os.MkdirTemp("", "signal-http-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name            string
@@ -200,7 +200,7 @@ func TestExtractAttachmentPaths_WithHTTPDownloads(t *testing.T) {
 func TestExtractAttachmentPaths_TimeoutHandling(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "signal-timeout-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create server that delays response to trigger timeout
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +241,7 @@ func TestExtractAttachmentPaths_TimeoutHandling(t *testing.T) {
 func TestExtractAttachmentPaths_NoHTTPClient(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "signal-no-client-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	logger := logrus.New()
 	logger.SetLevel(logrus.PanicLevel)
@@ -263,7 +263,7 @@ func TestExtractAttachmentPaths_NoHTTPClient(t *testing.T) {
 func TestDownloadAndSaveAttachment_Comprehensive(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "signal-save-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name               string
@@ -325,7 +325,7 @@ func TestDownloadAndSaveAttachment_Comprehensive(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, []byte("text content"), content)
 				// Clean up file in current directory
-				os.Remove(filePath)
+				_ = os.Remove(filePath)
 			},
 		},
 		{
@@ -413,7 +413,7 @@ func TestDownloadAndSaveAttachment_Comprehensive(t *testing.T) {
 func TestSendMessage_AttachmentIntegration(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "signal-send-integration-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create test attachment files with various types
 	testFiles := map[string]struct {
@@ -547,7 +547,7 @@ func TestSendMessage_AttachmentIntegration(t *testing.T) {
 func TestReceiveMessages_AttachmentExtraction(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "signal-receive-integration-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create some existing attachment files
 	existingFiles := map[string][]byte{

@@ -87,7 +87,7 @@ func (h *handler) processMediaFromURL(mediaURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to download media from URL: %w", err)
 	}
-	defer os.Remove(tempPath) // Clean up temp file
+	defer func() { _ = os.Remove(tempPath) }() // Clean up temp file
 
 	// Get file info for validation
 	info, err := os.Stat(tempPath)
@@ -134,7 +134,7 @@ func (h *handler) processMediaFromFile(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
@@ -223,7 +223,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download file: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("download failed with status: %d", resp.StatusCode)
@@ -237,7 +237,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer tempFile.Close()
+	defer func() { _ = tempFile.Close() }()
 
 	// Copy response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
@@ -259,7 +259,7 @@ func (h *handler) processDownloadedFile(tempPath, ext string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open downloaded file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
@@ -375,7 +375,7 @@ func (h *handler) detectFileTypeFromContent(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file for content detection: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Read first 512 bytes for content type detection
 	buffer := make([]byte, constants.MimeDetectionBufferSize)
@@ -497,13 +497,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err

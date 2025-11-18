@@ -18,15 +18,15 @@ func TestNewLogger(t *testing.T) {
 	assert.NotNil(t, logger.Logger)
 
 	// Check that JSON formatter is set
-	_, ok := logger.Logger.Formatter.(*logrus.JSONFormatter)
+	_, ok := logger.Formatter.(*logrus.JSONFormatter)
 	assert.True(t, ok, "Logger should use JSON formatter")
 }
 
 func TestLogger_LogError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
-	logger.Logger.SetLevel(logrus.DebugLevel)
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.DebugLevel)
 
 	tests := []struct {
 		name             string
@@ -92,8 +92,8 @@ func TestLogger_LogError(t *testing.T) {
 func TestLogger_LogWarn(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
-	logger.Logger.SetLevel(logrus.DebugLevel)
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.DebugLevel)
 
 	appErr := New(ErrCodeTimeout, "operation timed out").WithContext("timeout", "30s")
 
@@ -109,8 +109,8 @@ func TestLogger_LogWarn(t *testing.T) {
 func TestLogger_LogRetryableError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
-	logger.Logger.SetLevel(logrus.DebugLevel)
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.DebugLevel)
 
 	tests := []struct {
 		name          string
@@ -157,8 +157,8 @@ func TestLogger_WithContext(t *testing.T) {
 func TestLogger_WithError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
-	logger.Logger.SetLevel(logrus.DebugLevel)
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.DebugLevel)
 
 	tests := []struct {
 		name             string
@@ -204,8 +204,8 @@ func TestLogger_WithError(t *testing.T) {
 func TestLogger_StructuredLogging_Integration(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
-	logger.Logger.SetLevel(logrus.DebugLevel)
+	logger.SetOutput(&buf)
+	logger.SetLevel(logrus.DebugLevel)
 
 	// Create a complex error scenario
 	originalErr := errors.New("connection refused")
@@ -244,7 +244,7 @@ func TestLogger_StructuredLogging_Integration(t *testing.T) {
 func TestLogger_ErrorContext_Preservation(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
+	logger.SetOutput(&buf)
 
 	// Test that context is preserved across multiple operations
 	baseErr := New(ErrCodeValidationFailed, "field validation failed")
@@ -265,7 +265,7 @@ func TestLogger_ErrorContext_Preservation(t *testing.T) {
 func TestLogger_NilError_Handling(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger()
-	logger.Logger.SetOutput(&buf)
+	logger.SetOutput(&buf)
 
 	// Test logging with nil error (should not crash)
 	logger.LogError(nil, "Something happened without an error")

@@ -50,7 +50,7 @@ func TestConfigWatcher_Start_ValidConfig(t *testing.T) {
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configContent := `{
 		"whatsapp": {
@@ -159,7 +159,7 @@ func TestConfigWatcher_ReloadConfig_FileChanged(t *testing.T) {
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-reload-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	initialConfig := `{
 		"whatsapp": {
@@ -238,7 +238,7 @@ func TestConfigWatcher_ReloadConfig_InvalidFile(t *testing.T) {
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-invalid-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	validConfig := `{
 		"whatsapp": {
@@ -300,7 +300,7 @@ func TestConfigWatcher_CallbackPanic(t *testing.T) {
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-panic-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	validConfig := `{
 		"whatsapp": {

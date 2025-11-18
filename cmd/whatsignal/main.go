@@ -125,7 +125,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize database after retries: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.Warnf("Failed to close database: %v", closeErr)
+		}
+	}()
 
 	// Validate required environment variables
 	apiKey := os.Getenv("WHATSAPP_API_KEY")

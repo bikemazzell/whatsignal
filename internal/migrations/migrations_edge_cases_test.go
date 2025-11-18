@@ -17,15 +17,15 @@ func TestGetDefaultMigrationsDir_WithEnvVar(t *testing.T) {
 	originalDir := os.Getenv("WHATSIGNAL_MIGRATIONS_DIR")
 	defer func() {
 		if originalDir != "" {
-			os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", originalDir)
+			_ = os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", originalDir)
 		} else {
-			os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
+			_ = os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
 		}
 	}()
 
 	// Test with environment variable set
 	testDir := "/custom/migrations/path"
-	os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", testDir)
+	_ = os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", testDir)
 
 	result := getDefaultMigrationsDir()
 	assert.Equal(t, testDir, result)
@@ -36,14 +36,14 @@ func TestGetDefaultMigrationsDir_WithoutEnvVar(t *testing.T) {
 	originalDir := os.Getenv("WHATSIGNAL_MIGRATIONS_DIR")
 	defer func() {
 		if originalDir != "" {
-			os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", originalDir)
+			_ = os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", originalDir)
 		} else {
-			os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
+			_ = os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
 		}
 	}()
 
 	// Test without environment variable
-	os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
+	_ = os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
 
 	result := getDefaultMigrationsDir()
 	assert.Equal(t, "scripts/migrations", result)
@@ -53,7 +53,7 @@ func TestRunMigrations_DatabaseError(t *testing.T) {
 	// Use an invalid database path to trigger an error
 	db, err := sql.Open("sqlite3", "/invalid/path/database.db")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// This should fail when trying to create the migrations table
 	err = RunMigrations(db)
@@ -79,7 +79,7 @@ func TestRunMigrations_InvalidMigrationSQL(t *testing.T) {
 	// Create a temporary directory with invalid SQL
 	tmpDir, err := os.MkdirTemp("", "whatsignal-migrations-invalid-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create migrations directory
 	migrationsPath := filepath.Join(tmpDir, "migrations")
@@ -128,8 +128,8 @@ func TestFindMigrationFiles_ReadDirError(t *testing.T) {
 	// Create a file where a directory is expected
 	tmpFile, err := os.CreateTemp("", "not-a-directory")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	originalDir := MigrationsDir
 	defer func() { MigrationsDir = originalDir }()
@@ -146,7 +146,7 @@ func TestFindMigrationFiles_SkipDirectories(t *testing.T) {
 	// Create temporary directory structure
 	tmpDir, err := os.MkdirTemp("", "whatsignal-migrations-skip-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	migrationsPath := filepath.Join(tmpDir, "migrations")
 	err = os.MkdirAll(migrationsPath, 0755)
@@ -183,7 +183,7 @@ func TestFindMigrationFiles_AlternatePath(t *testing.T) {
 	// Create a directory at the alternate path for testing
 	tmpDir, err := os.MkdirTemp("", "whatsignal-alt-migrations-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create the alternate migrations directory
 	altPath := filepath.Join(tmpDir, "app", "scripts", "migrations")
@@ -211,7 +211,7 @@ func TestApplyMigration_QueryRowError(t *testing.T) {
 	defer cleanupDB()
 
 	// Close the database to cause query errors
-	db.Close()
+	_ = db.Close()
 
 	err := applyMigration(db, "test_migration.sql")
 	require.Error(t, err)
@@ -236,11 +236,11 @@ func TestApplyMigration_ExecuteError(t *testing.T) {
 	// Create a temporary file with invalid SQL
 	tmpFile, err := os.CreateTemp("", "invalid_migration_*.sql")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	_, err = tmpFile.WriteString("INVALID SQL STATEMENT;")
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	db, cleanupDB := setupTestDB(t)
 	defer cleanupDB()
@@ -258,7 +258,7 @@ func TestCreateMigrationsTable_DatabaseError(t *testing.T) {
 	// Use an invalid database to trigger an error
 	db, err := sql.Open("sqlite3", "/invalid/path/database.db")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	err = createMigrationsTable(db)
 	require.Error(t, err)
@@ -268,7 +268,7 @@ func TestRunMigrations_FailsOnSecurityValidation(t *testing.T) {
 	// Create a temporary directory with a migration that would fail security validation
 	tmpDir, err := os.MkdirTemp("", "whatsignal-migrations-security-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	migrationsPath := filepath.Join(tmpDir, "migrations")
 	err = os.MkdirAll(migrationsPath, 0755)
@@ -295,7 +295,7 @@ func TestMigrationFileOrdering(t *testing.T) {
 	// Test that migration files are properly ordered by their numeric prefix
 	tmpDir, err := os.MkdirTemp("", "whatsignal-migrations-order-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	migrationsPath := filepath.Join(tmpDir, "migrations")
 	err = os.MkdirAll(migrationsPath, 0755)

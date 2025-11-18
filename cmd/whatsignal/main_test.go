@@ -18,7 +18,7 @@ import (
 
 func init() {
 	// Disable typing delays in tests to prevent timeouts
-	os.Setenv("WHATSIGNAL_TEST_MODE", "true")
+	_ = os.Setenv("WHATSIGNAL_TEST_MODE", "true")
 }
 
 func TestMain(t *testing.T) {
@@ -61,7 +61,7 @@ func TestRunWithInvalidLogLevel(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Set invalid log level
-	os.Setenv("LOG_LEVEL", "invalid")
+	_ = os.Setenv("LOG_LEVEL", "invalid")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -235,8 +235,8 @@ func TestRunWithDatabaseRetries(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Use an invalid database path to trigger retries
-	os.Setenv("DB_PATH", "/invalid/path/test.db")
-	defer os.Unsetenv("DB_PATH")
+	_ = os.Setenv("DB_PATH", "/invalid/path/test.db")
+	defer func() { _ = os.Unsetenv("DB_PATH") }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -251,13 +251,13 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Unset MEDIA_DIR to prevent environment override
-	os.Unsetenv("MEDIA_DIR")
+	_ = os.Unsetenv("MEDIA_DIR")
 
 	// Create a file where the cache directory should be to cause mkdir to fail
 	tmpFile, err := os.CreateTemp("", "block-mkdir-*")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Create a config with the file path as cache directory (this will cause mkdir to fail)
 	configContent := fmt.Sprintf(`{
@@ -326,8 +326,8 @@ func TestRunWithServerError(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Use a port that's likely to be in use or invalid
-	os.Setenv("PORT", "80") // Privileged port that should fail
-	defer os.Unsetenv("PORT")
+	_ = os.Setenv("PORT", "80") // Privileged port that should fail
+	defer func() { _ = os.Unsetenv("PORT") }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -385,17 +385,17 @@ func setupTestEnv(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set required environment variables
-	os.Setenv("WHATSAPP_API_KEY", "test-key")
-	os.Setenv("WHATSAPP_API_URL", "http://localhost:8080")
-	os.Setenv("SIGNAL_CLI_PATH", "/usr/local/bin/signal-cli")
-	os.Setenv("SIGNAL_PHONE_NUMBER", "+1234567890")
-	os.Setenv("SIGNAL_CONFIG_PATH", tmpDir+"/signal")
-	os.Setenv("WEBHOOK_PORT", "8081")
-	os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "test-secret")
-	os.Setenv("DB_PATH", tmpDir+"/whatsignal.db")
-	os.Setenv("MEDIA_DIR", tmpDir+"/media")
-	os.Setenv("MEDIA_RETENTION_DAYS", "7")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-main-testing-purposes")
+	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
+	_ = os.Setenv("WHATSAPP_API_URL", "http://localhost:8080")
+	_ = os.Setenv("SIGNAL_CLI_PATH", "/usr/local/bin/signal-cli")
+	_ = os.Setenv("SIGNAL_PHONE_NUMBER", "+1234567890")
+	_ = os.Setenv("SIGNAL_CONFIG_PATH", tmpDir+"/signal")
+	_ = os.Setenv("WEBHOOK_PORT", "8081")
+	_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "test-secret")
+	_ = os.Setenv("DB_PATH", tmpDir+"/whatsignal.db")
+	_ = os.Setenv("MEDIA_DIR", tmpDir+"/media")
+	_ = os.Setenv("MEDIA_RETENTION_DAYS", "7")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-main-testing-purposes")
 
 	// Set up test migrations
 	setupTestMigrations(t, tmpDir)
@@ -601,9 +601,9 @@ func TestContactSyncDisabled(t *testing.T) {
 	require.NoError(t, os.Setenv("PORT", "0"))
 	defer func() {
 		if oldPort == "" {
-			os.Unsetenv("PORT")
+			_ = os.Unsetenv("PORT")
 		} else {
-			os.Setenv("PORT", oldPort)
+			_ = os.Setenv("PORT", oldPort)
 		}
 	}()
 
@@ -617,7 +617,7 @@ func cleanupTestEnv(t *testing.T) {
 	t.Helper()
 
 	// Remove test config file
-	os.Remove("config.json")
+	_ = os.Remove("config.json")
 
 	vars := []string{
 		"WHATSAPP_API_KEY",
@@ -635,11 +635,11 @@ func cleanupTestEnv(t *testing.T) {
 	}
 
 	for _, v := range vars {
-		os.Unsetenv(v)
+		_ = os.Unsetenv(v)
 	}
 
 	// Cleanup temporary directories
 	if path := os.Getenv("SIGNAL_CONFIG_PATH"); path != "" {
-		os.RemoveAll(path[:len(path)-7]) // Remove the parent temp dir
+		_ = os.RemoveAll(path[:len(path)-7]) // Remove the parent temp dir
 	}
 }

@@ -96,7 +96,7 @@ func (c *WhatsAppClient) RestartSession(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to restart session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		var errorResp map[string]interface{}
@@ -127,7 +127,7 @@ func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get sessions, status: %d", resp.StatusCode)
@@ -172,7 +172,7 @@ func (c *WhatsAppClient) GetSessionStatusByName(ctx context.Context, sessionName
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get sessions, status: %d", resp.StatusCode)
@@ -686,7 +686,7 @@ func (c *WhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID st
 	if err != nil {
 		return fmt.Errorf("failed to send delete request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		// Try to decode error response
@@ -723,7 +723,7 @@ func (c *WhatsAppClient) sendReactionRequest(ctx context.Context, endpoint strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		// Try to decode error response
@@ -776,7 +776,7 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body for debugging
 	bodyBytes, err := io.ReadAll(resp.Body)
@@ -875,7 +875,7 @@ func (c *WhatsAppClient) GetContact(ctx context.Context, contactID string) (*typ
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil // Contact not found
@@ -913,7 +913,7 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		// Read response body for better error diagnostics
@@ -961,7 +961,7 @@ func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.G
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil // Group not found
@@ -999,7 +999,7 @@ func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		// Read response body for better error diagnostics
@@ -1045,7 +1045,7 @@ func (c *WhatsAppClient) getServerVersion(ctx context.Context) (*types.ServerVer
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server version: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get server version, status: %d", resp.StatusCode)
@@ -1114,7 +1114,7 @@ func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("WhatsApp API health check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check if we got a successful response (2xx) or 404 (session doesn't exist is ok for health)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {

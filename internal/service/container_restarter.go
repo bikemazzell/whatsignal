@@ -72,7 +72,7 @@ func (w *WebhookContainerRestarter) RestartContainer(ctx context.Context) error 
 	if err != nil {
 		return fmt.Errorf("failed to send webhook request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook returned non-success status: %d", resp.StatusCode)

@@ -95,7 +95,7 @@ END;`
 
 	cleanup := func() {
 		migrations.MigrationsDir = originalMigrationsDir
-		os.RemoveAll(tmpMigDir)
+		_ = os.RemoveAll(tmpMigDir)
 	}
 
 	return cleanup
@@ -104,8 +104,8 @@ END;`
 // TestDatabase_ConcurrentOperations tests concurrent database access
 func TestDatabase_ConcurrentOperations(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -116,7 +116,7 @@ func TestDatabase_ConcurrentOperations(t *testing.T) {
 	// Enable WAL mode for better concurrent access
 	db, err := sql.Open("sqlite3", dbPath+"?mode=wal")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Set pragmas for better concurrent performance
 	_, err = db.Exec("PRAGMA journal_mode=WAL")
@@ -209,8 +209,8 @@ func makeConcurrentID(prefix string, id, j int) string {
 // TestDatabase_TransactionRollback tests transaction rollback behavior
 func TestDatabase_TransactionRollback(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -220,7 +220,7 @@ func TestDatabase_TransactionRollback(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Save initial mapping
 	mapping := &models.MessageMapping{
@@ -239,11 +239,11 @@ func TestDatabase_TransactionRollback(t *testing.T) {
 	require.NoError(t, err)
 
 	// Force close and reopen to test persistence
-	db.Close()
+	_ = db.Close()
 
 	db, err = New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify data persisted
 	retrieved, err := db.GetMessageMappingByWhatsAppID(ctx, "wa-trans-1")
@@ -258,8 +258,8 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 	}
 
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -269,7 +269,7 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	const numRecords = 500
 	start := time.Now()
@@ -318,8 +318,8 @@ func makeID(prefix string, num int) string {
 // TestDatabase_SQLInjectionAttempts tests SQL injection protection
 func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -329,7 +329,7 @@ func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Test various SQL injection attempts
 	injectionAttempts := []string{
@@ -373,8 +373,8 @@ func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 // TestDatabase_FilePermissions tests database file permissions
 func TestDatabase_FilePermissions(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -384,7 +384,7 @@ func TestDatabase_FilePermissions(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Check file permissions
 	info, err := os.Stat(dbPath)
@@ -412,8 +412,8 @@ func TestDatabase_CorruptedDatabase(t *testing.T) {
 // TestDatabase_VeryLongIDs tests handling of very long IDs
 func TestDatabase_VeryLongIDs(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -423,7 +423,7 @@ func TestDatabase_VeryLongIDs(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create very long IDs (but within reasonable limits)
 	longID := string(make([]byte, 255))
@@ -455,8 +455,8 @@ func TestDatabase_VeryLongIDs(t *testing.T) {
 // TestDatabase_ContactEdgeCases tests edge cases for contact operations
 func TestDatabase_ContactEdgeCases(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -466,7 +466,7 @@ func TestDatabase_ContactEdgeCases(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Test with unicode names
 	contact := &models.Contact{
@@ -500,8 +500,8 @@ func TestDatabase_ContactEdgeCases(t *testing.T) {
 // TestDatabase_EncryptionToggle validates that encryption persists across restarts
 func TestDatabase_EncryptionToggle(t *testing.T) {
 	// Always-on encryption: set secret before first open
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -527,12 +527,12 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 	ctx := context.Background()
 	err = db.SaveMessageMapping(ctx, mapping)
 	require.NoError(t, err)
-	db.Close()
+	_ = db.Close()
 
 	// Reopen with same secret
 	db, err = New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Should be able to read previously saved data
 	retrieved, err := db.GetMessageMappingByWhatsAppID(ctx, "wa-toggle-1")
@@ -563,8 +563,8 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 // Test decrypt errors for specific query paths to increase coverage of error branches
 func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
 	// Always-on encryption: set a test secret
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -574,7 +574,7 @@ func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	enc := db.encryptor
@@ -615,8 +615,8 @@ func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
 }
 
 func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -626,7 +626,7 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testi
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	enc := db.encryptor
@@ -735,8 +735,8 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testi
 }
 
 func TestDatabase_GetLatestMessageMapping_DecryptErrors(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -746,7 +746,7 @@ func TestDatabase_GetLatestMessageMapping_DecryptErrors(t *testing.T) {
 
 	db, err := New(dbPath, nil)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	enc := db.encryptor

@@ -43,7 +43,7 @@ func TestGenerateTraceID(t *testing.T) {
 
 	// Should contain only hex characters
 	for _, char := range id1 {
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
 			t.Fatalf("Expected trace ID to contain only hex characters, got %s", id1)
 		}
 	}
@@ -65,7 +65,7 @@ func TestGenerateSpanID(t *testing.T) {
 
 	// Should contain only hex characters
 	for _, char := range id1 {
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
 			t.Fatalf("Expected span ID to contain only hex characters, got %s", id1)
 		}
 	}

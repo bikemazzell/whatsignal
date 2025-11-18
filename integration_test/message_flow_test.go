@@ -66,7 +66,7 @@ func TestWhatsAppToSignalMessageFlow(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to send webhook: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -149,7 +149,7 @@ func TestSignalToWhatsAppMessageFlow(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to send Signal webhook: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -188,7 +188,7 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to send WhatsApp webhook: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -208,7 +208,7 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to send Signal webhook: %v", err)
 	}
-	resp2.Body.Close()
+	_ = resp2.Body.Close()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -260,7 +260,7 @@ func TestMessageFlowWithRetries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to send webhook: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -326,7 +326,7 @@ func TestHighVolumeMessageFlow(t *testing.T) {
 					t.Errorf("Failed to send webhook: %v", err)
 					return
 				}
-				resp.Body.Close()
+				_ = resp.Body.Close()
 
 				if j%10 == 0 {
 					time.Sleep(10 * time.Millisecond)
@@ -394,7 +394,7 @@ func TestGroupMessageBidirectionalFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send webhook: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -453,7 +453,7 @@ func TestGroupMessageBidirectionalFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send Signal webhook: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200 for Signal reply to group, got %d", resp.StatusCode)

@@ -746,6 +746,25 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			useSignature: true,
 		},
 		{
+			name: "invalid sender phone number (newsletter/system message) should be ignored",
+			payload: map[string]interface{}{
+				"event":   "message",
+				"session": "default",
+				"payload": map[string]interface{}{
+					"id":       "msg_newsletter_123",
+					"from":     "1",
+					"fromMe":   false,
+					"body":     "Newsletter content",
+					"hasMedia": false,
+				},
+			},
+			setup: func() {
+				// No message service call should be made for invalid sender messages
+			},
+			wantStatus:   http.StatusOK,
+			useSignature: true,
+		},
+		{
 			name: "valid media message",
 			payload: map[string]interface{}{
 				"event":   "message",
@@ -1361,11 +1380,13 @@ func TestServer_StartAndShutdown(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
+	if err := listener.Close(); err != nil {
+		t.Logf("Warning: failed to close listener: %v", err)
+	}
 
 	// Override port for test
-	os.Setenv("PORT", fmt.Sprintf("%d", port))
-	defer os.Unsetenv("PORT")
+	_ = os.Setenv("PORT", fmt.Sprintf("%d", port))
+	defer func() { _ = os.Unsetenv("PORT") }()
 
 	// Start server in a goroutine
 	errCh := make(chan error, 1)

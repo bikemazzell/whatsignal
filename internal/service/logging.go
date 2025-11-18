@@ -198,10 +198,10 @@ func ValidateSessionName(sessionName string) error {
 
 	// Allow only alphanumeric characters, hyphens, and underscores
 	for _, char := range sessionName {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == '-' || char == '_') {
+		if (char < 'a' || char > 'z') &&
+			(char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') &&
+			char != '-' && char != '_' {
 			return fmt.Errorf("session name must contain only alphanumeric characters, hyphens, and underscores")
 		}
 	}

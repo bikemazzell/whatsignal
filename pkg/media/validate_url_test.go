@@ -21,7 +21,7 @@ func setupHandlerForURLValidationWithSignal(t *testing.T, wahaBaseURL, signalRPC
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	})
 
 	cacheDir := filepath.Join(tmpDir, "cache")

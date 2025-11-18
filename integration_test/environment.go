@@ -474,7 +474,12 @@ func (env *TestEnvironment) MakeHTTPRequest(method, path string, body io.Reader)
 func (env *TestEnvironment) VerifyHTTPEndpoint(path string, expectedStatus int) {
 	resp, err := env.MakeHTTPRequest("GET", path, nil)
 	require.NoError(env.t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log the error but don't fail the test
+			env.t.Logf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	require.Equal(env.t, expectedStatus, resp.StatusCode)
 }
@@ -567,7 +572,12 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			// Track send and inspect payload for reply_to
 			env.mockAPIRequests["whatsapp_send"]++
 			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
+			defer func() {
+				if err := r.Body.Close(); err != nil {
+					// Log the error but don't fail the test
+					env.t.Logf("Warning: failed to close request body: %v", err)
+				}
+			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
 				if v, ok := payload["reply_to"]; ok {
@@ -591,7 +601,12 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			env.mockAPIRequests["whatsapp_send"]++
 			env.mockAPIRequests["whatsapp_send_image"]++
 			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
+			defer func() {
+				if err := r.Body.Close(); err != nil {
+					// Log the error but don't fail the test
+					env.t.Logf("Warning: failed to close request body: %v", err)
+				}
+			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
 				if v, ok := payload["reply_to"]; ok {
@@ -615,7 +630,12 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			env.mockAPIRequests["whatsapp_send"]++
 			env.mockAPIRequests["whatsapp_send_video"]++
 			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
+			defer func() {
+				if err := r.Body.Close(); err != nil {
+					// Log the error but don't fail the test
+					env.t.Logf("Warning: failed to close request body: %v", err)
+				}
+			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
 				if v, ok := payload["reply_to"]; ok {
@@ -639,7 +659,12 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			env.mockAPIRequests["whatsapp_send"]++
 			env.mockAPIRequests["whatsapp_send_voice"]++
 			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
+			defer func() {
+				if err := r.Body.Close(); err != nil {
+					// Log the error but don't fail the test
+					env.t.Logf("Warning: failed to close request body: %v", err)
+				}
+			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
 				if v, ok := payload["reply_to"]; ok {
@@ -663,7 +688,12 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			env.mockAPIRequests["whatsapp_send"]++
 			env.mockAPIRequests["whatsapp_send_document"]++
 			body, _ := io.ReadAll(r.Body)
-			_ = r.Body.Close()
+			defer func() {
+				if err := r.Body.Close(); err != nil {
+					// Log the error but don't fail the test
+					env.t.Logf("Warning: failed to close request body: %v", err)
+				}
+			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
 				if v, ok := payload["reply_to"]; ok {
@@ -895,7 +925,7 @@ func (env *TestEnvironment) handleWhatsAppWebhook() http.HandlerFunc {
 			http.Error(w, "Failed to read body", http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var payload models.WhatsAppWebhookPayload
 		if err := json.Unmarshal(body, &payload); err != nil {
@@ -969,7 +999,7 @@ func (env *TestEnvironment) handleSignalWebhook() http.HandlerFunc {
 			http.Error(w, "Failed to read body", http.StatusBadRequest)
 			return
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		var message struct {
 			Account  string `json:"account"`

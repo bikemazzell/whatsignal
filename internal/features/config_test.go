@@ -123,18 +123,18 @@ func TestFlagManager_LoadFromEnvironment(t *testing.T) {
 	defer func() {
 		for env, value := range originalEnv {
 			if value == "" {
-				os.Unsetenv(env)
+				_ = os.Unsetenv(env)
 			} else {
-				os.Setenv(env, value)
+				_ = os.Setenv(env, value)
 			}
 		}
 	}()
 
 	// Set test environment variables
-	os.Setenv("WHATSIGNAL_FEATURE_ASYNC_PROCESSING", "false")
-	os.Setenv("WHATSIGNAL_FEATURE_NEW_CONTACT_SYNC", "true")
-	os.Setenv("WHATSIGNAL_FEATURE_ASYNC_PROCESSING_PERCENTAGE", "25")
-	os.Setenv("WHATSIGNAL_FEATURE_CUSTOM_FLAG", "true")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_ASYNC_PROCESSING", "false")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_NEW_CONTACT_SYNC", "true")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_ASYNC_PROCESSING_PERCENTAGE", "25")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_CUSTOM_FLAG", "true")
 
 	fm := NewFlagManager()
 	fm.InitializeDefaults()
@@ -195,13 +195,13 @@ func TestFlagManager_LoadFromEnvironment_GlobalOverrides(t *testing.T) {
 			original := os.Getenv(tt.envVar)
 			defer func() {
 				if original == "" {
-					os.Unsetenv(tt.envVar)
+					_ = os.Unsetenv(tt.envVar)
 				} else {
-					os.Setenv(tt.envVar, original)
+					_ = os.Setenv(tt.envVar, original)
 				}
 			}()
 
-			os.Setenv(tt.envVar, tt.envValue)
+			_ = os.Setenv(tt.envVar, tt.envValue)
 
 			fm := NewFlagManager()
 			fm.InitializeDefaults()
@@ -325,18 +325,18 @@ func TestGetEnvironmentOverrides(t *testing.T) {
 	defer func() {
 		for env, value := range originalEnv {
 			if value == "" {
-				os.Unsetenv(env)
+				_ = os.Unsetenv(env)
 			} else {
-				os.Setenv(env, value)
+				_ = os.Setenv(env, value)
 			}
 		}
 	}()
 
 	// Set test environment variables
-	os.Setenv("WHATSIGNAL_FEATURE_TEST_FLAG", "true")
-	os.Setenv("WHATSIGNAL_FEATURE_ANOTHER_FLAG", "false")
-	os.Setenv("WHATSIGNAL_FEATURES_ENABLE_ALL", "true")
-	os.Setenv("SOME_OTHER_VAR", "value") // Should be ignored
+	_ = os.Setenv("WHATSIGNAL_FEATURE_TEST_FLAG", "true")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_ANOTHER_FLAG", "false")
+	_ = os.Setenv("WHATSIGNAL_FEATURES_ENABLE_ALL", "true")
+	_ = os.Setenv("SOME_OTHER_VAR", "value") // Should be ignored
 
 	overrides := GetEnvironmentOverrides()
 
@@ -372,17 +372,17 @@ func TestEnvironmentParsing_EdgeCases(t *testing.T) {
 	defer func() {
 		for env, value := range originalEnv {
 			if value == "" {
-				os.Unsetenv(env)
+				_ = os.Unsetenv(env)
 			} else {
-				os.Setenv(env, value)
+				_ = os.Setenv(env, value)
 			}
 		}
 	}()
 
 	// Set invalid values
-	os.Setenv("WHATSIGNAL_FEATURE_INVALID_BOOL", "not-a-boolean")
-	os.Setenv("WHATSIGNAL_FEATURE_VALID_FLAG_PERCENTAGE", "50")
-	os.Setenv("WHATSIGNAL_FEATURE_INVALID_PERCENTAGE", "not-a-number")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_INVALID_BOOL", "not-a-boolean")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_VALID_FLAG_PERCENTAGE", "50")
+	_ = os.Setenv("WHATSIGNAL_FEATURE_INVALID_PERCENTAGE", "not-a-number")
 
 	fm := NewFlagManager()
 	_ = fm.CreateFlag("valid_flag", "Valid flag", false, nil)

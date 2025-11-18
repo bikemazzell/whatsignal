@@ -107,7 +107,11 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -150,7 +154,11 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		c.logger.WithError(err).Error("Failed to send Signal polling request")
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -421,7 +429,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to send initialize device request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -465,7 +473,7 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to download attachment: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -540,7 +548,7 @@ func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attachments: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -571,7 +579,7 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("signal API health check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check if we got a successful response (2xx)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {

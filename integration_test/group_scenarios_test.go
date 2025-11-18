@@ -38,7 +38,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send webhook 1: %v", err)
 		}
-		resp1.Body.Close()
+		_ = resp1.Body.Close()
 
 		time.Sleep(100 * time.Millisecond)
 
@@ -60,7 +60,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send webhook 2: %v", err)
 		}
-		resp2.Body.Close()
+		_ = resp2.Body.Close()
 
 		time.Sleep(100 * time.Millisecond)
 
@@ -82,7 +82,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send webhook 3: %v", err)
 		}
-		resp3.Body.Close()
+		_ = resp3.Body.Close()
 
 		time.Sleep(100 * time.Millisecond)
 
@@ -189,7 +189,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send Signal webhook: %v", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		time.Sleep(2 * time.Second)
 
@@ -231,7 +231,7 @@ func TestGroupSpecificFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send webhook: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -287,7 +287,7 @@ func TestGroupSpecificFeatures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send webhook: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -347,7 +347,7 @@ func TestGroupSpecificFeatures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to send webhook %d: %v", i, err)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			time.Sleep(50 * time.Millisecond)
 		}

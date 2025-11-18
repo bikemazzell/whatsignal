@@ -20,7 +20,7 @@ import (
 
 func init() {
 	// Disable typing delays in tests to prevent timeouts
-	os.Setenv("WHATSIGNAL_TEST_MODE", "true")
+	_ = os.Setenv("WHATSIGNAL_TEST_MODE", "true")
 }
 
 // setupMediaTestServer creates a mock WAHA API server for media testing

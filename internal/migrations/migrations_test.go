@@ -87,7 +87,7 @@ END;`
 	require.NoError(t, err)
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return tmpDir, cleanup
@@ -96,14 +96,14 @@ END;`
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	tmpFile, err := os.CreateTemp("", "test_*.db")
 	require.NoError(t, err)
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	db, err := sql.Open("sqlite3", tmpFile.Name())
 	require.NoError(t, err)
 
 	cleanup := func() {
-		db.Close()
-		os.Remove(tmpFile.Name())
+		_ = db.Close()
+		_ = os.Remove(tmpFile.Name())
 	}
 
 	return db, cleanup
@@ -148,7 +148,7 @@ func TestRunMigrations(t *testing.T) {
 	// Verify required columns exist in message_mappings
 	rows, err := db.Query("PRAGMA table_info(message_mappings)")
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	columns := make(map[string]bool)
 	for rows.Next() {
@@ -205,7 +205,7 @@ func TestRunMigrationsNoMigrationFiles(t *testing.T) {
 	// Create empty directory
 	tmpDir, err := os.MkdirTemp("", "whatsignal-migrations-empty-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	db, cleanupDB := setupTestDB(t)
 	defer cleanupDB()

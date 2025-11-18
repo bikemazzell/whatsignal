@@ -5,6 +5,15 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.19]
+
+### Fixed
+- **WhatsApp Webhook Processing**: Fixed validation errors for newsletter and system messages with invalid sender phone numbers
+  - Changed phone number validation to skip messages gracefully instead of returning errors
+  - Messages with invalid sender IDs (e.g., single-digit senders from newsletters/channels) are now logged and ignored
+  - Prevents 400 Bad Request errors for special WhatsApp message types that cannot be processed
+  - Added test coverage for invalid sender phone number scenarios
+
 ## [1.1.18]
 
 ### Fixed

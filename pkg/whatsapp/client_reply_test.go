@@ -47,7 +47,7 @@ func TestClient_SendImageWithSessionReply(t *testing.T) {
 	// Create a temp image file
 	f, err := os.CreateTemp("", "img-*.jpg")
 	require.NoError(t, err)
-	defer os.Remove(f.Name())
+	defer func() { _ = os.Remove(f.Name()) }()
 	_, _ = f.Write([]byte("fake-jpg"))
 	_ = f.Close()
 
@@ -86,14 +86,14 @@ func TestClient_SendVoiceAndDocumentWithSessionReply(t *testing.T) {
 	// voice
 	vf, err := os.CreateTemp("", "voice-*.ogg")
 	require.NoError(t, err)
-	defer os.Remove(vf.Name())
+	defer func() { _ = os.Remove(vf.Name()) }()
 	_, _ = vf.Write([]byte("OggS..."))
 	_ = vf.Close()
 
 	// document
 	df, err := os.CreateTemp("", "doc-*.pdf")
 	require.NoError(t, err)
-	defer os.Remove(df.Name())
+	defer func() { _ = os.Remove(df.Name()) }()
 	_, _ = df.Write([]byte("%PDF-1.4"))
 	_ = df.Close()
 
@@ -132,7 +132,7 @@ func TestClient_SendVideoWithSessionReply_VideoSupported(t *testing.T) {
 	// create tmp video
 	vf, err := os.CreateTemp("", "v-*.mp4")
 	require.NoError(t, err)
-	defer os.Remove(vf.Name())
+	defer func() { _ = os.Remove(vf.Name()) }()
 	_, _ = vf.Write([]byte("mp4"))
 	_ = vf.Close()
 

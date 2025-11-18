@@ -78,7 +78,7 @@ func (l *Logger) LogRetryableError(err error, message string, fields ...logrus.F
 
 // WithContext adds context fields to subsequent log entries
 func (l *Logger) WithContext(fields logrus.Fields) *logrus.Entry {
-	return l.Logger.WithFields(fields)
+	return l.WithFields(fields)
 }
 
 // WithError adds an error to subsequent log entries

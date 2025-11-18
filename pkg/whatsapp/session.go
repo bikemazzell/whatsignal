@@ -57,7 +57,7 @@ func (sm *sessionManager) Create(ctx context.Context, name string) (*types.Sessi
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to create session, status: %d", resp.StatusCode)
@@ -89,7 +89,7 @@ func (sm *sessionManager) Get(ctx context.Context, name string) (*types.Session,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get session, status: %d", resp.StatusCode)
@@ -128,7 +128,7 @@ func (sm *sessionManager) Start(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to start session, status: %d", resp.StatusCode)
@@ -161,7 +161,7 @@ func (sm *sessionManager) Stop(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to stop session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to stop session, status: %d", resp.StatusCode)
@@ -193,7 +193,7 @@ func (sm *sessionManager) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to delete session, status: %d", resp.StatusCode)

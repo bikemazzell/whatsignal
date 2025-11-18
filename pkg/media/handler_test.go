@@ -46,7 +46,7 @@ func setupTestHandler(t *testing.T) (Handler, string, func()) {
 	require.NoError(t, err)
 
 	cleanup := func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return handler, tmpDir, cleanup
@@ -56,7 +56,7 @@ func createTestFile(t *testing.T, dir, name string, size int64) string {
 	path := filepath.Join(dir, name)
 	file, err := os.Create(path)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Write random data to achieve desired size
 	data := make([]byte, size)
@@ -69,7 +69,7 @@ func createTestFile(t *testing.T, dir, name string, size int64) string {
 func TestNewHandler(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
 	handler, err := NewHandler(cacheDir, getTestMediaConfig())
@@ -86,7 +86,7 @@ func TestProcessMedia(t *testing.T) {
 	// Create a temporary directory for test
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a test file
 	content := []byte("test content")
@@ -127,7 +127,7 @@ func TestCleanupOldFiles(t *testing.T) {
 	// Create a temporary directory for test
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create cache directory
 	cacheDir := filepath.Join(tmpDir, "cache")
@@ -326,7 +326,7 @@ func TestCleanupOldFilesWithReadOnlyError(t *testing.T) {
 func TestCleanupOldFilesWithNonExistentDirectory(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	nonExistentDir := filepath.Join(tmpDir, "nonexistent")
 	handler, err := NewHandler(nonExistentDir, getTestMediaConfig())
@@ -370,7 +370,7 @@ func TestProcessMediaCopyFallback(t *testing.T) {
 func TestCopyFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Test successful copy
 	srcPath := filepath.Join(tmpDir, "source.txt")
@@ -415,7 +415,7 @@ func TestNewHandlerErrors(t *testing.T) {
 	// Test with unwritable parent directory
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Make parent directory unwritable
 	err = os.Chmod(tmpDir, 0555)
@@ -624,7 +624,7 @@ func TestGetFileExtensionFromResponse(t *testing.T) {
 			// Create a handler instance to test the method
 			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			h := &handler{
 				cacheDir: tmpDir,
@@ -642,7 +642,7 @@ func TestProcessMediaFromURLTimeout(t *testing.T) {
 
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
 
@@ -855,7 +855,7 @@ func TestRewriteMediaURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			cacheDir := filepath.Join(tmpDir, "cache")
 			mediaHandler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), tt.wahaBaseURL, "")
@@ -907,7 +907,7 @@ func TestRewriteMediaURL_DockerInternalIP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			cacheDir := filepath.Join(tmpDir, "cache")
 			mediaHandler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), tt.wahaBaseURL, "")
@@ -965,7 +965,7 @@ func TestRewriteMediaURL_DockerInternalHosts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			cacheDir := filepath.Join(tmpDir, "cache")
 			mediaHandler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), tt.wahaBaseURL, "")
@@ -1000,7 +1000,7 @@ func TestProcessMediaFromURLWithAPIKey(t *testing.T) {
 	// Create handler with API key
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
 	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), "", apiKey)
@@ -1039,7 +1039,7 @@ func TestProcessMediaFromURLWithoutAPIKey(t *testing.T) {
 	// Create handler without API key
 	tmpDir, err := os.MkdirTemp("", "whatsignal-media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
 	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), "", "")
@@ -1308,7 +1308,7 @@ func TestDownloadFromURLEdgeCases(t *testing.T) {
 				assert.FileExists(t, tempPath)
 
 				// Cleanup temp file
-				os.Remove(tempPath)
+				_ = os.Remove(tempPath)
 			}
 		})
 	}
@@ -1380,7 +1380,7 @@ func TestRewriteMediaURLEdgeCases(t *testing.T) {
 func TestCopyFileEdgeCases(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "media-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name        string
@@ -1530,7 +1530,7 @@ func TestDetectFileTypeFromContent(t *testing.T) {
 			testPath := filepath.Join(tmpDir, "test_file_no_ext")
 			err := os.WriteFile(testPath, tt.content, 0644)
 			require.NoError(t, err)
-			defer os.Remove(testPath)
+			defer func() { _ = os.Remove(testPath) }()
 
 			// Test through ProcessMedia which will use detectFileTypeFromContent
 			cachedPath, err := handler.ProcessMedia(testPath)
@@ -1554,7 +1554,7 @@ func TestProcessMediaFromURL_DockerInternalIP_VoiceMessage(t *testing.T) {
 
 	tmpDir, err := os.MkdirTemp("", "whatsignal-voice-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
 

@@ -125,7 +125,7 @@ END;`
 func setupTestDB(t *testing.T) (*Database, string, func()) {
 	// Set up encryption secret for tests
 	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
 
 	// Create a temporary directory for test database
 	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
@@ -143,14 +143,14 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 	require.NoError(t, err)
 
 	cleanup := func() {
-		db.Close()
-		os.RemoveAll(tmpDir)
+		_ = db.Close()
+		_ = os.RemoveAll(tmpDir)
 		// Restore original environment
 		migrations.MigrationsDir = originalMigrationsDir
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 	}
 
@@ -160,12 +160,12 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 func TestNewDatabase(t *testing.T) {
 	// Set up encryption secret for tests
 	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
 	defer func() {
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 	}()
 
@@ -180,7 +180,7 @@ func TestNewDatabase(t *testing.T) {
 			setupPath: func(t *testing.T) string {
 				tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 				require.NoError(t, err)
-				t.Cleanup(func() { os.RemoveAll(tmpDir) })
+				t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
 				// Set up test migrations for this test
 				migrationsPath := setupTestMigrations(t, tmpDir)
@@ -217,7 +217,7 @@ func TestNewDatabase(t *testing.T) {
 					if err := os.Chmod(tmpDir, 0755); err != nil {
 						t.Errorf("Failed to restore directory permissions: %v", err)
 					}
-					os.RemoveAll(tmpDir)
+					_ = os.RemoveAll(tmpDir)
 				})
 
 				// Make directory read-only
@@ -245,7 +245,7 @@ func TestNewDatabase(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, db)
 				if db != nil {
-					db.Close()
+					_ = db.Close()
 				}
 			}
 		})
@@ -254,11 +254,11 @@ func TestNewDatabase(t *testing.T) {
 
 func TestDatabaseEncryptionErrors(t *testing.T) {
 	// Test with encryption enabled but invalid secret
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short") // Too short secret
+	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short") // Too short secret
 	defer func() {
-		os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+		_ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+		_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 	}()
 
 	// Create a new encryptor with the invalid secret - this should fail
@@ -566,7 +566,7 @@ func TestClose(t *testing.T) {
 	assert.Error(t, err, "Expected error on using closed database")
 
 	// Cleanup
-	os.RemoveAll(tmpDir)
+	_ = os.RemoveAll(tmpDir)
 }
 
 func TestNewDatabaseErrors(t *testing.T) {
@@ -578,7 +578,7 @@ func TestNewDatabaseErrors(t *testing.T) {
 	// Test with unwritable directory
 	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Make parent directory read-only
 	err = os.Chmod(tmpDir, 0444)
@@ -602,8 +602,8 @@ func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with encryption enabled but corrupted encryptor
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION") }()
 
 	// Create a mapping that will trigger encryption
 	mapping := &models.MessageMapping{
@@ -622,10 +622,10 @@ func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
 }
 
 func TestEncryptorNonceGeneration(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION") }()
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -684,7 +684,7 @@ func TestSaveMessageMappingWithMediaPath(t *testing.T) {
 func TestDatabaseWithCorruptedSchema(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -694,7 +694,7 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 	if _, err := file.WriteString("invalid sql content"); err != nil {
 		t.Errorf("Failed to write to file: %v", err)
 	}
-	file.Close()
+	_ = file.Close()
 
 	// This should fail when trying to initialize schema
 	db, err := New(dbPath, nil)
@@ -704,14 +704,14 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 		assert.Nil(t, db)
 	} else {
 		// If it somehow succeeded, clean up
-		db.Close()
+		_ = db.Close()
 	}
 }
 
 func TestEncryptorEdgeCases(t *testing.T) {
 	// Always-on encryption
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -736,10 +736,10 @@ func TestEncryptorEdgeCases(t *testing.T) {
 }
 
 func TestDecryptInvalidData(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION") }()
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -793,8 +793,8 @@ func TestDatabaseOperationsWithClosedDB(t *testing.T) {
 
 func TestNewEncryptorWithCustomSecret(t *testing.T) {
 	// Test with custom encryption secret (must be at least 32 characters)
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	assert.NoError(t, err)
@@ -1264,12 +1264,12 @@ func TestDatabase_HasMessageHistoryBetween(t *testing.T) {
 func TestDatabase_New_ErrorCases(t *testing.T) {
 	// Set up encryption secret for tests
 	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
 	defer func() {
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 	}()
 
@@ -1293,12 +1293,12 @@ func TestDatabase_SchemaUpgrade(t *testing.T) {
 	ctx := context.Background()
 	// Setup encryption environment for test
 	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "test-secret-key-for-database-upgrade-test-32chars!")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "test-secret-key-for-database-upgrade-test-32chars!")
 	t.Cleanup(func() {
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 	})
 
@@ -1310,7 +1310,7 @@ func TestDatabase_SchemaUpgrade(t *testing.T) {
 	// This simulates a database from before the hash columns were added
 	sqliteDB, err := sql.Open("sqlite3", dbPath)
 	require.NoError(t, err)
-	defer sqliteDB.Close()
+	defer func() { _ = sqliteDB.Close() }()
 	// Create old schema migrations table
 	_, err = sqliteDB.Exec(`CREATE TABLE schema_migrations (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1414,7 +1414,7 @@ func TestDatabase_SchemaUpgrade(t *testing.T) {
 	assert.False(t, hasHashColumns, "Hash columns should not exist in old schema")
 
 	// Close the raw database connection
-	sqliteDB.Close()
+	_ = sqliteDB.Close()
 
 	// Step 3: Copy the actual migration to a test location with some modifications
 	// This allows us to use the real migration logic while ensuring the test is isolated

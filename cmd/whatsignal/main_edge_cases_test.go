@@ -95,7 +95,7 @@ func TestRun_MissingWhatsAppAPIKey(t *testing.T) {
 	// Create temporary config file
 	tmpDir, err := os.MkdirTemp("", "whatsignal-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configContent := `{
 		"whatsapp": {
@@ -129,15 +129,15 @@ func TestRun_MissingWhatsAppAPIKey(t *testing.T) {
 	defer func() {
 		*configPath = originalConfigPath
 		if originalAPIKey != "" {
-			os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
+			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
 		} else {
-			os.Unsetenv("WHATSAPP_API_KEY")
+			_ = os.Unsetenv("WHATSAPP_API_KEY")
 		}
 	}()
 
 	// Set test config path and remove API key
 	*configPath = testConfigPath
-	os.Unsetenv("WHATSAPP_API_KEY")
+	_ = os.Unsetenv("WHATSAPP_API_KEY")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -153,7 +153,7 @@ func TestRun_InvalidLogLevel(t *testing.T) {
 	// Create temporary config file with invalid log level
 	tmpDir, err := os.MkdirTemp("", "whatsignal-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configContent := `{
 		"whatsapp": {
@@ -188,15 +188,15 @@ func TestRun_InvalidLogLevel(t *testing.T) {
 	defer func() {
 		*configPath = originalConfigPath
 		if originalAPIKey != "" {
-			os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
+			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
 		} else {
-			os.Unsetenv("WHATSAPP_API_KEY")
+			_ = os.Unsetenv("WHATSAPP_API_KEY")
 		}
 	}()
 
 	// Set test config path and API key
 	*configPath = testConfigPath
-	os.Setenv("WHATSAPP_API_KEY", "test-key")
+	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -211,7 +211,7 @@ func TestRun_NoChannelsConfigured(t *testing.T) {
 	// Create temporary config file without channels
 	tmpDir, err := os.MkdirTemp("", "whatsignal-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configContent := `{
 		"whatsapp": {
@@ -240,15 +240,15 @@ func TestRun_NoChannelsConfigured(t *testing.T) {
 	defer func() {
 		*configPath = originalConfigPath
 		if originalAPIKey != "" {
-			os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
+			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
 		} else {
-			os.Unsetenv("WHATSAPP_API_KEY")
+			_ = os.Unsetenv("WHATSAPP_API_KEY")
 		}
 	}()
 
 	// Set test config path and API key
 	*configPath = testConfigPath
-	os.Setenv("WHATSAPP_API_KEY", "test-key")
+	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -310,7 +310,7 @@ func TestVerboseFlag(t *testing.T) {
 	// Create temporary config file
 	tmpDir, err := os.MkdirTemp("", "whatsignal-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configContent := `{
 		"whatsapp": {
@@ -344,15 +344,15 @@ func TestVerboseFlag(t *testing.T) {
 	defer func() {
 		*configPath = originalConfigPath
 		if originalAPIKey != "" {
-			os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
+			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
 		} else {
-			os.Unsetenv("WHATSAPP_API_KEY")
+			_ = os.Unsetenv("WHATSAPP_API_KEY")
 		}
 	}()
 
 	// Set test config path and API key
 	*configPath = testConfigPath
-	os.Setenv("WHATSAPP_API_KEY", "test-key")
+	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -400,7 +400,7 @@ func TestLogLevelConfiguration(t *testing.T) {
 			// Create temporary config file
 			tmpDir, err := os.MkdirTemp("", "whatsignal-test")
 			require.NoError(t, err)
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			configContent := `{
 				"whatsapp": {
@@ -437,16 +437,16 @@ func TestLogLevelConfiguration(t *testing.T) {
 				*configPath = originalConfigPath
 				*verbose = originalVerbose
 				if originalAPIKey != "" {
-					os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
+					_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
 				} else {
-					os.Unsetenv("WHATSAPP_API_KEY")
+					_ = os.Unsetenv("WHATSAPP_API_KEY")
 				}
 			}()
 
 			// Set test values
 			*configPath = testConfigPath
 			*verbose = tt.verbose
-			os.Setenv("WHATSAPP_API_KEY", "test-key")
+			_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
 
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
@@ -488,7 +488,9 @@ func TestMain_VersionFlag(t *testing.T) {
 	assert.True(t, *version)
 
 	// Restore stdout and read captured output
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Logf("Warning: failed to close writer: %v", err)
+	}
 	os.Stdout = originalStdout
 	out, _ := io.ReadAll(r)
 
@@ -501,7 +503,7 @@ func TestSyncSessionContacts_SessionNotReady(t *testing.T) {
 	// Create test configuration
 	tmpDir, err := os.MkdirTemp("", "whatsignal-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{
 		WhatsApp: models.WhatsAppConfig{

@@ -141,7 +141,7 @@ func TestEncodeAttachment(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "signal-attachment-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name            string
@@ -283,7 +283,7 @@ func TestJFIFSupport(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "signal-jfif-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create test JFIF file
 	jfifContent := []byte("fake jfif content")
@@ -409,7 +409,7 @@ func TestSendMessage(t *testing.T) {
 			if tt.setupServer != nil {
 				testFile := tt.setupServer(server)
 				testAttachments = []string{testFile}
-				defer os.RemoveAll(filepath.Dir(testFile))
+				defer func() { _ = os.RemoveAll(filepath.Dir(testFile)) }()
 			} else {
 				testAttachments = tt.attachments
 			}
@@ -803,7 +803,7 @@ func TestDownloadAndSaveAttachment(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "signal-download-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name           string
@@ -942,7 +942,7 @@ func TestGetDirectAttachmentPath(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "signal-path-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name           string
@@ -1050,7 +1050,7 @@ func TestEncodeAttachmentPublic(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "signal-encode-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create test file
 	testContent := []byte("test file content")

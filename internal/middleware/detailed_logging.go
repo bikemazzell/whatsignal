@@ -63,7 +63,7 @@ func DetailedLoggingMiddleware(logger *logrus.Logger, config DetailedLoggingConf
 
 			// Create response capture wrapper if needed
 			var responseCapture *responseCaptureWrapper
-			var wrappedWriter http.ResponseWriter = w
+			var wrappedWriter = w
 
 			if config.LogResponseBody || config.LogResponseHeaders {
 				responseCapture = &responseCaptureWrapper{

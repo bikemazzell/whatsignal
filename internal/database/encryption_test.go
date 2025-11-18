@@ -10,8 +10,8 @@ import (
 )
 
 func TestEncryptor_EncryptDecrypt(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -63,8 +63,8 @@ func TestEncryptor_EncryptDecrypt(t *testing.T) {
 }
 
 func TestEncryptor_EncryptionUniqueness(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -90,8 +90,8 @@ func TestEncryptor_EncryptionUniqueness(t *testing.T) {
 }
 
 func TestEncryptor_DecryptInvalidData(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -123,8 +123,8 @@ func TestEncryptor_DecryptInvalidData(t *testing.T) {
 }
 
 func TestEncryptor_EncryptIfEnabled(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -139,8 +139,8 @@ func TestEncryptor_EncryptIfEnabled(t *testing.T) {
 }
 
 func TestEncryptor_DecryptIfEnabled(t *testing.T) {
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -159,19 +159,19 @@ func TestDeriveKey_WithCustomSecret(t *testing.T) {
 	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
 	defer func() {
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 	}()
 
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
 
 	key1, err := deriveKey()
 	require.NoError(t, err)
 	assert.Len(t, key1, models.KeySize)
 
-	os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-different-very-long-secret-key-for-testing-purposes")
+	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-different-very-long-secret-key-for-testing-purposes")
 
 	key2, err := deriveKey()
 	require.NoError(t, err)
@@ -184,13 +184,13 @@ func TestDeriveKey_WithDefaultSecret(t *testing.T) {
 	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
 	defer func() {
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 	}()
 
-	os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+	_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 
 	_, err := deriveKey()
 	require.Error(t, err)
@@ -201,9 +201,9 @@ func TestIsEncryptionEnabled(t *testing.T) {
 	originalValue := os.Getenv("WHATSIGNAL_ENABLE_ENCRYPTION")
 	defer func() {
 		if originalValue != "" {
-			os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", originalValue)
+			_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", originalValue)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
+			_ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
 		}
 	}()
 
@@ -220,26 +220,26 @@ func TestEncryptionSaltConfiguration(t *testing.T) {
 	defer func() {
 		// Restore original values
 		if originalSecret != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
 		}
 		if originalSalt != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
 		}
 		if originalLookupSalt != "" {
-			os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
 		}
 	}()
 
 	t.Run("default salts", func(t *testing.T) {
-		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
-		os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+		_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 		// Should use default salts from constants
 		salt := getEncryptionSalt()
@@ -250,9 +250,9 @@ func TestEncryptionSaltConfiguration(t *testing.T) {
 	})
 
 	t.Run("custom salts", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "custom-salt-value-with-min-length")
-		os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "custom-lookup-salt-with-min-length")
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "custom-salt-value-with-min-length")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "custom-lookup-salt-with-min-length")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 		// Should use custom salts from environment
 		salt := getEncryptionSalt()
@@ -263,9 +263,9 @@ func TestEncryptionSaltConfiguration(t *testing.T) {
 	})
 
 	t.Run("salt too short fallback", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "short")
-		os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "short")
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "short")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "short")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 		// Should fall back to defaults when salts are too short
 		salt := getEncryptionSalt()
@@ -276,11 +276,11 @@ func TestEncryptionSaltConfiguration(t *testing.T) {
 	})
 
 	t.Run("key derivation with custom salts", func(t *testing.T) {
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 		// Get keys with default salts
-		os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
-		os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+		_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
 
 		key1, err := deriveKey()
 		require.NoError(t, err)
@@ -288,8 +288,8 @@ func TestEncryptionSaltConfiguration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get keys with custom salts
-		os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "custom-salt-value-with-min-length")
-		os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "custom-lookup-salt-with-min-length")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "custom-salt-value-with-min-length")
+		_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "custom-lookup-salt-with-min-length")
 
 		key2, err := deriveKey()
 		require.NoError(t, err)

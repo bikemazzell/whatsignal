@@ -73,7 +73,7 @@ func TestSignalGroupTextReply_Quoted_UsesReplyTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST webhook: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -141,7 +141,7 @@ func TestSignalGroupImageReply_Quoted_UsesReplyTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST webhook: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -180,7 +180,7 @@ func TestSignalGroupNoQuote_FallbackNoReplyTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST webhook: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -218,7 +218,7 @@ func TestSignalGroupQuoted_MissingMapping_Returns500(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST webhook: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusOK {
 		t.Fatalf("expected non-200 for missing mapping, got %d", resp.StatusCode)
 	}
@@ -263,7 +263,7 @@ func TestSignalGroupQuoted_NonGroupMapping_Returns500(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to POST webhook: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK {
 		t.Fatalf("expected non-200 for non-group mapping, got %d", resp.StatusCode)

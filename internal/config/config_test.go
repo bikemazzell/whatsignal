@@ -15,16 +15,16 @@ func TestLoadConfig(t *testing.T) {
 	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
 	defer func() {
 		if originalWebhookSecret != "" {
-			os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
+			_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
 		}
 	}()
 
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "whatsignal-config-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a valid config file
 	validConfig := `{
@@ -133,17 +133,17 @@ func TestLoadConfig(t *testing.T) {
 			// Clear environment variables that would override config file values
 			// unless the test explicitly sets them
 			if tt.setEnv == nil || tt.setEnv["WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET"] == "" {
-				os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+				_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
 			}
 
 			// Set environment variables
 			if tt.setEnv != nil {
 				for k, v := range tt.setEnv {
-					os.Setenv(k, v)
+					_ = os.Setenv(k, v)
 				}
 				defer func() {
 					for k := range tt.setEnv {
-						os.Unsetenv(k)
+						_ = os.Unsetenv(k)
 					}
 				}()
 			}
@@ -463,9 +463,9 @@ func TestValidateSecurity(t *testing.T) {
 	originalEnv := os.Getenv("WHATSIGNAL_ENV")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("WHATSIGNAL_ENV", originalEnv)
+			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
 		} else {
-			os.Unsetenv("WHATSIGNAL_ENV")
+			_ = os.Unsetenv("WHATSIGNAL_ENV")
 		}
 	}()
 
@@ -557,9 +557,9 @@ func TestValidateSecurity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set environment
 			if tt.environment != "" {
-				os.Setenv("WHATSIGNAL_ENV", tt.environment)
+				_ = os.Setenv("WHATSIGNAL_ENV", tt.environment)
 			} else {
-				os.Unsetenv("WHATSIGNAL_ENV")
+				_ = os.Unsetenv("WHATSIGNAL_ENV")
 			}
 
 			err := validateSecurity(tt.config)
@@ -578,7 +578,7 @@ func TestLoadConfig_EdgeCases(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "whatsignal-config-edge-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	tests := []struct {
 		name        string
@@ -804,7 +804,7 @@ func TestLoadConfig_FilePermissions(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "whatsignal-config-perm-test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configContent := `{
 		"whatsapp": {"api_base_url": "https://whatsapp.example.com"},
@@ -841,29 +841,29 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 	defer func() {
 		// Restore original environment
 		if originalWhatsAppURL != "" {
-			os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
+			_ = os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
 		} else {
-			os.Unsetenv("WHATSAPP_API_URL")
+			_ = os.Unsetenv("WHATSAPP_API_URL")
 		}
 		if originalWebhookSecret != "" {
-			os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
+			_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
 		}
 		if originalSignalURL != "" {
-			os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
+			_ = os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
 		} else {
-			os.Unsetenv("SIGNAL_RPC_URL")
+			_ = os.Unsetenv("SIGNAL_RPC_URL")
 		}
 		if originalDBPath != "" {
-			os.Setenv("DB_PATH", originalDBPath)
+			_ = os.Setenv("DB_PATH", originalDBPath)
 		} else {
-			os.Unsetenv("DB_PATH")
+			_ = os.Unsetenv("DB_PATH")
 		}
 		if originalMediaDir != "" {
-			os.Setenv("MEDIA_DIR", originalMediaDir)
+			_ = os.Setenv("MEDIA_DIR", originalMediaDir)
 		} else {
-			os.Unsetenv("MEDIA_DIR")
+			_ = os.Unsetenv("MEDIA_DIR")
 		}
 	}()
 
@@ -884,11 +884,11 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 	}
 
 	// Set environment variables
-	os.Setenv("WHATSAPP_API_URL", "https://env-whatsapp.com")
-	os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "env-webhook-secret")
-	os.Setenv("SIGNAL_RPC_URL", "https://env-signal.com")
-	os.Setenv("DB_PATH", "/env/path/to/db.sqlite")
-	os.Setenv("MEDIA_DIR", "/env/path/to/cache")
+	_ = os.Setenv("WHATSAPP_API_URL", "https://env-whatsapp.com")
+	_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "env-webhook-secret")
+	_ = os.Setenv("SIGNAL_RPC_URL", "https://env-signal.com")
+	_ = os.Setenv("DB_PATH", "/env/path/to/db.sqlite")
+	_ = os.Setenv("MEDIA_DIR", "/env/path/to/cache")
 
 	applyEnvironmentOverrides(config)
 
@@ -911,29 +911,29 @@ func TestApplyEnvironmentOverrides_EmptyEnv(t *testing.T) {
 	defer func() {
 		// Restore original environment
 		if originalWhatsAppURL != "" {
-			os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
+			_ = os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
 		} else {
-			os.Unsetenv("WHATSAPP_API_URL")
+			_ = os.Unsetenv("WHATSAPP_API_URL")
 		}
 		if originalWebhookSecret != "" {
-			os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
+			_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
 		} else {
-			os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+			_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
 		}
 		if originalSignalURL != "" {
-			os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
+			_ = os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
 		} else {
-			os.Unsetenv("SIGNAL_RPC_URL")
+			_ = os.Unsetenv("SIGNAL_RPC_URL")
 		}
 		if originalDBPath != "" {
-			os.Setenv("DB_PATH", originalDBPath)
+			_ = os.Setenv("DB_PATH", originalDBPath)
 		} else {
-			os.Unsetenv("DB_PATH")
+			_ = os.Unsetenv("DB_PATH")
 		}
 		if originalMediaDir != "" {
-			os.Setenv("MEDIA_DIR", originalMediaDir)
+			_ = os.Setenv("MEDIA_DIR", originalMediaDir)
 		} else {
-			os.Unsetenv("MEDIA_DIR")
+			_ = os.Unsetenv("MEDIA_DIR")
 		}
 	}()
 
@@ -954,11 +954,11 @@ func TestApplyEnvironmentOverrides_EmptyEnv(t *testing.T) {
 	}
 
 	// Unset all environment variables
-	os.Unsetenv("WHATSAPP_API_URL")
-	os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-	os.Unsetenv("SIGNAL_RPC_URL")
-	os.Unsetenv("DB_PATH")
-	os.Unsetenv("MEDIA_DIR")
+	_ = os.Unsetenv("WHATSAPP_API_URL")
+	_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+	_ = os.Unsetenv("SIGNAL_RPC_URL")
+	_ = os.Unsetenv("DB_PATH")
+	_ = os.Unsetenv("MEDIA_DIR")
 
 	applyEnvironmentOverrides(config)
 

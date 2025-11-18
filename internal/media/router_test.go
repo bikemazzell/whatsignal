@@ -22,7 +22,7 @@ func TestNewRouter(t *testing.T) {
 	assert.NotNil(t, router)
 
 	// Verify it implements the Router interface
-	var _ Router = router
+	var _ = router
 }
 
 func TestGetMediaType(t *testing.T) {

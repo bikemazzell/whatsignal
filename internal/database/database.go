@@ -582,7 +582,7 @@ func (d *Database) GetLatestGroupMessageMappingBySession(ctx context.Context, se
 	if err != nil {
 		return nil, fmt.Errorf("failed to query recent message mappings by session: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var (

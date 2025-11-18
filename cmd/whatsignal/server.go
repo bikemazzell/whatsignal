@@ -437,12 +437,20 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		return nil
 	}
 
+	// Validate phone number early and skip invalid system messages
+	// (newsletters, channels, and other special WhatsApp message types may have invalid sender IDs)
+	if err := service.ValidatePhoneNumber(payload.Payload.From); err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"messageID": service.SanitizeMessageID(payload.Payload.ID),
+			"from":      payload.Payload.From,
+			"error":     err.Error(),
+		}).Debug("Ignoring message with invalid sender phone number (likely system/newsletter message)")
+		return nil
+	}
+
 	// Enhanced input validation
 	if err := service.ValidateMessageID(payload.Payload.ID); err != nil {
 		return ValidationError{Message: fmt.Sprintf("invalid message ID: %v", err)}
-	}
-	if err := service.ValidatePhoneNumber(payload.Payload.From); err != nil {
-		return ValidationError{Message: fmt.Sprintf("invalid sender phone number: %v", err)}
 	}
 
 	var mediaURL string

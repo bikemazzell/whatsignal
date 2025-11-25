@@ -12,13 +12,23 @@ func ValidateFilePath(path string) error {
 		return fmt.Errorf("file path cannot be empty")
 	}
 
-	// Clean the path to resolve any .. or . components
+	// Check for null bytes
+	if len(path) != len(strings.ReplaceAll(path, "\x00", "")) {
+		return fmt.Errorf("path contains null bytes")
+	}
+
+	// Clean path to resolve any .. or . components
 	cleanPath := filepath.Clean(path)
 
-	// Check for directory traversal attempts by looking for ".." in the cleaned path
+	// Check for directory traversal attempts by looking for ".." in cleaned path
 	// This catches attempts to escape the intended directory structure
 	if strings.Contains(cleanPath, "..") {
 		return fmt.Errorf("path contains directory traversal: %s", path)
+	}
+
+	// Check for path length to prevent DoS attacks
+	if len(cleanPath) > 4096 {
+		return fmt.Errorf("path too long (max 4096 characters)")
 	}
 
 	return nil
@@ -35,17 +45,17 @@ func ValidateFilePathWithBase(path, baseDir string) error {
 		cleanPath := filepath.Clean(path)
 		cleanBase := filepath.Clean(baseDir)
 
-		// Ensure the absolute path is within the base directory
+		// Ensure absolute path is within the base directory
 		if !strings.HasPrefix(cleanPath, cleanBase) {
 			return fmt.Errorf("path escapes base directory: %s", path)
 		}
 	} else {
-		// For relative paths, resolve against base directory
+		// For relative paths, resolve against the base directory
 		fullPath := filepath.Join(baseDir, path)
 		cleanPath := filepath.Clean(fullPath)
 		cleanBase := filepath.Clean(baseDir)
 
-		// Ensure the resolved path is still within the base directory
+		// Ensure resolved path is still within the base directory
 		if !strings.HasPrefix(cleanPath, cleanBase) {
 			return fmt.Errorf("path escapes base directory: %s", path)
 		}

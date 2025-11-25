@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -26,8 +27,13 @@ func getDefaultMigrationsDir() string {
 
 // RunMigrations applies all pending database migrations
 func RunMigrations(db *sql.DB) error {
+	return RunMigrationsWithContext(context.Background(), db)
+}
+
+// RunMigrationsWithContext applies all pending database migrations with context support
+func RunMigrationsWithContext(ctx context.Context, db *sql.DB) error {
 	// Create migrations tracking table
-	if err := createMigrationsTable(db); err != nil {
+	if err := createMigrationsTable(ctx, db); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
@@ -43,7 +49,7 @@ func RunMigrations(db *sql.DB) error {
 
 	// Apply each migration
 	for _, migrationFile := range migrationFiles {
-		if err := applyMigration(db, migrationFile); err != nil {
+		if err := applyMigration(ctx, db, migrationFile); err != nil {
 			return fmt.Errorf("failed to apply migration %s: %w", migrationFile, err)
 		}
 	}
@@ -52,14 +58,14 @@ func RunMigrations(db *sql.DB) error {
 }
 
 // createMigrationsTable creates the schema_migrations table if it doesn't exist
-func createMigrationsTable(db *sql.DB) error {
+func createMigrationsTable(ctx context.Context, db *sql.DB) error {
 	query := `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			filename TEXT PRIMARY KEY,
 			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)
 	`
-	_, err := db.Exec(query)
+	_, err := db.ExecContext(ctx, query)
 	return err
 }
 
@@ -129,12 +135,12 @@ func getMigrationNumber(filename string) int {
 }
 
 // applyMigration applies a single migration if it hasn't been applied yet
-func applyMigration(db *sql.DB, migrationFile string) error {
+func applyMigration(ctx context.Context, db *sql.DB, migrationFile string) error {
 	filename := filepath.Base(migrationFile)
 
 	// Check if migration already applied
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE filename = ?", filename).Scan(&count)
+	err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE filename = ?", filename).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check migration status: %w", err)
 	}
@@ -150,12 +156,12 @@ func applyMigration(db *sql.DB, migrationFile string) error {
 	}
 
 	// Execute migration
-	if _, err := db.Exec(string(content)); err != nil {
+	if _, err := db.ExecContext(ctx, string(content)); err != nil {
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
 
 	// Record migration as applied
-	_, err = db.Exec("INSERT INTO schema_migrations (filename) VALUES (?)", filename)
+	_, err = db.ExecContext(ctx, "INSERT INTO schema_migrations (filename) VALUES (?)", filename)
 	if err != nil {
 		return fmt.Errorf("failed to record migration: %w", err)
 	}

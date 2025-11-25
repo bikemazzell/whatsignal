@@ -52,17 +52,6 @@ const (
 	DefaultSignalHTTPTimeoutSec          = 60  // 60 seconds
 )
 
-// Default container restart values
-const (
-	DefaultContainerRestartEnabled                = false
-	DefaultContainerRestartMaxConsecutiveFailures = 3
-	DefaultContainerRestartCooldownMinutes        = 5
-	DefaultContainerRestartMethod                 = "webhook"
-	DefaultContainerRestartContainerName          = "waha"
-	DefaultContainerRestartDockerSocketPath       = "/var/run/docker.sock"
-	DefaultContainerRestartWebhookTimeoutSec      = 10
-)
-
 // Privacy settings
 const (
 	DefaultPhoneMaskLength = 4
@@ -99,6 +88,13 @@ const (
 	DefaultDevServerPort = 3000
 )
 
+// Timeout constants (in seconds)
+const (
+	SignalHTTPTimeoutSec         = 60 // Timeout for Signal API HTTP requests
+	AttachmentDownloadTimeoutSec = 15 // Timeout for downloading Signal attachments
+	RateLimiterCleanupMinutes    = 5  // Interval for rate limiter cleanup
+)
+
 // Channel and buffer sizes
 const (
 	ServerErrorChannelSize    = 1
@@ -130,7 +126,7 @@ const (
 const (
 	EncryptionSalt       = "whatsignal-salt-v1"        // Default salt for backward compatibility
 	EncryptionLookupSalt = "whatsignal-lookup-salt-v1" // Default lookup salt for backward compatibility
-	PBKDF2Iterations     = 100000                      // PBKDF2 iterations for key derivation
+	PBKDF2Iterations     = 600000                      // PBKDF2 iterations for key derivation (OWASP 2023)
 )
 
 // Validation limits

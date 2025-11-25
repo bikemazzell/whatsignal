@@ -43,6 +43,26 @@ func (e ValidationError) Error() string {
 	return e.Message
 }
 
+// validateWebhookSession extracts and validates the session from a webhook payload.
+// Returns (sessionName, error, shouldSkip):
+// - sessionName: The validated session name
+// - error: ValidationError if session is empty or invalid format
+// - shouldSkip: True if session is not configured (message should be silently skipped)
+func (s *Server) validateWebhookSession(payload *models.WhatsAppWebhookPayload, eventType string) (string, error, bool) {
+	sessionName := payload.Session
+	if sessionName == "" {
+		return "", ValidationError{Message: "session name is required but was not provided"}, false
+	}
+	if err := service.ValidateSessionName(sessionName); err != nil {
+		return "", ValidationError{Message: fmt.Sprintf("invalid session name: %v", err)}, false
+	}
+	if !s.channelManager.IsValidSession(sessionName) {
+		s.logger.WithField("session", sessionName).Debug("Ignoring " + eventType + " from unconfigured session")
+		return "", nil, true // skip indicates message should be silently skipped
+	}
+	return sessionName, nil, false
+}
+
 type Server struct {
 	router     *mux.Router
 	logger     *logrus.Logger
@@ -460,20 +480,12 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 
 	chatID := payload.Payload.From
 
-	// Use session from webhook payload
-	sessionName := payload.Session
-	if sessionName == "" {
-		return ValidationError{Message: "session name is required but was not provided"}
+	// Validate session from webhook payload
+	sessionName, err, skip := s.validateWebhookSession(payload, "message")
+	if err != nil {
+		return err
 	}
-
-	// Validate session name
-	if err := service.ValidateSessionName(sessionName); err != nil {
-		return ValidationError{Message: fmt.Sprintf("invalid session name: %v", err)}
-	}
-
-	// Check if session is configured
-	if !s.channelManager.IsValidSession(sessionName) {
-		s.logger.WithField("session", sessionName).Debug("Ignoring message from unconfigured session")
+	if skip {
 		return nil
 	}
 
@@ -496,13 +508,12 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 		return ValidationError{Message: "missing required field: Payload.From"}
 	}
 
-	// Check if session is configured
-	sessionName := payload.Session
-	if sessionName == "" {
-		return ValidationError{Message: "session name is required but was not provided"}
+	// Validate session from webhook payload
+	_, sessionErr, skip := s.validateWebhookSession(payload, "reaction")
+	if sessionErr != nil {
+		return sessionErr
 	}
-	if !s.channelManager.IsValidSession(sessionName) {
-		s.logger.WithField("session", sessionName).Debug("Ignoring reaction from unconfigured session")
+	if skip {
 		return nil
 	}
 
@@ -564,13 +575,12 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 		return ValidationError{Message: "missing required field: Payload.From"}
 	}
 
-	// Check if session is configured
-	sessionName := payload.Session
-	if sessionName == "" {
-		return ValidationError{Message: "session name is required but was not provided"}
+	// Validate session from webhook payload
+	_, sessionErr, skip := s.validateWebhookSession(payload, "edited message")
+	if sessionErr != nil {
+		return sessionErr
 	}
-	if !s.channelManager.IsValidSession(sessionName) {
-		s.logger.WithField("session", sessionName).Debug("Ignoring edited message from unconfigured session")
+	if skip {
 		return nil
 	}
 
@@ -682,14 +692,16 @@ func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *mode
 		"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.ID),
 	}).Info("Processing WhatsApp waiting message event")
 
-	waitingNotification := "⏳ WhatsApp is waiting for a message"
-
-	// Require session context for waiting messages
-	sessionName := payload.Session
-	if sessionName == "" {
-		return ValidationError{Message: "session name is required for waiting message events"}
+	// Validate session from webhook payload
+	sessionName, sessionErr, skip := s.validateWebhookSession(payload, "waiting message")
+	if sessionErr != nil {
+		return sessionErr
+	}
+	if skip {
+		return nil
 	}
 
+	waitingNotification := "⏳ WhatsApp is waiting for a message"
 	err := s.msgService.SendSignalNotification(ctx, sessionName, waitingNotification)
 	if err != nil {
 		s.logger.WithError(err).Warn("Failed to send waiting notification to Signal")

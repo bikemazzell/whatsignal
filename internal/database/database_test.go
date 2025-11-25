@@ -1281,7 +1281,7 @@ func TestDatabase_New_ErrorCases(t *testing.T) {
 	// Test with null byte in path
 	_, err = New("/invalid\x00path", nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create database file")
+	assert.Contains(t, err.Error(), "path contains null bytes")
 
 	// Test with directory that doesn't exist
 	_, err = New("/nonexistent/dir/test.db", nil)

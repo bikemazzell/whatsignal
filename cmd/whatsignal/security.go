@@ -8,13 +8,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"whatsignal/internal/constants"
+	"whatsignal/internal/httputil"
 )
 
 func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderName string, maxSkew time.Duration) ([]byte, error) {
@@ -92,9 +94,10 @@ type RateLimiter struct {
 	window        time.Duration
 	lastCleanup   time.Time
 	cleanupTicker *time.Ticker
-	cleanupStop   chan bool
+	cleanupStop   chan struct{}
 	cleanupPeriod time.Duration
 	stopOnce      sync.Once
+	cleanupWg     sync.WaitGroup
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -105,7 +108,7 @@ func NewRateLimiter(limit int, window time.Duration, cleanupPeriod time.Duration
 		window:        window,
 		lastCleanup:   time.Now(),
 		cleanupPeriod: cleanupPeriod,
-		cleanupStop:   make(chan bool),
+		cleanupStop:   make(chan struct{}),
 	}
 
 	// Start background cleanup goroutine
@@ -117,13 +120,15 @@ func NewRateLimiter(limit int, window time.Duration, cleanupPeriod time.Duration
 // startBackgroundCleanup starts a background goroutine that periodically cleans up old entries
 func (rl *RateLimiter) startBackgroundCleanup() {
 	if rl.cleanupPeriod <= 0 {
-		// Default to 5 minutes if not specified
-		rl.cleanupPeriod = 5 * time.Minute
+		// Default to configured cleanup interval if not specified
+		rl.cleanupPeriod = time.Duration(constants.RateLimiterCleanupMinutes) * time.Minute
 	}
 
 	rl.cleanupTicker = time.NewTicker(rl.cleanupPeriod)
+	rl.cleanupWg.Add(1)
 
 	go func() {
+		defer rl.cleanupWg.Done()
 		for {
 			select {
 			case <-rl.cleanupTicker.C:
@@ -142,6 +147,7 @@ func (rl *RateLimiter) Stop() {
 			rl.cleanupTicker.Stop()
 		}
 		close(rl.cleanupStop)
+		rl.cleanupWg.Wait() // Wait for goroutine to complete
 	})
 }
 
@@ -249,25 +255,5 @@ func (rl *RateLimiter) AllowWithInfo(ip string) RateLimitInfo {
 
 // GetClientIP extracts the real client IP from the request
 func GetClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the chain
-		if ips := strings.Split(xff, ","); len(ips) > 0 {
-			if ip := strings.TrimSpace(ips[0]); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return ip
+	return httputil.GetClientIP(r)
 }

@@ -10,19 +10,21 @@ import (
 )
 
 type Scheduler struct {
-	bridge        MessageBridge
+	cleaner       RecordCleaner
 	retentionDays int
 	intervalHours int
 	logger        *logrus.Logger
 	stopCh        chan struct{}
 }
 
-func NewScheduler(bridge MessageBridge, retentionDays, intervalHours int, logger *logrus.Logger) *Scheduler {
+// NewScheduler creates a new cleanup scheduler.
+// It accepts RecordCleaner (rather than full MessageBridge) following the Interface Segregation Principle.
+func NewScheduler(cleaner RecordCleaner, retentionDays, intervalHours int, logger *logrus.Logger) *Scheduler {
 	if intervalHours <= 0 {
 		intervalHours = constants.CleanupSchedulerIntervalHours
 	}
 	return &Scheduler{
-		bridge:        bridge,
+		cleaner:       cleaner,
 		retentionDays: retentionDays,
 		intervalHours: intervalHours,
 		logger:        logger,
@@ -59,7 +61,7 @@ func (s *Scheduler) Stop() {
 func (s *Scheduler) runCleanup(ctx context.Context) {
 	s.logger.WithField("retentionDays", s.retentionDays).Info("Running scheduled cleanup")
 
-	if err := s.bridge.CleanupOldRecords(ctx, s.retentionDays); err != nil {
+	if err := s.cleaner.CleanupOldRecords(ctx, s.retentionDays); err != nil {
 		s.logger.WithError(err).Error("Failed to cleanup old records")
 	} else {
 		s.logger.Info("Successfully completed cleanup")

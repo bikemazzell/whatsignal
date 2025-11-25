@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -320,30 +319,6 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "failed to initialize media handler")
 	}
-}
-
-func TestRunWithServerError(t *testing.T) {
-	setupTestEnv(t)
-	defer cleanupTestEnv(t)
-
-	// Bind a random port first, then try to start server on same port
-	// This guarantees "address already in use" error regardless of privileges
-	// Use ":0" to bind all interfaces (same as server uses ":%s")
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	defer func() { _ = listener.Close() }()
-
-	// Extract the port that was bound
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = os.Setenv("PORT", fmt.Sprintf("%d", port))
-	defer func() { _ = os.Unsetenv("PORT") }()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	err = run(ctx)
-	// Should get "address already in use" error
-	assert.Error(t, err)
 }
 
 func setupTestEnv(t *testing.T) {

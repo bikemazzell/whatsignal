@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -213,7 +214,7 @@ func TestApplyMigration_QueryRowError(t *testing.T) {
 	// Close the database to cause query errors
 	_ = db.Close()
 
-	err := applyMigration(db, "test_migration.sql")
+	err := applyMigration(context.Background(), db, "test_migration.sql")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to check migration status")
 }
@@ -223,11 +224,11 @@ func TestApplyMigration_ReadFileError(t *testing.T) {
 	defer cleanupDB()
 
 	// Create migrations table
-	err := createMigrationsTable(db)
+	err := createMigrationsTable(context.Background(), db)
 	require.NoError(t, err)
 
 	// Try to apply a non-existent migration file
-	err = applyMigration(db, "/non/existent/migration.sql")
+	err = applyMigration(context.Background(), db, "/non/existent/migration.sql")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read migration file")
 }
@@ -246,10 +247,10 @@ func TestApplyMigration_ExecuteError(t *testing.T) {
 	defer cleanupDB()
 
 	// Create migrations table
-	err = createMigrationsTable(db)
+	err = createMigrationsTable(context.Background(), db)
 	require.NoError(t, err)
 
-	err = applyMigration(db, tmpFile.Name())
+	err = applyMigration(context.Background(), db, tmpFile.Name())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to execute migration SQL")
 }
@@ -260,7 +261,7 @@ func TestCreateMigrationsTable_DatabaseError(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 
-	err = createMigrationsTable(db)
+	err = createMigrationsTable(context.Background(), db)
 	require.Error(t, err)
 }
 

@@ -238,26 +238,19 @@ func run(ctx context.Context) error {
 		}
 		startupTimeout := getTimeoutDuration(startupTimeoutSec, constants.DefaultSessionStartupTimeoutSec)
 
-		sessionMonitor := service.NewSessionMonitorWithContainerRestart(
+		sessionMonitor := service.NewSessionMonitorWithStartupTimeout(
 			waClient,
 			logger,
 			checkInterval,
 			startupTimeout,
-			cfg.WhatsApp.ContainerRestart,
 		)
 		sessionMonitor.Start(ctx)
 		defer sessionMonitor.Stop()
 
-		logFields := logrus.Fields{
+		logger.WithFields(logrus.Fields{
 			"interval":        checkInterval,
 			"startup_timeout": startupTimeout,
-		}
-		if cfg.WhatsApp.ContainerRestart.Enabled {
-			logFields["container_restart_enabled"] = true
-			logFields["container_restart_method"] = cfg.WhatsApp.ContainerRestart.Method
-			logFields["max_consecutive_failures"] = cfg.WhatsApp.ContainerRestart.MaxConsecutiveFailures
-		}
-		logger.WithFields(logFields).Info("Session health monitor started")
+		}).Info("Session health monitor started")
 	}
 
 	ctxWithVerbose := context.WithValue(ctx, service.VerboseContextKey, *verbose)

@@ -1430,3 +1430,70 @@ func TestBridge_HandleWhatsAppMessage_GroupMessage(t *testing.T) {
 		assert.NotContains(t, mockSigClient.lastMessage, " in ")
 	})
 }
+
+func TestExtractMappingFromQuotedText(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	tests := []struct {
+		name       string
+		quotedText string
+		wantChatID string
+		wantNil    bool
+	}{
+		{
+			name:       "valid phone with emoji prefix",
+			quotedText: "📱 15551234567: Hello there",
+			wantChatID: "15551234567@c.us",
+			wantNil:    false,
+		},
+		{
+			name:       "valid phone without prefix",
+			quotedText: "15559876543: Some message content",
+			wantChatID: "15559876543@c.us",
+			wantNil:    false,
+		},
+		{
+			name:       "valid phone with country code",
+			quotedText: "+1 555 123 4567: Message here",
+			wantChatID: "15551234567@c.us",
+			wantNil:    false,
+		},
+		{
+			name:       "no colon separator",
+			quotedText: "This has no separator",
+			wantChatID: "",
+			wantNil:    true,
+		},
+		{
+			name:       "too short phone number",
+			quotedText: "📱 123: Short",
+			wantChatID: "",
+			wantNil:    true,
+		},
+		{
+			name:       "no digits at all",
+			quotedText: "NoDigits: Some message",
+			wantChatID: "",
+			wantNil:    true,
+		},
+		{
+			name:       "empty string",
+			quotedText: "",
+			wantChatID: "",
+			wantNil:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := bridge.extractMappingFromQuotedText(tt.quotedText)
+			if tt.wantNil {
+				assert.Nil(t, result)
+			} else {
+				require.NotNil(t, result)
+				assert.Equal(t, tt.wantChatID, result.WhatsAppChatID)
+			}
+		})
+	}
+}

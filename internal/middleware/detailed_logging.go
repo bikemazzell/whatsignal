@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"whatsignal/internal/httputil"
 	"whatsignal/internal/privacy"
 	"whatsignal/internal/service"
 	"whatsignal/internal/tracing"
@@ -92,7 +93,7 @@ func logRequestDetails(logger *logrus.Logger, r *http.Request, requestInfo *trac
 		service.LogFieldTraceID:   requestInfo.TraceID,
 		service.LogFieldMethod:    r.Method,
 		service.LogFieldURL:       r.URL.String(), // Full URL including query params
-		service.LogFieldRemoteIP:  GetClientIP(r),
+		service.LogFieldRemoteIP:  httputil.GetClientIP(r),
 		"content_length":          r.ContentLength,
 		"protocol":                r.Proto,
 	}

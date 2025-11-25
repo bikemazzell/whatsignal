@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
+	"whatsignal/internal/httputil"
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/privacy"
 	"whatsignal/internal/service"
@@ -40,7 +40,7 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 				attribute.String("http.host", r.Host),
 				attribute.String("http.route", r.URL.Path),
 				attribute.String("user_agent.original", r.Header.Get("User-Agent")),
-				attribute.String("client.address", GetClientIP(r)),
+				attribute.String("client.address", httputil.GetClientIP(r)),
 			)
 
 			// Get tracing info for logging
@@ -59,7 +59,7 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 				service.LogFieldTraceID:   requestInfo.TraceID,
 				service.LogFieldMethod:    r.Method,
 				service.LogFieldURL:       r.URL.Path,
-				service.LogFieldRemoteIP:  GetClientIP(r),
+				service.LogFieldRemoteIP:  httputil.GetClientIP(r),
 				service.LogFieldUserAgent: r.Header.Get("User-Agent"),
 				"content_length":          r.ContentLength,
 			}).Info("HTTP request started")
@@ -134,7 +134,7 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 				service.LogFieldURL:        r.URL.Path,
 				service.LogFieldStatusCode: wrapper.statusCode,
 				service.LogFieldDuration:   duration.Milliseconds(),
-				service.LogFieldRemoteIP:   GetClientIP(r),
+				service.LogFieldRemoteIP:   httputil.GetClientIP(r),
 				service.LogFieldSize:       wrapper.responseSize,
 			}).Log(logLevel, "HTTP request completed")
 		})
@@ -157,7 +157,7 @@ func WebhookObservabilityMiddleware(logger *logrus.Logger, webhookType string) f
 				attribute.String("webhook.type", webhookType),
 				attribute.String("http.method", r.Method),
 				attribute.String("http.url", r.URL.String()),
-				attribute.String("client.address", GetClientIP(r)),
+				attribute.String("client.address", httputil.GetClientIP(r)),
 				attribute.String("http.request.header.content-type", r.Header.Get("Content-Type")),
 				attribute.Int64("http.request.content_length", r.ContentLength),
 			)
@@ -183,7 +183,7 @@ func WebhookObservabilityMiddleware(logger *logrus.Logger, webhookType string) f
 				service.LogFieldTraceID:   requestInfo.TraceID,
 				service.LogFieldService:   "webhook",
 				service.LogFieldComponent: webhookType,
-				service.LogFieldRemoteIP:  GetClientIP(r),
+				service.LogFieldRemoteIP:  httputil.GetClientIP(r),
 				"content_type":            r.Header.Get("Content-Type"),
 				"content_length":          r.ContentLength,
 			})
@@ -275,33 +275,4 @@ func (rw *responseWrapper) Write(data []byte) (int, error) {
 	n, err := rw.ResponseWriter.Write(data)
 	rw.responseSize += int64(n)
 	return n, err
-}
-
-// GetClientIP extracts the client IP address from the request
-// This function would normally be imported from the main package, but we'll define it here for completeness
-func GetClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (from load balancers/proxies)
-	if xForwardedFor := r.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
-		// X-Forwarded-For can contain multiple IPs, take the first one
-		if idx := strings.Index(xForwardedFor, ","); idx != -1 {
-			return strings.TrimSpace(xForwardedFor[:idx])
-		}
-		return strings.TrimSpace(xForwardedFor)
-	}
-
-	// Check X-Real-IP header (from some proxies)
-	if xRealIP := r.Header.Get("X-Real-IP"); xRealIP != "" {
-		return strings.TrimSpace(xRealIP)
-	}
-
-	// Fall back to RemoteAddr (direct connection)
-	if remoteAddr := r.RemoteAddr; remoteAddr != "" {
-		// RemoteAddr includes port, strip it
-		if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-			return remoteAddr[:idx]
-		}
-		return remoteAddr
-	}
-
-	return "unknown"
 }

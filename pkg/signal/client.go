@@ -15,8 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
-	"whatsignal/pkg/constants"
+	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
@@ -38,6 +39,7 @@ type SignalClient struct {
 	attachmentsDir string
 	logger         *logrus.Logger
 	mu             sync.Mutex // Prevent concurrent Signal-CLI operations
+	circuitBreaker *circuitbreaker.CircuitBreaker
 }
 
 func NewClient(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client) Client {
@@ -46,7 +48,7 @@ func NewClient(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClie
 
 func NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client, logger *logrus.Logger) Client {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 60 * time.Second} // Increased timeout for polling
+		httpClient = &http.Client{Timeout: time.Duration(constants.DefaultSignalHTTPTimeoutSec) * time.Second}
 	}
 
 	if logger == nil {
@@ -63,7 +65,24 @@ func NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir string
 		attachmentsDir: attachmentsDir,
 		client:         httpClient,
 		logger:         logger,
+		circuitBreaker: circuitbreaker.NewWithLogger("signal-api", 5, 30*time.Second, logger),
 	}
+}
+
+// doRequestWithCircuitBreaker wraps HTTP requests with circuit breaker protection
+func (c *SignalClient) doRequestWithCircuitBreaker(ctx context.Context, req *http.Request) (*http.Response, error) {
+	// If circuit breaker is not initialized (e.g., in tests), fall back to direct call
+	if c.circuitBreaker == nil {
+		return c.client.Do(req)
+	}
+
+	var resp *http.Response
+	err := c.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+		var httpErr error
+		resp, httpErr = c.client.Do(req)
+		return httpErr
+	})
+	return resp, err
 }
 
 func (c *SignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error) {
@@ -103,7 +122,7 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	req.Header.Set("Content-Type", "application/json")
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -114,7 +133,10 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("signal API error: status %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -149,7 +171,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to send Signal polling request")
 		return nil, fmt.Errorf("failed to send request: %w", err)
@@ -161,7 +183,11 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			c.logger.WithError(readErr).WithField("status", resp.StatusCode).Error("Failed to read Signal API error response body")
+			return nil, fmt.Errorf("signal API error: status %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		bodyStr := string(bodyBytes)
 
 		// Check if this is a transient connection error that can be retried
@@ -278,7 +304,7 @@ func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments [
 			// Use a goroutine with timeout to prevent blocking the entire polling operation
 			downloadChan := make(chan string, constants.SignalDownloadChannelSize)
 			errorChan := make(chan error, constants.SignalDownloadChannelSize)
-			downloadCtx, downloadCancel := context.WithTimeout(ctx, 15*time.Second)
+			downloadCtx, downloadCancel := context.WithTimeout(ctx, time.Duration(constants.AttachmentDownloadTimeoutSec)*time.Second)
 			defer downloadCancel()
 
 			go func() {
@@ -425,14 +451,17 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to send initialize device request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -469,14 +498,17 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download attachment: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("attachment download failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("attachment download failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -544,14 +576,17 @@ func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {
 
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attachments: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("list attachments failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("list attachments failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -575,7 +610,7 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("signal API health check failed: %w", err)
 	}
@@ -587,6 +622,9 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 	}
 
 	// Read the response body for error details
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("signal API health check returned status %d (failed to read body: %v)", resp.StatusCode, readErr)
+	}
 	return fmt.Errorf("signal API health check returned status %d: %s", resp.StatusCode, string(body))
 }

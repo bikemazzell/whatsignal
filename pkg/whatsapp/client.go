@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
 	"whatsignal/pkg/circuitbreaker"
-	"whatsignal/pkg/constants"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/sirupsen/logrus"
@@ -1126,6 +1126,9 @@ func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
 	}
 
 	// Read the response body for error details
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("WhatsApp API health check returned status %d (failed to read body: %v)", resp.StatusCode, readErr)
+	}
 	return fmt.Errorf("WhatsApp API health check returned status %d: %s", resp.StatusCode, string(body))
 }

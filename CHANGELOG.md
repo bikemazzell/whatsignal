@@ -5,6 +5,34 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.20]
+
+### Security
+- **PBKDF2 iterations**: Increased from 100,000 to 600,000 per OWASP 2023 recommendations for stronger key derivation
+
+### Added
+- **Signal API circuit breaker**: Added fault tolerance protection to Signal client HTTP calls
+  - Protects 6 endpoints: SendMessage, ReceiveMessages, InitializeDevice, DownloadAttachment, ListAttachments, HealthCheck
+  - Uses same pattern as WhatsApp client (5 max failures, 30s timeout)
+  - Backward-compatible with existing tests via nil safety check
+- **Interface segregation**: Created `RecordCleaner` interface so `Scheduler` depends only on `CleanupOldRecords` method
+- **Webhook session validation helper**: Created `validateWebhookSession()` to DRY up 4 webhook handlers
+
+### Fixed
+- **Unchecked error returns**: Fixed 40+ instances of ignored `Close()` errors across codebase
+- **De Morgan's law violations**: Simplified boolean expressions in session validation and tracing tests
+- **Ignored io.ReadAll errors**: Fixed 7 instances in Signal and WhatsApp clients
+- **Goroutine synchronization**: Changed `cleanupStop` channel to `chan struct{}` with proper `WaitGroup` synchronization
+- **Missing database context**: Added `RunMigrationsWithContext()` with context-aware `ExecContext`/`QueryRowContext`
+
+### Changed
+- **Refactored bridge.go**: Reduced `HandleSignalMessageWithDestination` by 77% (233→54 lines), `handleSignalGroupMessage` by 61% (124→48 lines)
+- **Consolidated constants**: Removed duplicate `pkg/constants/` directory; all packages now use `internal/constants`
+- **Consolidated GetClientIP**: Created canonical `internal/httputil/clientip.go` used by security and middleware
+
+### Removed
+- **Dead code**: Removed unused `ValidateFilePathWithSymlinkCheck` and `ValidateFilePathWithUnicodeCheck` functions
+
 ## [1.1.19]
 
 ### Fixed
@@ -26,28 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.17]
 
-### Added
-- **Container Restart Recovery**: Enhanced SessionMonitor with automatic WAHA container restart capability when session restarts repeatedly fail
-  - Tracks consecutive session restart failures with configurable threshold (default: 3 failures)
-  - Triggers WAHA container restart after threshold is exceeded to recover from service-level issues
-  - Implements cooldown mechanism (default: 5 minutes) to prevent restart loops
-  - Supports two restart methods:
-    - **Webhook method** (recommended): Calls external webhook endpoint for maximum flexibility and security
-    - **Docker SDK method** (future): Direct Docker API integration for advanced users
-  - Feature is disabled by default and must be explicitly enabled in configuration
-  - Comprehensive logging for all container restart events and failure tracking
-  - Resets failure counter on successful session restart
-  - Configuration options:
-    - `whatsapp.containerRestart.enabled`: Enable/disable feature (default: false)
-    - `whatsapp.containerRestart.maxConsecutiveFailures`: Failure threshold (default: 3)
-    - `whatsapp.containerRestart.cooldownMinutes`: Cooldown period (default: 5)
-    - `whatsapp.containerRestart.method`: Restart method - "webhook" or "docker" (default: "webhook")
-    - `whatsapp.containerRestart.webhookURL`: Webhook endpoint URL for container restart
-    - `whatsapp.containerRestart.containerName`: WAHA container name (default: "waha")
-    - `whatsapp.containerRestart.dockerSocketPath`: Docker socket path (default: "/var/run/docker.sock")
-
-### Changed
-- SessionMonitor now accepts ContainerRestartConfig parameter in constructor
+### Removed
+- **Container Restart Recovery**: Removed the container restart recovery feature that was implemented but not released
+  - Feature added unnecessary complexity and did not solve the underlying issue
+  - Reverted to simpler codebase architecture for better maintainability
+  - Removed all container restart configuration options from config models
+  - Removed ContainerRestarter interface and implementations
+  - Removed container restart tracking from SessionMonitor
+  - Removed container restart documentation from configuration guide
 - Added ContainerRestarter interface with webhook and no-op implementations
 
 ### Testing

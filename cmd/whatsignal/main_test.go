@@ -328,7 +328,8 @@ func TestRunWithServerError(t *testing.T) {
 
 	// Bind a random port first, then try to start server on same port
 	// This guarantees "address already in use" error regardless of privileges
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Use ":0" to bind all interfaces (same as server uses ":%s")
+	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,15 +326,22 @@ func TestRunWithServerError(t *testing.T) {
 	setupTestEnv(t)
 	defer cleanupTestEnv(t)
 
-	// Use a port that's likely to be in use or invalid
-	_ = os.Setenv("PORT", "80") // Privileged port that should fail
+	// Bind a random port first, then try to start server on same port
+	// This guarantees "address already in use" error regardless of privileges
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = listener.Close() }()
+
+	// Extract the port that was bound
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = os.Setenv("PORT", fmt.Sprintf("%d", port))
 	defer func() { _ = os.Unsetenv("PORT") }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	err := run(ctx)
-	// Should get either a permission error or bind error
+	err = run(ctx)
+	// Should get "address already in use" error
 	assert.Error(t, err)
 }
 

@@ -21,6 +21,36 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// nonRetryableSignalErrors contains error substrings that indicate non-retryable Signal errors.
+// These errors require manual intervention and should not be retried.
+var nonRetryableSignalErrors = []string{
+	"Untrusted Identity",   // Identity key changed, requires trust command
+	"Unregistered user",    // User not on Signal
+	"Invalid registration", // Registration issue
+	"Rate limit",           // Rate limited - could be retryable but with longer delays
+	"Invalid phone number", // Bad phone number format
+	"Forbidden",            // Permission denied
+	"Not found",            // User/resource not found
+}
+
+// isRetryableSignalError determines if a Signal API error should be retried.
+// Returns false for errors that require manual intervention or cannot succeed with retries.
+func isRetryableSignalError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+	for _, nonRetryable := range nonRetryableSignalErrors {
+		if strings.Contains(errStr, nonRetryable) {
+			return false
+		}
+	}
+
+	// Default to retryable for unknown/network errors
+	return true
+}
+
 // RecordCleaner provides cleanup operations for old records.
 // This interface enables components like Scheduler to depend only on the cleanup capability
 // rather than the full MessageBridge, following the Interface Segregation Principle.
@@ -206,13 +236,17 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 	backoff := retry.NewBackoff(backoffConfig)
 
 	var resp *signaltypes.SendMessageResponse
-	retryErr := backoff.Retry(ctx, func() error {
+	retryErr := backoff.RetryWithPredicate(ctx, func() error {
 		var sendErr error
 		resp, sendErr = b.sigClient.SendMessage(ctx, destinationNumber, message, attachments)
 		return sendErr
-	})
+	}, isRetryableSignalError)
 
 	if retryErr != nil {
+		// Check if this was a non-retryable error to provide better error context
+		if !isRetryableSignalError(retryErr) {
+			return fmt.Errorf("signal message failed (non-retryable): %w", retryErr)
+		}
 		return fmt.Errorf("failed to send signal message after retries: %w", retryErr)
 	}
 

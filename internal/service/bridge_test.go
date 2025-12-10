@@ -1497,3 +1497,44 @@ func TestExtractMappingFromQuotedText(t *testing.T) {
 		})
 	}
 }
+
+func TestIsRetryableSignalError(t *testing.T) {
+	tests := []struct {
+		name      string
+		errMsg    string
+		wantRetry bool
+	}{
+		{"Untrusted Identity", `signal API error: status 400, body: {"error":"Untrusted Identity for \"+15555550100\""}`, false},
+		{"Rate limit", `signal API error: status 429, body: {"error":"Rate limit exceeded"}`, false},
+		{"Unregistered user", `signal API error: status 400, body: {"error":"Unregistered user"}`, false},
+		{"Invalid phone number", `signal API error: status 400, body: {"error":"Invalid phone number format"}`, false},
+		{"Forbidden", `signal API error: status 403, body: {"error":"Forbidden"}`, false},
+		{"Not found", `signal API error: status 404, body: {"error":"Not found"}`, false},
+		{"Connection refused", `dial tcp 127.0.0.1:8080: connect: connection refused`, true},
+		{"Timeout", `context deadline exceeded`, true},
+		{"Generic server error", `signal API error: status 500, body: {"error":"Internal server error"}`, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &testError{msg: tt.errMsg}
+			result := isRetryableSignalError(err)
+			assert.Equal(t, tt.wantRetry, result, "isRetryableSignalError(%q) = %v, want %v", tt.errMsg, result, tt.wantRetry)
+		})
+	}
+
+	// Test nil case
+	t.Run("nil error", func(t *testing.T) {
+		result := isRetryableSignalError(nil)
+		assert.False(t, result, "nil error should return false")
+	})
+}
+
+// testError is a simple error type for testing
+type testError struct {
+	msg string
+}
+
+func (e *testError) Error() string {
+	return e.msg
+}

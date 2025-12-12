@@ -5,7 +5,7 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.2]
+## [1.2.3]
 
 ### Added
 - **Group name caching**: Groups are now synced on startup for proper display names in messages
@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **WAHA Groups API endpoint**: Corrected URL format from `/api/groups?session=X` to `/api/{session}/groups`
   - Fixes 404 errors when syncing groups from WAHA
+- **WAHA Group ID format**: Added flexible unmarshaling for group IDs that handles both string and object formats
+  - WAHA engines return IDs in different formats depending on version/engine type
+  - Supports `"123456789@g.us"` (string) and `{"server": "g.us", "user": "123456789", "_serialized": "..."}` (object)
 - **Sender display names**: Now uses `notifyName` from WAHA webhook payload for proper sender identification
   - Fixes numeric LID display issue where senders showed as raw IDs instead of names
   - Falls back to contact service lookup when notifyName unavailable

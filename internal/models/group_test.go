@@ -110,7 +110,7 @@ func TestGroup_ToWAGroup(t *testing.T) {
 
 	waGroup := group.ToWAGroup()
 
-	assert.Equal(t, "123456789@g.us", waGroup.ID)
+	assert.Equal(t, "123456789@g.us", waGroup.ID.String())
 	assert.Equal(t, "Test Group", waGroup.Subject)
 	assert.Equal(t, "A test group", waGroup.Description)
 	assert.Empty(t, waGroup.Participants, "Participants should not be populated from database cache")
@@ -127,7 +127,7 @@ func TestGroup_ToWAGroup_EmptyFields(t *testing.T) {
 
 	waGroup := group.ToWAGroup()
 
-	assert.Equal(t, "987654321@g.us", waGroup.ID)
+	assert.Equal(t, "987654321@g.us", waGroup.ID.String())
 	assert.Equal(t, "", waGroup.Subject)
 	assert.Equal(t, "", waGroup.Description)
 	assert.Empty(t, waGroup.Participants)
@@ -135,7 +135,7 @@ func TestGroup_ToWAGroup_EmptyFields(t *testing.T) {
 
 func TestGroup_RoundTrip(t *testing.T) {
 	originalWAGroup := &types.Group{
-		ID:          "123456789@g.us",
+		ID:          types.WAHAGroupID("123456789@g.us"),
 		Subject:     "Test Group",
 		Description: "Test Description",
 		Participants: []types.GroupParticipant{
@@ -152,7 +152,7 @@ func TestGroup_RoundTrip(t *testing.T) {
 	convertedWAGroup := modelGroup.ToWAGroup()
 
 	// Verify core fields match (participants won't match since they're not cached)
-	assert.Equal(t, originalWAGroup.ID, convertedWAGroup.ID)
+	assert.Equal(t, originalWAGroup.ID.String(), convertedWAGroup.ID.String())
 	assert.Equal(t, originalWAGroup.Subject, convertedWAGroup.Subject)
 	assert.Equal(t, originalWAGroup.Description, convertedWAGroup.Description)
 }

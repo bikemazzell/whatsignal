@@ -484,7 +484,7 @@ func TestGroup_GetDisplayName(t *testing.T) {
 
 func TestGroup_Marshal(t *testing.T) {
 	group := Group{
-		ID:          "123456789@g.us",
+		ID:          WAHAGroupID("123456789@g.us"),
 		Subject:     "Test Group",
 		Description: "A test group",
 		Participants: []GroupParticipant{
@@ -519,6 +519,70 @@ func TestGroup_Marshal(t *testing.T) {
 	assert.Equal(t, group.Participants[0].ID, unmarshaled.Participants[0].ID)
 	assert.Equal(t, group.Participants[0].Role, unmarshaled.Participants[0].Role)
 	assert.Equal(t, group.Participants[0].IsAdmin, unmarshaled.Participants[0].IsAdmin)
+}
+
+func TestWAHAGroupID_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "simple string format",
+			json:     `"123456789@g.us"`,
+			expected: "123456789@g.us",
+			wantErr:  false,
+		},
+		{
+			name:     "object format with _serialized",
+			json:     `{"server": "g.us", "user": "123456789", "_serialized": "123456789@g.us"}`,
+			expected: "123456789@g.us",
+			wantErr:  false,
+		},
+		{
+			name:     "object format without _serialized",
+			json:     `{"server": "g.us", "user": "123456789"}`,
+			expected: "123456789@g.us",
+			wantErr:  false,
+		},
+		{
+			name:     "empty string",
+			json:     `""`,
+			expected: "",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var id WAHAGroupID
+			err := json.Unmarshal([]byte(tt.json), &id)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, id.String())
+			}
+		})
+	}
+}
+
+func TestGroup_UnmarshalJSON_ObjectID(t *testing.T) {
+	// Test unmarshaling a Group with object-style ID (as returned by some WAHA engines)
+	jsonData := `{
+		"id": {"server": "g.us", "user": "120363423729567459", "_serialized": "120363423729567459@g.us"},
+		"subject": "Family Group",
+		"description": "A family chat group"
+	}`
+
+	var group Group
+	err := json.Unmarshal([]byte(jsonData), &group)
+	require.NoError(t, err)
+
+	assert.Equal(t, "120363423729567459@g.us", group.ID.String())
+	assert.Equal(t, "Family Group", group.Subject)
+	assert.Equal(t, "A family chat group", group.Description)
 }
 
 func TestGroupParticipant_Marshal(t *testing.T) {

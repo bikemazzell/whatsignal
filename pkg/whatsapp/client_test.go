@@ -227,7 +227,7 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 			if strings.HasPrefix(r.URL.Path, "/api/test-session/groups/") {
 				groupID := strings.TrimPrefix(r.URL.Path, "/api/test-session/groups/")
 				group := types.Group{
-					ID:          groupID,
+					ID:          types.WAHAGroupID(groupID),
 					Subject:     "Test Group",
 					Description: "Test Description",
 					Participants: []types.GroupParticipant{
@@ -1509,7 +1509,7 @@ func TestClient_GetGroup(t *testing.T) {
 	group, err := client.GetGroup(ctx, "group123@g.us")
 	require.NoError(t, err)
 	require.NotNil(t, group)
-	assert.Equal(t, "group123@g.us", group.ID)
+	assert.Equal(t, "group123@g.us", group.ID.String())
 	assert.Equal(t, "Test Group", group.Subject)
 	assert.Equal(t, "Test Description", group.Description)
 	assert.Len(t, group.Participants, 2)
@@ -1529,8 +1529,8 @@ func TestClient_GetAllGroups(t *testing.T) {
 	groups, err := client.GetAllGroups(ctx, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, groups, 2)
-	assert.Equal(t, "group1@g.us", groups[0].ID)
+	assert.Equal(t, "group1@g.us", groups[0].ID.String())
 	assert.Equal(t, "Group 1", groups[0].Subject)
-	assert.Equal(t, "group2@g.us", groups[1].ID)
+	assert.Equal(t, "group2@g.us", groups[1].ID.String())
 	assert.Equal(t, "Group 2", groups[1].Subject)
 }

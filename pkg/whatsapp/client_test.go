@@ -213,8 +213,8 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 			if err := json.NewEncoder(w).Encode(contacts); err != nil {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
-		case "/api/groups":
-			// All groups
+		case "/api/test-session/groups":
+			// All groups - new WAHA endpoint format: /api/{session}/groups
 			groups := []types.Group{
 				{ID: "group1@g.us", Subject: "Group 1"},
 				{ID: "group2@g.us", Subject: "Group 2"},
@@ -223,9 +223,9 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			}
 		default:
-			// Check if it's a single group request: /api/groups/{groupId}
-			if strings.HasPrefix(r.URL.Path, "/api/groups/") {
-				groupID := strings.TrimPrefix(r.URL.Path, "/api/groups/")
+			// Check if it's a single group request: /api/{session}/groups/{groupId}
+			if strings.HasPrefix(r.URL.Path, "/api/test-session/groups/") {
+				groupID := strings.TrimPrefix(r.URL.Path, "/api/test-session/groups/")
 				group := types.Group{
 					ID:          groupID,
 					Subject:     "Test Group",

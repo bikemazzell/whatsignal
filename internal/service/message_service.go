@@ -38,7 +38,7 @@ type MessageService interface {
 	GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error)
 	MarkMessageDelivered(ctx context.Context, id string) error
 	DeleteMessage(ctx context.Context, id string) error
-	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error
+	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *models.Message) error
 	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error
 	ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error
@@ -230,7 +230,7 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *messageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
+func (s *messageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error {
 	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMapping(ctx, msgID)
 	s.mu.RUnlock()
@@ -242,7 +242,7 @@ func (s *messageService) HandleWhatsAppMessageWithSession(ctx context.Context, s
 
 	LogMessageProcessing(ctx, s.logger, "WhatsApp", chatID, msgID, sender, content)
 
-	return s.bridge.HandleWhatsAppMessageWithSession(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
+	return s.bridge.HandleWhatsAppMessageWithSession(ctx, sessionName, chatID, msgID, sender, senderDisplayName, content, mediaPath)
 }
 
 func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Message) error {

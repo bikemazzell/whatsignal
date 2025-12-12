@@ -86,8 +86,8 @@ func (m *mockMessageService) UpdateDeliveryStatus(ctx context.Context, msgID str
 	return args.Error(0)
 }
 
-func (m *mockMessageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
-	args := m.Called(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
+func (m *mockMessageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error {
+	args := m.Called(ctx, sessionName, chatID, msgID, sender, senderDisplayName, content, mediaPath)
 	return args.Error(0)
 }
 

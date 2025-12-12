@@ -55,6 +55,7 @@ func CreateTestWhatsAppWebhook(session, messageID, from, body string) models.Wha
 			Body        string `json:"body"`
 			HasMedia    bool   `json:"hasMedia"`
 			Participant string `json:"participant,omitempty"`
+			NotifyName  string `json:"notifyName,omitempty"`
 			Media       *struct {
 				URL      string `json:"url"`
 				MimeType string `json:"mimetype"`
@@ -64,6 +65,10 @@ func CreateTestWhatsAppWebhook(session, messageID, from, body string) models.Wha
 				Text      string `json:"text"`
 				MessageID string `json:"messageId"`
 			} `json:"reaction"`
+			Data *struct {
+				NotifyName string `json:"notifyName,omitempty"`
+				PushName   string `json:"pushName,omitempty"`
+			} `json:"_data,omitempty"`
 			EditedMessageID *string `json:"editedMessageId,omitempty"`
 			ACK             *int    `json:"ack,omitempty"`
 		}{

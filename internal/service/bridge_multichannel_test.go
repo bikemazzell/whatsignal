@@ -118,6 +118,7 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 				"1234567890@c.us",
 				"wa-123",
 				"1234567890@c.us",
+				"", // senderDisplayName
 				"Hello",
 				"",
 			)
@@ -327,6 +328,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 			"1111111111@c.us",
 			"wa-personal-1",
 			"1111111111@c.us",
+			"", // senderDisplayName
 			"Personal message",
 			"",
 		)
@@ -353,6 +355,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 			"2222222222@c.us",
 			"wa-business-1",
 			"2222222222@c.us",
+			"", // senderDisplayName
 			"Business message",
 			"",
 		)

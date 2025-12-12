@@ -52,7 +52,9 @@ type WhatsAppWebhookPayload struct {
 		HasMedia  bool   `json:"hasMedia"`
 		// Participant is the actual sender in group chats (may be @c.us or @lid format)
 		Participant string `json:"participant,omitempty"`
-		Media       *struct {
+		// NotifyName is the sender's display name (pushName) if available
+		NotifyName string `json:"notifyName,omitempty"`
+		Media      *struct {
 			URL      string `json:"url"`
 			MimeType string `json:"mimetype"`
 			Filename string `json:"filename"`
@@ -61,6 +63,11 @@ type WhatsAppWebhookPayload struct {
 			Text      string `json:"text"`
 			MessageID string `json:"messageId"`
 		} `json:"reaction"`
+		// _data contains engine-specific internal data that may include additional fields
+		Data *struct {
+			NotifyName string `json:"notifyName,omitempty"`
+			PushName   string `json:"pushName,omitempty"`
+		} `json:"_data,omitempty"`
 		// Fields for message.edited event
 		EditedMessageID *string `json:"editedMessageId,omitempty"`
 		// Fields for message.ack event (ACK status is sent directly as a number)

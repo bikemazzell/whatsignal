@@ -83,6 +83,17 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 		return phoneNumber
 	}
 
+	// Handle LID (Linked ID) format - WhatsApp internal user identifiers
+	// LIDs may not be resolvable via the standard contacts API
+	if strings.HasSuffix(phoneNumber, "@lid") {
+		cs.logger.WithContext(logrus.Fields{
+			"phone_number": phoneNumber,
+			"type":         "lid",
+		}).Debug("LID format detected, using as-is")
+		// Strip the @lid suffix and return just the numeric ID
+		return strings.TrimSuffix(phoneNumber, "@lid")
+	}
+
 	// Try to get from cache first
 	contact, err := cs.db.GetContactByPhone(ctx, phoneNumber)
 	if err != nil {

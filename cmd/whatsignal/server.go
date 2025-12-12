@@ -457,12 +457,28 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		return nil
 	}
 
-	// Validate phone number early and skip invalid system messages
+	// Determine chatID and sender
+	// For direct messages: from = chatID = sender
+	// For group messages: from = chatID (group), participant = actual sender
+	chatID := payload.Payload.From
+	sender := payload.Payload.From
+
+	isGroupMessage := strings.HasSuffix(chatID, "@g.us")
+	if isGroupMessage && payload.Payload.Participant != "" {
+		sender = payload.Payload.Participant
+		s.logger.WithFields(logrus.Fields{
+			"chatID":      service.SanitizePhoneNumber(chatID),
+			"participant": service.SanitizePhoneNumber(sender),
+		}).Debug("Group message: using participant as sender")
+	}
+
+	// Validate sender phone number and skip invalid system messages
 	// (newsletters, channels, and other special WhatsApp message types may have invalid sender IDs)
-	if err := service.ValidatePhoneNumber(payload.Payload.From); err != nil {
+	if err := service.ValidatePhoneNumber(sender); err != nil {
 		s.logger.WithFields(logrus.Fields{
 			"messageID": service.SanitizeMessageID(payload.Payload.ID),
 			"from":      payload.Payload.From,
+			"sender":    sender,
 			"error":     err.Error(),
 		}).Debug("Ignoring message with invalid sender phone number (likely system/newsletter message)")
 		return nil
@@ -478,8 +494,6 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		mediaURL = payload.Payload.Media.URL
 	}
 
-	chatID := payload.Payload.From
-
 	// Validate session from webhook payload
 	sessionName, err, skip := s.validateWebhookSession(payload, "message")
 	if err != nil {
@@ -494,7 +508,7 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		sessionName,
 		chatID,
 		payload.Payload.ID,
-		payload.Payload.From,
+		sender,
 		payload.Payload.Body,
 		mediaURL,
 	)

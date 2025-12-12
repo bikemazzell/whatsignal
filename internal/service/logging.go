@@ -103,9 +103,13 @@ func ValidatePhoneNumber(phone string) error {
 	// Check if this is a group ID first - groups have different validation rules
 	isGroup := strings.HasSuffix(phone, "@g.us") || strings.Contains(phone, "@g.us")
 
-	// Remove @c.us or @g.us suffix for validation
+	// Check if this is a LID (Linked ID) format used by WhatsApp
+	isLID := strings.HasSuffix(phone, "@lid")
+
+	// Remove @c.us, @g.us, or @lid suffix for validation
 	cleaned := strings.TrimSuffix(phone, "@c.us")
 	cleaned = strings.TrimSuffix(cleaned, "@g.us")
+	cleaned = strings.TrimSuffix(cleaned, "@lid")
 
 	// Handle group IDs with hyphens (some groups have format like "120363-1234567890@g.us")
 	if strings.Contains(cleaned, "-") {
@@ -137,18 +141,22 @@ func ValidatePhoneNumber(phone string) error {
 		return fmt.Errorf("phone number must contain digits")
 	}
 
-	// Different length validation for groups vs individual contacts
+	// Different length validation for groups vs individual contacts vs LIDs
 	// Groups can have longer IDs (up to 25 digits observed in the wild)
 	// Individual phone numbers: 7-15 digits (E.164 standard)
 	// WhatsApp business/special accounts: up to 20 digits
+	// LIDs (Linked IDs): up to 25 digits (WhatsApp internal user identifiers)
 	maxLength := 20
-	if isGroup {
-		maxLength = 25 // Groups can have longer numeric IDs
+	if isGroup || isLID {
+		maxLength = 25 // Groups and LIDs can have longer numeric IDs
 	}
 
 	if len(digits) < 7 || len(digits) > maxLength {
 		if isGroup {
 			return fmt.Errorf("group ID must be between 7 and %d digits, got %d", maxLength, len(digits))
+		}
+		if isLID {
+			return fmt.Errorf("linked ID must be between 7 and %d digits, got %d", maxLength, len(digits))
 		}
 		return fmt.Errorf("phone number must be between 7 and %d digits, got %d", maxLength, len(digits))
 	}

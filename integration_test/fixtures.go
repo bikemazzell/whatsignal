@@ -253,14 +253,15 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			Session: "personal",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -285,14 +286,15 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			Session: "business",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -326,14 +328,15 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			Session: "personal",
 			Event:   models.EventMessageACK,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -359,14 +362,15 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			Session: "personal",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -398,14 +402,15 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			Session: "personal",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -430,14 +435,15 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 			Session: "personal",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -449,27 +455,29 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
 			}{
-				ID:        "wamid.family456",
-				Timestamp: time.Now().Unix(),
-				From:      "120363028987654321@g.us",
-				FromMe:    false,
-				To:        "personal@c.us",
-				Body:      "Don't forget dinner on Sunday!",
-				HasMedia:  false,
+				ID:          "wamid.family456",
+				Timestamp:   time.Now().Unix(),
+				From:        "120363028987654321@g.us",
+				FromMe:      false,
+				To:          "personal@c.us",
+				Body:        "Don't forget dinner on Sunday!",
+				HasMedia:    false,
+				Participant: "1234567890@c.us",
 			},
 		},
 		"group_work_message": {
 			Session: "personal",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -481,27 +489,29 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
 			}{
-				ID:        "wamid.work789",
-				Timestamp: time.Now().Unix(),
-				From:      "120363029999888777@g.us",
-				FromMe:    false,
-				To:        "personal@c.us",
-				Body:      "@Alice can you review the PR?",
-				HasMedia:  false,
+				ID:          "wamid.work789",
+				Timestamp:   time.Now().Unix(),
+				From:        "120363029999888777@g.us",
+				FromMe:      false,
+				To:          "personal@c.us",
+				Body:        "@Alice can you review the PR?",
+				HasMedia:    false,
+				Participant: "9876543210@c.us",
 			},
 		},
 		"group_message_quoted": {
 			Session: "personal",
 			Event:   models.EventMessage,
 			Payload: struct {
-				ID        string `json:"id"`
-				Timestamp int64  `json:"timestamp"`
-				From      string `json:"from"`
-				FromMe    bool   `json:"fromMe"`
-				To        string `json:"to"`
-				Body      string `json:"body"`
-				HasMedia  bool   `json:"hasMedia"`
-				Media     *struct {
+				ID          string `json:"id"`
+				Timestamp   int64  `json:"timestamp"`
+				From        string `json:"from"`
+				FromMe      bool   `json:"fromMe"`
+				To          string `json:"to"`
+				Body        string `json:"body"`
+				HasMedia    bool   `json:"hasMedia"`
+				Participant string `json:"participant,omitempty"`
+				Media       *struct {
 					URL      string `json:"url"`
 					MimeType string `json:"mimetype"`
 					Filename string `json:"filename"`
@@ -513,13 +523,14 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
 			}{
-				ID:        "wamid.groupquoted999",
-				Timestamp: time.Now().Unix(),
-				From:      "120363028123456789@g.us",
-				FromMe:    false,
-				To:        "personal@c.us",
-				Body:      "I agree with that suggestion!",
-				HasMedia:  false,
+				ID:          "wamid.groupquoted999",
+				Timestamp:   time.Now().Unix(),
+				From:        "120363028123456789@g.us",
+				FromMe:      false,
+				To:          "personal@c.us",
+				Body:        "I agree with that suggestion!",
+				HasMedia:    false,
+				Participant: "1122334455@c.us",
 			},
 		},
 	}

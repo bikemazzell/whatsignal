@@ -12,14 +12,15 @@ func TestWhatsAppWebhookPayload_JSONMarshaling(t *testing.T) {
 	payload := WhatsAppWebhookPayload{
 		Event: "message",
 		Payload: struct {
-			ID        string `json:"id"`
-			Timestamp int64  `json:"timestamp"`
-			From      string `json:"from"`
-			FromMe    bool   `json:"fromMe"`
-			To        string `json:"to"`
-			Body      string `json:"body"`
-			HasMedia  bool   `json:"hasMedia"`
-			Media     *struct {
+			ID          string `json:"id"`
+			Timestamp   int64  `json:"timestamp"`
+			From        string `json:"from"`
+			FromMe      bool   `json:"fromMe"`
+			To          string `json:"to"`
+			Body        string `json:"body"`
+			HasMedia    bool   `json:"hasMedia"`
+			Participant string `json:"participant,omitempty"`
+			Media       *struct {
 				URL      string `json:"url"`
 				MimeType string `json:"mimetype"`
 				Filename string `json:"filename"`

@@ -50,7 +50,9 @@ type WhatsAppWebhookPayload struct {
 		To        string `json:"to"`
 		Body      string `json:"body"`
 		HasMedia  bool   `json:"hasMedia"`
-		Media     *struct {
+		// Participant is the actual sender in group chats (may be @c.us or @lid format)
+		Participant string `json:"participant,omitempty"`
+		Media       *struct {
 			URL      string `json:"url"`
 			MimeType string `json:"mimetype"`
 			Filename string `json:"filename"`

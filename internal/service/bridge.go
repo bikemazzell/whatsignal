@@ -175,12 +175,16 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 
 	b.logger.WithFields(logrusFields).Info("Processing WhatsApp message")
 
+	// Extract phone number from sender ID
+	// Formats: "12345@c.us" (user), "12345@lid" (linked ID), "12345@g.us" (group - shouldn't happen after server.go fix)
 	senderPhone := sender
 	if strings.HasSuffix(sender, "@c.us") {
 		senderPhone = strings.TrimSuffix(sender, "@c.us")
+	} else if strings.HasSuffix(sender, "@lid") {
+		// LID (Linked ID) format used by WhatsApp for some user identifiers
+		senderPhone = strings.TrimSuffix(sender, "@lid")
 	} else if strings.HasSuffix(sender, "@g.us") {
-		// For group messages, sender might be in format "groupID@g.us"
-		// The actual participant phone is in a different field, but for now we handle chatID
+		// Legacy fallback: group ID as sender (should not happen with updated server.go)
 		senderPhone = strings.TrimSuffix(sender, "@g.us")
 	}
 

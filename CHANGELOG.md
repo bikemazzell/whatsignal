@@ -5,6 +5,21 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2]
+
+### Added
+- **Group name caching**: Groups are now synced on startup for proper display names in messages
+  - Added `groups.syncOnStartup` and `groups.cacheHours` configuration options
+  - Parallel group sync across all configured sessions (same pattern as contact sync)
+  - Messages from groups now display as "Sender in GroupName: message" instead of raw group IDs
+
+### Fixed
+- **WAHA Groups API endpoint**: Corrected URL format from `/api/groups?session=X` to `/api/{session}/groups`
+  - Fixes 404 errors when syncing groups from WAHA
+- **Sender display names**: Now uses `notifyName` from WAHA webhook payload for proper sender identification
+  - Fixes numeric LID display issue where senders showed as raw IDs instead of names
+  - Falls back to contact service lookup when notifyName unavailable
+
 ## [1.1.20]
 
 ### Security

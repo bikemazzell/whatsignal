@@ -55,7 +55,7 @@ func TestGroupService_GetGroupName_CacheMiss(t *testing.T) {
 
 	// API returns group
 	waGroup := &types.Group{
-		ID:          groupID,
+		ID:          types.WAHAGroupID(groupID),
 		Subject:     "Fresh Group",
 		Description: "Description",
 		Participants: []types.GroupParticipant{
@@ -98,7 +98,7 @@ func TestGroupService_GetGroupName_OldCache(t *testing.T) {
 
 	// API returns updated group
 	waGroup := &types.Group{
-		ID:      groupID,
+		ID:      types.WAHAGroupID(groupID),
 		Subject: "Updated Group Name",
 	}
 	mockWA.On("GetGroup", ctx, groupID).Return(waGroup, nil)
@@ -220,7 +220,7 @@ func TestGroupService_RefreshGroup(t *testing.T) {
 	sessionName := "default"
 
 	waGroup := &types.Group{
-		ID:      groupID,
+		ID:      types.WAHAGroupID(groupID),
 		Subject: "Refreshed Group",
 	}
 
@@ -287,15 +287,15 @@ func TestGroupService_SyncAllGroups(t *testing.T) {
 	batch1 := make([]types.Group, 100)
 	for i := 0; i < 100; i++ {
 		batch1[i] = types.Group{
-			ID:      fmt.Sprintf("group%d@g.us", i),
+			ID:      types.WAHAGroupID(fmt.Sprintf("group%d@g.us", i)),
 			Subject: fmt.Sprintf("Group %d", i),
 		}
 	}
 
 	// Second batch with fewer groups (indicating end)
 	batch2 := []types.Group{
-		{ID: "group100@g.us", Subject: "Group 100"},
-		{ID: "group101@g.us", Subject: "Group 101"},
+		{ID: types.WAHAGroupID("group100@g.us"), Subject: "Group 100"},
+		{ID: types.WAHAGroupID("group101@g.us"), Subject: "Group 101"},
 	}
 
 	mockWA.On("GetAllGroups", ctx, 100, 0).Return(batch1, nil)

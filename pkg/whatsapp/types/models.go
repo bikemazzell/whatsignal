@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -168,9 +169,49 @@ type ServerVersion struct {
 	Browser string `json:"browser"`
 }
 
+// WAHAGroupID handles WAHA's flexible ID format which can be either:
+// - A simple string: "123456789@g.us"
+// - An object: {"server": "g.us", "user": "123456789", "_serialized": "123456789@g.us"}
+type WAHAGroupID string
+
+// UnmarshalJSON implements custom unmarshaling for WAHA group IDs
+func (w *WAHAGroupID) UnmarshalJSON(data []byte) error {
+	// First try to unmarshal as a string
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*w = WAHAGroupID(s)
+		return nil
+	}
+
+	// Try to unmarshal as an object with _serialized field
+	var obj struct {
+		Serialized string `json:"_serialized"`
+		Server     string `json:"server"`
+		User       string `json:"user"`
+	}
+	if err := json.Unmarshal(data, &obj); err == nil {
+		if obj.Serialized != "" {
+			*w = WAHAGroupID(obj.Serialized)
+			return nil
+		}
+		// Construct from user@server if _serialized is missing
+		if obj.User != "" && obj.Server != "" {
+			*w = WAHAGroupID(obj.User + "@" + obj.Server)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("cannot unmarshal %s into WAHAGroupID", string(data))
+}
+
+// String returns the string representation of the ID
+func (w WAHAGroupID) String() string {
+	return string(w)
+}
+
 // Group represents a WhatsApp group from WAHA API
 type Group struct {
-	ID           string             `json:"id"`
+	ID           WAHAGroupID        `json:"id"`
 	Subject      string             `json:"subject"`
 	Description  string             `json:"description"`
 	Participants []GroupParticipant `json:"participants"`
@@ -190,7 +231,7 @@ func (g *Group) GetDisplayName() string {
 	if g.Subject != "" {
 		return g.Subject
 	}
-	return g.ID
+	return g.ID.String()
 }
 
 // IsGroupMessage returns true if the message is from a group chat

@@ -27,7 +27,7 @@ func (g *Group) GetDisplayName() string {
 
 // FromWAGroup converts a WhatsApp types.Group to a models.Group
 func (g *Group) FromWAGroup(waGroup *types.Group, sessionName string) {
-	g.GroupID = waGroup.ID
+	g.GroupID = waGroup.ID.String()
 	g.Subject = waGroup.Subject
 	g.Description = waGroup.Description
 	g.ParticipantCount = len(waGroup.Participants)
@@ -37,7 +37,7 @@ func (g *Group) FromWAGroup(waGroup *types.Group, sessionName string) {
 // ToWAGroup converts a models.Group to a types.Group
 func (g *Group) ToWAGroup() *types.Group {
 	return &types.Group{
-		ID:          g.GroupID,
+		ID:          types.WAHAGroupID(g.GroupID),
 		Subject:     g.Subject,
 		Description: g.Description,
 		// Note: Participants are not cached in the database, so this will be empty

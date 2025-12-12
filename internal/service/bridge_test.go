@@ -223,7 +223,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup()
 			}
-			err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", tt.chatID, tt.msgID, tt.sender, tt.content, tt.mediaPath)
+			err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", tt.chatID, tt.msgID, tt.sender, "", tt.content, tt.mediaPath)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -1367,7 +1367,7 @@ func TestBridge_HandleWhatsAppMessage_GroupMessage(t *testing.T) {
 		bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
 
 		// Call with group chat ID
-		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "group123@g.us", "wa-msg-123", "1234567890@c.us", "Hello everyone", "")
+		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "group123@g.us", "wa-msg-123", "1234567890@c.us", "", "Hello everyone", "")
 
 		assert.NoError(t, err)
 		mockContactService.AssertExpectations(t)
@@ -1393,7 +1393,7 @@ func TestBridge_HandleWhatsAppMessage_GroupMessage(t *testing.T) {
 		bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
 
 		// Call with group chat ID but no group service
-		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "group456@g.us", "wa-msg-456", "9876543210@c.us", "Hi there", "")
+		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "group456@g.us", "wa-msg-456", "9876543210@c.us", "", "Hi there", "")
 
 		assert.NoError(t, err)
 		mockContactService.AssertExpectations(t)
@@ -1418,7 +1418,7 @@ func TestBridge_HandleWhatsAppMessage_GroupMessage(t *testing.T) {
 		bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.AnythingOfType("*models.MessageMapping")).Return(nil)
 
 		// Call with direct chat ID (not a group)
-		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "5555555555@c.us", "wa-msg-789", "5555555555@c.us", "Direct message", "")
+		err := bridge.HandleWhatsAppMessageWithSession(ctx, "default", "5555555555@c.us", "wa-msg-789", "5555555555@c.us", "", "Direct message", "")
 
 		assert.NoError(t, err)
 		mockContactService.AssertExpectations(t)

@@ -954,12 +954,19 @@ func (env *TestEnvironment) handleWhatsAppWebhook() http.HandlerFunc {
 				chatID = chatID + "@c.us"
 			}
 
+			// Extract sender display name from notifyName if available
+			senderDisplayName := ""
+			if payload.Payload.NotifyName != "" {
+				senderDisplayName = payload.Payload.NotifyName
+			}
+
 			err := env.messageService.HandleWhatsAppMessageWithSession(
 				ctx,
 				sessionName,
 				chatID,
 				payload.Payload.ID,
 				payload.Payload.From,
+				senderDisplayName,
 				payload.Payload.Body,
 				"", // No media path for now
 			)

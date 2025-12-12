@@ -11,6 +11,8 @@
   // - sessionStartupTimeoutSec: Max time a session can stay in STARTING status before restart (default: 30 seconds)
   //   * Prevents sessions from getting stuck during initialization
   //   * Can be overridden with WHATSAPP_SESSION_STARTUP_TIMEOUT_SEC environment variable
+  // - groups.syncOnStartup: Sync all groups on startup for proper group name display (recommended: true)
+  // - groups.cacheHours: How many hours to cache group info before refreshing (default: 24)
   // - WAHA version is auto-detected: Plus = native videos, Core = document fallback
 
   "whatsapp": {
@@ -22,7 +24,11 @@
     "contactCacheHours": 24,
     "sessionHealthCheckSec": 30,
     "sessionAutoRestart": true,
-    "sessionStartupTimeoutSec": 30
+    "sessionStartupTimeoutSec": 30,
+    "groups": {
+      "syncOnStartup": true,
+      "cacheHours": 24
+    }
   },
 
   // Signal configuration

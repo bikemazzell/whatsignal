@@ -203,13 +203,10 @@ func run(ctx context.Context) error {
 
 	// Optionally sync all groups on startup if configured
 	if cfg.WhatsApp.Groups.SyncOnStartup {
-		// Sync groups for the default session
-		logger.WithField("session", defaultSessionName).Info("Starting group sync on startup...")
-		if err := groupService.SyncAllGroups(ctx, defaultSessionName); err != nil {
-			logger.Warnf("Failed to sync groups on startup: %v. Group names may not be available immediately.", err)
-		} else {
-			logger.Info("Group sync completed successfully")
-		}
+		// Sync groups for all configured sessions in parallel
+		syncParallelGroups(ctx, cfg, db, apiKey, groupCacheHours, logger)
+	} else {
+		logger.Info("Group sync on startup is disabled")
 	}
 
 	bridge := service.NewBridge(waClient, sigClient, db, mediaHandler, models.RetryConfig{
@@ -444,5 +441,88 @@ func syncSessionContacts(ctx context.Context, cfg *models.Config, db *database.D
 		sessionLogger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
 	} else {
 		sessionLogger.Info("Contact sync completed successfully")
+	}
+}
+
+// syncParallelGroups performs group sync for all sessions in parallel with bounded concurrency
+func syncParallelGroups(ctx context.Context, cfg *models.Config, db *database.Database, apiKey string, cacheHours int, logger *logrus.Logger) {
+	channels := cfg.Channels
+	if len(channels) == 0 {
+		return
+	}
+
+	// Use bounded concurrency to avoid overwhelming the system
+	maxConcurrency := constants.DefaultContactSyncBatchSize / constants.DefaultContactSyncConcurrencyDivisor
+	if maxConcurrency < 1 {
+		maxConcurrency = 1
+	}
+	if maxConcurrency > constants.DefaultContactSyncMaxConcurrency {
+		maxConcurrency = constants.DefaultContactSyncMaxConcurrency
+	}
+
+	semaphore := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	logger.WithField("sessions", len(channels)).WithField("max_concurrent", maxConcurrency).Info("Starting parallel group sync")
+
+	for _, channel := range channels {
+		wg.Add(1)
+		go func(sessionName string) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			syncSessionGroups(ctx, cfg, db, apiKey, sessionName, cacheHours, logger)
+		}(channel.WhatsAppSessionName)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	logger.Info("Parallel group sync completed")
+}
+
+// syncSessionGroups handles group sync for a single session
+func syncSessionGroups(ctx context.Context, cfg *models.Config, db *database.Database, apiKey, sessionName string, cacheHours int, logger *logrus.Logger) {
+	sessionLogger := logger.WithField("session", sessionName)
+	sessionLogger.Info("Waiting for WhatsApp session to be ready for group sync...")
+
+	// Create a client for this specific session
+	sessionClient := whatsapp.NewClient(types.ClientConfig{
+		BaseURL:     cfg.WhatsApp.APIBaseURL,
+		APIKey:      apiKey,
+		SessionName: sessionName,
+		Timeout:     cfg.WhatsApp.Timeout,
+		RetryCount:  cfg.WhatsApp.RetryCount,
+	})
+
+	// Wait for session to be ready
+	sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
+	if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
+		sessionLogger.Warnf("Failed to wait for session ready: %v. Skipping group sync.", err)
+		return
+	}
+
+	sessionLogger.Info("WhatsApp session is ready. Syncing groups...")
+
+	// Check session status before attempting group sync
+	sessionStatus, err := sessionClient.GetSessionStatus(ctx)
+	if err != nil {
+		sessionLogger.Warnf("Failed to get session status before group sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping group sync.", err)
+		return
+	}
+
+	if sessionStatus == nil || sessionStatus.Status != "WORKING" {
+		sessionLogger.Warnf("Session status is %v, not WORKING. Skipping group sync.", sessionStatus)
+		return
+	}
+
+	// Create a group service for this session
+	sessionGroupService := service.NewGroupServiceWithConfig(db, sessionClient, cacheHours)
+	if err := sessionGroupService.SyncAllGroups(ctx, sessionName); err != nil {
+		sessionLogger.Warnf("Failed to sync groups on startup: %v. Group names may not be available immediately.", err)
+	} else {
+		sessionLogger.Info("Group sync completed successfully")
 	}
 }

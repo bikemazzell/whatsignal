@@ -944,9 +944,8 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 
 // GetGroup retrieves a specific group by group ID
 func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
-	// Build the URL: /api/groups/{groupId}?session={sessionName}
-	endpoint := fmt.Sprintf("%s%s/%s", types.APIBase, types.EndpointGroups, groupID)
-	url := fmt.Sprintf("%s%s?session=%s", c.baseURL, endpoint, c.sessionName)
+	// Build the URL: /api/{session}/groups/{groupId}
+	url := fmt.Sprintf("%s%s/%s%s/%s", c.baseURL, types.APIBase, c.sessionName, types.EndpointGroups, groupID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -981,10 +980,9 @@ func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.G
 
 // GetAllGroups retrieves all groups with pagination
 func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([]types.Group, error) {
-	// Build the URL: /api/groups?session={sessionName}&limit={limit}&offset={offset}
-	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointGroupsAll)
-	url := fmt.Sprintf("%s%s?session=%s&limit=%d&offset=%d",
-		c.baseURL, endpoint, c.sessionName, limit, offset)
+	// Build the URL: /api/{session}/groups?limit={limit}&offset={offset}
+	url := fmt.Sprintf("%s%s/%s%s?limit=%d&offset=%d",
+		c.baseURL, types.APIBase, c.sessionName, types.EndpointGroupsAll, limit, offset)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

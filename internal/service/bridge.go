@@ -63,7 +63,7 @@ type RecordCleaner interface {
 type MessageBridge interface {
 	RecordCleaner
 	SendMessage(ctx context.Context, msg *models.Message) error
-	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error
+	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error
 	HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error
 	HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error
@@ -144,7 +144,7 @@ func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 	}
 }
 
-func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
+func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error {
 	startTime := time.Now()
 	requestInfo := tracing.GetRequestInfo(ctx)
 
@@ -188,8 +188,11 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 		senderPhone = strings.TrimSuffix(sender, "@g.us")
 	}
 
-	displayName := senderPhone // fallback
-	if b.contactService != nil {
+	// Use provided display name if available, otherwise fall back to contact service lookup
+	displayName := senderPhone // final fallback
+	if senderDisplayName != "" {
+		displayName = senderDisplayName
+	} else if b.contactService != nil {
 		displayName = b.contactService.GetContactDisplayName(ctx, senderPhone)
 	}
 

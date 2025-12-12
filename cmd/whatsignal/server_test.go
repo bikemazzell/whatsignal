@@ -333,8 +333,8 @@ func (m *mockMessageService) DeleteMessage(ctx context.Context, id string) error
 	return args.Error(0)
 }
 
-func (m *mockMessageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, content string, mediaPath string) error {
-	args := m.Called(ctx, sessionName, chatID, msgID, sender, content, mediaPath)
+func (m *mockMessageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error {
+	args := m.Called(ctx, sessionName, chatID, msgID, sender, senderDisplayName, content, mediaPath)
 	return args.Error(0)
 }
 
@@ -719,6 +719,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 					"+1234567890",
 					"msg123",
 					"+1234567890",
+					"", // senderDisplayName
 					"Hello, World!",
 					"",
 				).Return(nil).Once()
@@ -787,6 +788,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 					"+1234567891",
 					"msg124",
 					"+1234567891",
+					"", // senderDisplayName
 					"Check this out!",
 					"/path/to/image.jpg",
 				).Return(nil).Once()
@@ -860,6 +862,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 					"+1234567893",
 					"msg125",
 					"+1234567893",
+					"", // senderDisplayName
 					"Error message",
 					"",
 				).Return(assert.AnError).Once()
@@ -1698,6 +1701,7 @@ func TestServer_RequireSessionName(t *testing.T) {
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
+					mock.Anything, // senderDisplayName
 					mock.Anything,
 					mock.Anything,
 				).Return(nil).Once()
@@ -1829,6 +1833,7 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
+					mock.Anything, // senderDisplayName
 					mock.Anything,
 					mock.Anything,
 				).Return(nil).Once()
@@ -1870,6 +1875,7 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 					mock.Anything,
 					mock.Anything,
 					mock.Anything,
+					mock.Anything, // senderDisplayName
 					mock.Anything,
 					mock.Anything,
 				)

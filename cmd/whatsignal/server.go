@@ -472,6 +472,18 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		}).Debug("Group message: using participant as sender")
 	}
 
+	// Extract sender display name from webhook (notifyName or _data.notifyName/_data.pushName)
+	senderDisplayName := ""
+	if payload.Payload.NotifyName != "" {
+		senderDisplayName = payload.Payload.NotifyName
+	} else if payload.Payload.Data != nil {
+		if payload.Payload.Data.NotifyName != "" {
+			senderDisplayName = payload.Payload.Data.NotifyName
+		} else if payload.Payload.Data.PushName != "" {
+			senderDisplayName = payload.Payload.Data.PushName
+		}
+	}
+
 	// Validate sender phone number and skip invalid system messages
 	// (newsletters, channels, and other special WhatsApp message types may have invalid sender IDs)
 	if err := service.ValidatePhoneNumber(sender); err != nil {
@@ -509,6 +521,7 @@ func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.What
 		chatID,
 		payload.Payload.ID,
 		sender,
+		senderDisplayName,
 		payload.Payload.Body,
 		mediaURL,
 	)

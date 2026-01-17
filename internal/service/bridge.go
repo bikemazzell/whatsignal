@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,33 +88,35 @@ type DatabaseService interface {
 }
 
 type bridge struct {
-	waClient       types.WAClient
-	sigClient      signal.Client
-	db             DatabaseService
-	media          media.Handler
-	retryConfig    models.RetryConfig
-	mediaConfig    models.MediaConfig
-	mediaRouter    intmedia.Router
-	logger         *logrus.Logger
-	contactService ContactServiceInterface
-	groupService   GroupServiceInterface
-	channelManager *ChannelManager
+	waClient             types.WAClient
+	sigClient            signal.Client
+	db                   DatabaseService
+	media                media.Handler
+	retryConfig          models.RetryConfig
+	mediaConfig          models.MediaConfig
+	mediaRouter          intmedia.Router
+	logger               *logrus.Logger
+	contactService       ContactServiceInterface
+	groupService         GroupServiceInterface
+	channelManager       *ChannelManager
+	signalAttachmentsDir string
 }
 
 // NewBridge creates a new bridge with channel manager (channels are required)
-func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface, groupService GroupServiceInterface, logger *logrus.Logger) MessageBridge {
+func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseService, mh media.Handler, rc models.RetryConfig, mc models.MediaConfig, channelManager *ChannelManager, contactService ContactServiceInterface, groupService GroupServiceInterface, signalAttachmentsDir string, logger *logrus.Logger) MessageBridge {
 	return &bridge{
-		waClient:       waClient,
-		sigClient:      sigClient,
-		db:             db,
-		media:          mh,
-		retryConfig:    rc,
-		mediaConfig:    mc,
-		mediaRouter:    intmedia.NewRouter(mc),
-		logger:         logger,
-		contactService: contactService,
-		groupService:   groupService,
-		channelManager: channelManager,
+		waClient:             waClient,
+		sigClient:            sigClient,
+		db:                   db,
+		media:                mh,
+		retryConfig:          rc,
+		mediaConfig:          mc,
+		mediaRouter:          intmedia.NewRouter(mc),
+		logger:               logger,
+		contactService:       contactService,
+		groupService:         groupService,
+		channelManager:       channelManager,
+		signalAttachmentsDir: signalAttachmentsDir,
 	}
 }
 
@@ -355,12 +359,20 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	}
 
 	// Resolve target WhatsApp chat
-	mapping, err := b.resolveMessageMapping(ctx, msg, sessionName)
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, sessionName)
 	if err != nil {
 		return err
 	}
 	if mapping == nil {
 		return b.handleNewSignalThread(ctx, msg)
+	}
+
+	// Send warning if fallback routing was used (no quoted message)
+	if usedFallback {
+		notice := fmt.Sprintf("⚠️ Message routed to last active chat: %s\nTip: Quote a message to reply to a specific chat.", mapping.WhatsAppChatID)
+		if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
+			b.logger.WithError(notifyErr).Warn("Failed to send fallback routing notification")
+		}
 	}
 
 	// Process attachments
@@ -533,12 +545,13 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 
 // resolveMessageMapping finds the target WhatsApp chat for a Signal message.
 // It handles both quoted message lookups and auto-reply to latest sender.
-func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) (*models.MessageMapping, error) {
+// Returns the mapping, whether the fallback was used, and any error.
+func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) (*models.MessageMapping, bool, error) {
 	var mapping *models.MessageMapping
 	var err error
 
 	if msg.QuotedMessage == nil {
-		// No quoted message - find the latest message for auto-reply
+		// No quoted message - find the latest message for auto-reply (fallback)
 		mapping, err = b.db.GetLatestMessageMappingBySession(ctx, sessionName)
 		if err != nil {
 			b.logger.WithFields(logrus.Fields{
@@ -546,14 +559,14 @@ func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.Sig
 				"sessionName":  sessionName,
 				"error":        err,
 			}).Error("Failed to get latest message mapping for auto-reply")
-			return nil, fmt.Errorf("failed to get latest message mapping for auto-reply: %w", err)
+			return nil, false, fmt.Errorf("failed to get latest message mapping for auto-reply: %w", err)
 		}
 		if mapping != nil {
 			b.logger.WithFields(logrus.Fields{
 				"whatsappChatID": mapping.WhatsAppChatID,
-			}).Debug("Found latest message mapping for auto-reply")
+			}).Debug("Found latest message mapping for auto-reply (fallback)")
 		}
-		return mapping, nil
+		return mapping, true, nil // true = used fallback
 	}
 
 	// Has quoted message - look it up
@@ -567,14 +580,14 @@ func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.Sig
 			"quotedMessageID": msg.QuotedMessage.ID,
 			"error":           err,
 		}).Error("Failed to get message mapping for quoted message")
-		return nil, fmt.Errorf("failed to get message mapping for quoted message: %w", err)
+		return nil, false, fmt.Errorf("failed to get message mapping for quoted message: %w", err)
 	}
 
 	if mapping != nil {
 		b.logger.WithFields(logrus.Fields{
 			"quotedMessageID": msg.QuotedMessage.ID,
 		}).Debug("Found message mapping in database")
-		return mapping, nil
+		return mapping, false, nil // false = explicit quote, not fallback
 	}
 
 	// Try fallback extraction from quoted message text
@@ -584,10 +597,10 @@ func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.Sig
 
 	mapping = b.extractMappingFromQuotedText(msg.QuotedMessage.Text)
 	if mapping == nil {
-		return nil, fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
+		return nil, false, fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
 	}
 
-	return mapping, nil
+	return mapping, false, nil // false = extracted from quote text
 }
 
 // extractMappingFromQuotedText attempts to extract a WhatsApp chat ID from quoted message text.
@@ -687,6 +700,49 @@ func (b *bridge) CleanupOldRecords(ctx context.Context, retentionDays int) error
 
 	if err := b.media.CleanupOldFiles(int64(retentionDays * constants.SecondsPerDay)); err != nil {
 		return fmt.Errorf("failed to cleanup old media files: %w", err)
+	}
+
+	if err := b.cleanupSignalAttachments(retentionDays); err != nil {
+		return fmt.Errorf("failed to cleanup signal attachments: %w", err)
+	}
+
+	return nil
+}
+
+func (b *bridge) cleanupSignalAttachments(retentionDays int) error {
+	if b.signalAttachmentsDir == "" {
+		return nil
+	}
+
+	entries, err := os.ReadDir(b.signalAttachmentsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read signal attachments directory: %w", err)
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			b.logger.WithError(err).WithField("file", entry.Name()).Warn("Failed to get file info for signal attachment")
+			continue
+		}
+
+		if info.ModTime().Before(cutoff) {
+			filePath := filepath.Join(b.signalAttachmentsDir, info.Name())
+			if err := os.Remove(filePath); err != nil {
+				b.logger.WithError(err).WithField("file", filePath).Warn("Failed to remove old signal attachment")
+				continue
+			}
+			b.logger.WithField("file", filePath).Debug("Removed old signal attachment")
+		}
 	}
 
 	return nil

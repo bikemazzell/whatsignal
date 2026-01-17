@@ -84,6 +84,22 @@ func New(dbPath string, cfg *models.DatabaseConfig) (*Database, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	// Enable WAL mode for better concurrency (allows concurrent readers during writes)
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to enable WAL mode: %w (close error: %v)", err, closeErr)
+		}
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
+	// Set synchronous mode for better performance with WAL
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to set synchronous mode: %w (close error: %v)", err, closeErr)
+		}
+		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
+	}
+
 	// Run all database migrations
 	if err := migrations.RunMigrations(db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {

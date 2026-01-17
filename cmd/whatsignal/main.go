@@ -175,6 +175,9 @@ func run(ctx context.Context) error {
 	)
 
 	if err := sigClient.InitializeDevice(ctx); err != nil {
+		if cfg.Signal.StrictInit {
+			logger.Fatalf("Failed to initialize Signal device (strict mode enabled): %v", err)
+		}
 		logger.Warnf("Failed to initialize Signal device: %v. whatsignal may not function correctly with Signal.", err)
 	}
 
@@ -213,7 +216,7 @@ func run(ctx context.Context) error {
 		InitialBackoffMs: cfg.Retry.InitialBackoffMs,
 		MaxBackoffMs:     cfg.Retry.MaxBackoffMs,
 		MaxAttempts:      cfg.Retry.MaxAttempts,
-	}, cfg.Media, channelManager, contactService, groupService, logger)
+	}, cfg.Media, channelManager, contactService, groupService, cfg.Signal.AttachmentsDir, logger)
 
 	logger.WithField("channels", len(cfg.Channels)).Info("Multi-channel bridge initialized")
 

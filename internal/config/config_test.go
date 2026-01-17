@@ -437,6 +437,87 @@ func TestValidateBounds(t *testing.T) {
 			expectError: true,
 			errorMsg:    "WhatsApp poll interval too large",
 		},
+		{
+			name: "signal http timeout less than poll timeout causes race condition",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL:         "https://signal.example.com",
+					PollTimeoutSec: 15,
+					HTTPTimeoutSec: 15, // Same as poll timeout - race condition!
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "Signal HTTP timeout",
+		},
+		{
+			name: "signal http timeout valid when greater than poll timeout plus buffer",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL:         "https://signal.example.com",
+					PollTimeoutSec: 15,
+					HTTPTimeoutSec: 30, // 15 + 10 buffer = 25, so 30 is OK
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "signal http timeout uses poll interval when poll timeout not set",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL:          "https://signal.example.com",
+					PollIntervalSec: 20,
+					PollTimeoutSec:  0,  // Not set, will use PollIntervalSec
+					HTTPTimeoutSec:  20, // Same as poll interval - race condition!
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "Signal HTTP timeout",
+		},
 	}
 
 	for _, tt := range tests {

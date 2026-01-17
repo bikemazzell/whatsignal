@@ -286,15 +286,21 @@ func (s *Server) handleHealth() http.HandlerFunc {
 
 		// Check Signal API health
 		if s.sigClient != nil {
+			signalStatus := map[string]interface{}{
+				"status":      "healthy",
+				"initialized": s.sigClient.IsInitialized(),
+			}
+			if initErr := s.sigClient.InitializationError(); initErr != "" {
+				signalStatus["init_error"] = initErr
+			}
 			if err := s.sigClient.HealthCheck(ctx); err != nil {
-				dependencies["signal_api"] = map[string]interface{}{
-					"status": "unhealthy",
-					"error":  err.Error(),
-				}
+				signalStatus["status"] = "unhealthy"
+				signalStatus["error"] = err.Error()
 				if overallStatus == "healthy" {
 					overallStatus = "degraded"
 				}
 			}
+			dependencies["signal_api"] = signalStatus
 		}
 
 		health := map[string]interface{}{

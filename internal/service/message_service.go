@@ -299,6 +299,20 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 
 	LogSignalPolling(ctx, s.logger, len(messages))
 
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// Determine number of workers
+	numWorkers := s.signalConfig.PollWorkers
+	if numWorkers <= 0 {
+		numWorkers = constants.DefaultSignalPollWorkers
+	}
+
+	// Use worker pool for parallel processing
+	sem := make(chan struct{}, numWorkers)
+	var wg sync.WaitGroup
+
 	for _, msg := range messages {
 		// For polled messages, we need to determine the correct Signal destination
 		destinations := s.channelManager.GetAllSignalDestinations()
@@ -324,15 +338,23 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			}
 		}
 
-		if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &msg, destination); err != nil {
-			if IsVerboseLogging(ctx) {
-				s.logger.WithError(err).WithField("messageID", msg.MessageID).Error("Failed to process Signal message from polling")
-			} else {
-				s.logger.WithError(err).Error("Failed to process Signal message from polling")
+		wg.Add(1)
+		sem <- struct{}{} // Acquire semaphore slot
+		go func(m signaltypes.SignalMessage, dest string) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore slot
+
+			if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &m, dest); err != nil {
+				if IsVerboseLogging(ctx) {
+					s.logger.WithError(err).WithField("messageID", m.MessageID).Error("Failed to process Signal message from polling")
+				} else {
+					s.logger.WithError(err).Error("Failed to process Signal message from polling")
+				}
 			}
-		}
+		}(msg, destination)
 	}
 
+	wg.Wait()
 	return nil
 }
 

@@ -724,6 +724,68 @@ func TestDownloadAttachment(t *testing.T) {
 	}
 }
 
+func TestDownloadAttachmentToFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "signal-download-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	tests := []struct {
+		name           string
+		attachmentID   string
+		serverResponse []byte
+		serverStatus   int
+		expectedError  string
+	}{
+		{
+			name:           "successful streaming download",
+			attachmentID:   "attachment123",
+			serverResponse: []byte("fake attachment data for streaming"),
+			serverStatus:   http.StatusOK,
+		},
+		{
+			name:          "server error",
+			attachmentID:  "attachment123",
+			serverStatus:  http.StatusNotFound,
+			expectedError: "attachment download failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "GET", r.Method)
+				assert.Contains(t, r.URL.Path, "/v1/attachments/")
+
+				w.WriteHeader(tt.serverStatus)
+				if tt.serverResponse != nil {
+					if _, err := w.Write(tt.serverResponse); err != nil {
+						panic(err)
+					}
+				}
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil).(*SignalClient)
+
+			destPath := filepath.Join(tmpDir, tt.name+".bin")
+			ctx := context.Background()
+			err := client.DownloadAttachmentToFile(ctx, tt.attachmentID, destPath)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+				_, statErr := os.Stat(destPath)
+				assert.True(t, os.IsNotExist(statErr), "file should not exist on error")
+			} else {
+				assert.NoError(t, err)
+				content, readErr := os.ReadFile(destPath)
+				require.NoError(t, readErr)
+				assert.Equal(t, tt.serverResponse, content)
+			}
+		})
+	}
+}
+
 func TestListAttachments(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -855,7 +917,7 @@ func TestDownloadAndSaveAttachment(t *testing.T) {
 			signalClient := client.(*SignalClient)
 
 			// Test downloadAndSaveAttachment
-			filePath, err := signalClient.downloadAndSaveAttachment(tt.attachment)
+			filePath, err := signalClient.downloadAndSaveAttachment(context.Background(), tt.attachment)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)

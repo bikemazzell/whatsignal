@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/security"
@@ -38,8 +37,9 @@ type SignalClient struct {
 	deviceName     string
 	attachmentsDir string
 	logger         *logrus.Logger
-	mu             sync.Mutex // Prevent concurrent Signal-CLI operations
 	circuitBreaker *circuitbreaker.CircuitBreaker
+	initialized    bool   // Tracks whether InitializeDevice succeeded
+	initError      string // Stores initialization error message if any
 }
 
 func NewClient(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client) Client {
@@ -86,9 +86,6 @@ func (c *SignalClient) doRequestWithCircuitBreaker(ctx context.Context, req *htt
 }
 
 func (c *SignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	payload := types.SendMessageRequest{
 		Message:    message,
 		Number:     c.phoneNumber,
@@ -155,9 +152,6 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 }
 
 func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]types.SignalMessage, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	endpoint := fmt.Sprintf("%s/v1/receive/%s", c.baseURL, url.QueryEscape(c.phoneNumber))
 
 	if timeoutSeconds > 0 {
@@ -309,7 +303,7 @@ func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments [
 
 			go func() {
 				defer downloadCancel() // Ensure cleanup on early return
-				filePath, err := c.downloadAndSaveAttachment(att)
+				filePath, err := c.downloadAndSaveAttachment(downloadCtx, att)
 				if err != nil {
 					select {
 					case errorChan <- err:
@@ -386,17 +380,7 @@ func (c *SignalClient) fallbackAttachmentPath(att types.RestMessageAttachment) s
 	return att.ID
 }
 
-func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment) (string, error) {
-	// Create context with shorter timeout for download to avoid blocking polling
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Download attachment data
-	data, err := c.DownloadAttachment(ctx, att.ID)
-	if err != nil {
-		return "", fmt.Errorf("failed to download attachment: %w", err)
-	}
-
+func (c *SignalClient) downloadAndSaveAttachment(ctx context.Context, att types.RestMessageAttachment) (string, error) {
 	// Ensure attachments directory exists
 	if c.attachmentsDir != "" {
 		// Use more restrictive permissions for security
@@ -417,9 +401,9 @@ func (c *SignalClient) downloadAndSaveAttachment(att types.RestMessageAttachment
 		filePath = filename
 	}
 
-	// Write attachment data to file with secure permissions
-	if err := os.WriteFile(filePath, data, constants.DefaultFilePermissions); err != nil {
-		return "", fmt.Errorf("failed to save attachment: %w", err)
+	// Stream attachment directly to file (avoids loading entire file into memory)
+	if err := c.DownloadAttachmentToFile(ctx, att.ID, filePath); err != nil {
+		return "", fmt.Errorf("failed to download attachment: %w", err)
 	}
 
 	return filePath, nil
@@ -446,6 +430,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
+		c.initError = fmt.Sprintf("failed to create initialize device request: %v", err)
 		return fmt.Errorf("failed to create initialize device request: %w", err)
 	}
 
@@ -453,6 +438,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
+		c.initError = fmt.Sprintf("failed to send initialize device request: %v", err)
 		return fmt.Errorf("failed to send initialize device request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -460,13 +446,16 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
+			c.initError = fmt.Sprintf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 			return fmt.Errorf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 		}
+		c.initError = fmt.Sprintf("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var aboutResponse types.AboutResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aboutResponse); err != nil {
+		c.initError = fmt.Sprintf("failed to decode about response: %v", err)
 		return fmt.Errorf("failed to decode about response: %w", err)
 	}
 
@@ -482,9 +471,13 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 	}
 
 	if !hasV1 || !hasV2 {
-		return fmt.Errorf("signal-cli-rest-api service does not support required API versions (v1, v2)")
+		initErr := fmt.Errorf("signal-cli-rest-api service does not support required API versions (v1, v2)")
+		c.initError = initErr.Error()
+		return initErr
 	}
 
+	c.initialized = true
+	c.initError = ""
 	return nil
 }
 
@@ -518,6 +511,47 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 	}
 
 	return data, nil
+}
+
+func (c *SignalClient) DownloadAttachmentToFile(ctx context.Context, attachmentID, destPath string) error {
+	// Validate destination path to prevent directory traversal
+	if err := security.ValidateFilePath(destPath); err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("%s/v1/attachments/%s", c.baseURL, url.QueryEscape(attachmentID))
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create attachment download request: %w", err)
+	}
+
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to download attachment: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("attachment download failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
+		return fmt.Errorf("attachment download failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	file, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, constants.DefaultFilePermissions) // #nosec G304 - path validated above
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("failed to write attachment data: %w", err)
+	}
+
+	return nil
 }
 
 // EncodeAttachment is a public method for testing purposes
@@ -627,4 +661,14 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 		return fmt.Errorf("signal API health check returned status %d (failed to read body: %v)", resp.StatusCode, readErr)
 	}
 	return fmt.Errorf("signal API health check returned status %d: %s", resp.StatusCode, string(body))
+}
+
+// IsInitialized returns whether the Signal client was successfully initialized
+func (c *SignalClient) IsInitialized() bool {
+	return c.initialized
+}
+
+// InitializationError returns the initialization error message, if any
+func (c *SignalClient) InitializationError() string {
+	return c.initError
 }

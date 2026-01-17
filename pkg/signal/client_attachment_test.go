@@ -393,7 +393,7 @@ func TestDownloadAndSaveAttachment_Comprehensive(t *testing.T) {
 				client:         &http.Client{Timeout: 30 * time.Second},
 			}
 
-			filePath, err := client.downloadAndSaveAttachment(tt.attachment)
+			filePath, err := client.downloadAndSaveAttachment(context.Background(), tt.attachment)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)

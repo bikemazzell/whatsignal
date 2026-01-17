@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,7 +64,7 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	testLogger.SetOutput(io.Discard) // Suppress test output
 
 	// Create bridge without contact service and group service for basic tests (those services have their own tests)
-	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, testLogger).(*bridge)
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, "", testLogger).(*bridge)
 
 	cleanup := func() {
 		_ = os.RemoveAll(tmpDir)
@@ -740,6 +741,122 @@ func TestCleanupOldRecords(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to cleanup old media files")
 }
 
+func TestCleanupSignalAttachments(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "signal-attachments-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create test files with different ages
+	oldFile := filepath.Join(tmpDir, "old-attachment.jpg")
+	newFile := filepath.Join(tmpDir, "new-attachment.jpg")
+
+	err = os.WriteFile(oldFile, []byte("old content"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(newFile, []byte("new content"), 0644)
+	require.NoError(t, err)
+
+	// Set old file's modification time to 10 days ago
+	oldTime := time.Now().AddDate(0, 0, -10)
+	err = os.Chtimes(oldFile, oldTime, oldTime)
+	require.NoError(t, err)
+
+	// Create bridge with signal attachments dir
+	mockWAClient := new(mockWAClient)
+	mockSignalClient := new(mockSignalClient)
+	mockDB := new(mockDatabaseService)
+	mockMedia := new(mockMediaHandler)
+
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "test-session",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
+	channelManager, err := NewChannelManager(channels)
+	require.NoError(t, err)
+
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard)
+
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mockMedia, models.RetryConfig{}, models.MediaConfig{}, channelManager, nil, nil, tmpDir, testLogger).(*bridge)
+
+	// Setup mocks for successful cleanup
+	mockDB.On("CleanupOldRecords", mock.Anything, 7).Return(nil).Once()
+	mockMedia.On("CleanupOldFiles", int64(7*24*60*60)).Return(nil).Once()
+
+	// Run cleanup with 7 days retention
+	err = bridge.CleanupOldRecords(context.Background(), 7)
+	require.NoError(t, err)
+
+	// Verify old file was deleted
+	_, err = os.Stat(oldFile)
+	assert.True(t, os.IsNotExist(err), "old file should be deleted")
+
+	// Verify new file still exists
+	_, err = os.Stat(newFile)
+	assert.NoError(t, err, "new file should still exist")
+}
+
+func TestCleanupSignalAttachmentsEmptyDir(t *testing.T) {
+	// Test with empty signal attachments dir (should be no-op)
+	mockWAClient := new(mockWAClient)
+	mockSignalClient := new(mockSignalClient)
+	mockDB := new(mockDatabaseService)
+	mockMedia := new(mockMediaHandler)
+
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "test-session",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
+	channelManager, err := NewChannelManager(channels)
+	require.NoError(t, err)
+
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard)
+
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mockMedia, models.RetryConfig{}, models.MediaConfig{}, channelManager, nil, nil, "", testLogger).(*bridge)
+
+	// Setup mocks for successful cleanup
+	mockDB.On("CleanupOldRecords", mock.Anything, 7).Return(nil).Once()
+	mockMedia.On("CleanupOldFiles", int64(7*24*60*60)).Return(nil).Once()
+
+	// Run cleanup - should succeed even with empty attachments dir
+	err = bridge.CleanupOldRecords(context.Background(), 7)
+	require.NoError(t, err)
+}
+
+func TestCleanupSignalAttachmentsNonExistentDir(t *testing.T) {
+	// Test with non-existent signal attachments dir (should be no-op)
+	mockWAClient := new(mockWAClient)
+	mockSignalClient := new(mockSignalClient)
+	mockDB := new(mockDatabaseService)
+	mockMedia := new(mockMediaHandler)
+
+	channels := []models.Channel{
+		{
+			WhatsAppSessionName:          "test-session",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	}
+	channelManager, err := NewChannelManager(channels)
+	require.NoError(t, err)
+
+	testLogger := logrus.New()
+	testLogger.SetOutput(io.Discard)
+
+	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mockMedia, models.RetryConfig{}, models.MediaConfig{}, channelManager, nil, nil, "/nonexistent/path/to/attachments", testLogger).(*bridge)
+
+	// Setup mocks for successful cleanup
+	mockDB.On("CleanupOldRecords", mock.Anything, 7).Return(nil).Once()
+	mockMedia.On("CleanupOldFiles", int64(7*24*60*60)).Return(nil).Once()
+
+	// Run cleanup - should succeed even with non-existent dir
+	err = bridge.CleanupOldRecords(context.Background(), 7)
+	require.NoError(t, err)
+}
+
 func TestHandleSignalGroupMessage(t *testing.T) {
 	bridge, _, cleanup := setupTestBridge(t)
 	defer cleanup()
@@ -985,7 +1102,7 @@ func TestNewBridge(t *testing.T) {
 	testLogger.SetOutput(io.Discard)
 
 	// For constructor test, use nil contact service and group service to keep test simple
-	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, testLogger)
+	b := NewBridge(waClient, sigClient, db, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, "", testLogger)
 	require.NotNil(t, b)
 
 	// Test that the bridge implements the MessageBridge interface
@@ -1088,6 +1205,11 @@ func TestHandleSignalMessageAutoReply(t *testing.T) {
 	}
 	bridge.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(latestMapping, nil)
 	bridge.db.(*mockDatabaseService).On("GetLatestMessageMapping", ctx).Return(latestMapping, nil)
+
+	// Mock Signal client to handle fallback routing notification
+	bridge.sigClient.(*mockSignalClient).On("SendMessage", ctx, "+1234567890", mock.MatchedBy(func(msg string) bool {
+		return strings.Contains(msg, "Message routed to last active chat")
+	}), []string{}).Return(&signaltypes.SendMessageResponse{MessageID: "notif_123"}, nil)
 
 	// Mock WhatsApp client to return text response
 	expectedResponse := &types.SendMessageResponse{

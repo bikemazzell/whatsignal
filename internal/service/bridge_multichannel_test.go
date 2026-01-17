@@ -88,6 +88,7 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 				channelManager,
 				mockContacts,
 				nil, // No group service for this test
+				"",  // No signal attachments dir for this test
 				testLogger,
 			)
 
@@ -224,6 +225,7 @@ func TestBridge_MultiChannel_HandleSignalMessage(t *testing.T) {
 				channelManager,
 				mockContacts,
 				nil, // No group service for this test
+				"",  // No signal attachments dir for this test
 				testLogger,
 			)
 
@@ -241,6 +243,10 @@ func TestBridge_MultiChannel_HandleSignalMessage(t *testing.T) {
 				// Setup expectations
 				mockDB.On("GetLatestMessageMappingBySession", ctx, tt.expectedSession).
 					Return(tt.previousMapping, nil)
+
+				// Mock Signal client for fallback routing notification
+				mockSigClient.On("SendMessage", ctx, tt.destination, mock.AnythingOfType("string"), []string{}).
+					Return(&signaltypes.SendMessageResponse{MessageID: "notif_123"}, nil)
 
 				mockDB.On("SaveMessageMapping", ctx, mock.MatchedBy(func(mapping *models.MessageMapping) bool {
 					return mapping.SessionName == tt.expectedSession &&
@@ -303,6 +309,7 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 		channelManager,
 		mockContacts,
 		nil, // No group service for this test
+		"",  // No signal attachments dir for this test
 		testLogger,
 	)
 

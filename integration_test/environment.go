@@ -844,6 +844,7 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 		channelManager,
 		contactService,
 		nil, // No group service for integration tests yet
+		cfg.Signal.AttachmentsDir,
 		testLogger,
 	)
 

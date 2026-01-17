@@ -266,6 +266,29 @@ func validateBounds(c *models.Config) error {
 		}
 	}
 
+	// Ensure HTTP timeout is greater than poll timeout + buffer to prevent race conditions.
+	// When Signal CLI uses long-polling (e.g., ?timeout=15), the server waits up to that duration.
+	// The HTTP client must have a longer timeout to allow for network latency.
+	pollTimeout := c.Signal.PollTimeoutSec
+	if pollTimeout <= 0 {
+		pollTimeout = c.Signal.PollIntervalSec
+	}
+	if pollTimeout > 0 {
+		minHTTPTimeout := pollTimeout + constants.SignalHTTPTimeoutBuffer
+		httpTimeout := c.Signal.HTTPTimeoutSec
+		if httpTimeout <= 0 {
+			httpTimeout = constants.DefaultSignalHTTPTimeoutSec
+		}
+		if httpTimeout < minHTTPTimeout {
+			return models.ConfigError{
+				Message: fmt.Sprintf(
+					"Signal HTTP timeout (%ds) must be greater than poll timeout (%ds) + buffer (%ds) = %ds to prevent race conditions; set httpTimeoutSec >= %d",
+					httpTimeout, pollTimeout, constants.SignalHTTPTimeoutBuffer, minHTTPTimeout, minHTTPTimeout,
+				),
+			}
+		}
+	}
+
 	// Validate database configuration (only if values are set)
 	if c.Database.MaxOpenConnections > 0 || c.Database.MaxIdleConnections > 0 {
 		maxOpen := c.Database.MaxOpenConnections

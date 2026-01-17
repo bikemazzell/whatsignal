@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -124,8 +125,11 @@ func (r *Registry) RecordTimer(name string, duration time.Duration, labels map[s
 		timer.Average = timer.Sum / float64(timer.Count)
 
 		// Keep only last 1000 samples for percentile calculation
+		// Use explicit copy to release old underlying array for GC
 		if len(timer.samples) > 1000 {
-			timer.samples = timer.samples[len(timer.samples)-1000:]
+			newSamples := make([]float64, 1000)
+			copy(newSamples, timer.samples[len(timer.samples)-1000:])
+			timer.samples = newSamples
 		}
 
 		// Calculate percentiles if we have enough samples
@@ -198,9 +202,16 @@ func (r *Registry) metricKey(name string, labels map[string]string) string {
 		return name
 	}
 
+	// Sort label keys for deterministic key generation
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	key := name
-	for k, v := range labels {
-		key += fmt.Sprintf("_%s:%s", k, v)
+	for _, k := range keys {
+		key += fmt.Sprintf("_%s:%s", k, labels[k])
 	}
 	return key
 }
@@ -211,18 +222,12 @@ func (r *Registry) calculatePercentile(samples []float64, percentile float64) fl
 		return 0
 	}
 
-	// Simple percentile calculation (would use sort in production)
+	// Create a copy to avoid modifying the original slice
 	sorted := make([]float64, len(samples))
 	copy(sorted, samples)
 
-	// Bubble sort for simplicity (consider using sort.Float64s for production)
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := 0; j < len(sorted)-i-1; j++ {
-			if sorted[j] > sorted[j+1] {
-				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-			}
-		}
-	}
+	// Use O(n log n) sort instead of O(n²) bubble sort
+	sort.Float64s(sorted)
 
 	index := int(float64(len(sorted)) * percentile)
 	if index >= len(sorted) {

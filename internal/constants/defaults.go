@@ -4,6 +4,7 @@ package constants
 const (
 	DefaultSignalPollIntervalSec = 5
 	DefaultSignalPollTimeoutSec  = 10
+	DefaultSignalPollWorkers     = 5 // Number of parallel workers for processing polled messages
 	DefaultRetryBackoffMs        = 1000
 	DefaultMaxBackoffMs          = 60000
 	DefaultMaxAttempts           = 5
@@ -61,6 +62,7 @@ const (
 // Time-related constants
 const (
 	DefaultSignalPollingTimeoutSec = 45 // Increased to accommodate 15s poll timeout + retries
+	SignalHTTPTimeoutBuffer        = 10 // Buffer (in seconds) to add to poll timeout for HTTP client timeout
 	DefaultWhatsAppPollIntervalSec = 30
 	DefaultWhatsAppTimeoutMs       = 30000
 	DefaultWhatsAppRetryCount      = 3

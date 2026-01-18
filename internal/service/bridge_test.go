@@ -1660,3 +1660,130 @@ type testError struct {
 func (e *testError) Error() string {
 	return e.msg
 }
+
+func TestIsRetryableWhatsAppError(t *testing.T) {
+	tests := []struct {
+		name      string
+		errMsg    string
+		wantRetry bool
+	}{
+		{"Status 400 - Bad request", `request failed with status 400: {"error":"invalid chatId"}`, false},
+		{"Status 401 - Unauthorized", `request failed with status 401: {"error":"unauthorized"}`, false},
+		{"Status 403 - Forbidden", `request failed with status 403: {"error":"forbidden"}`, false},
+		{"Status 404 - Not found", `request failed with status 404: {"error":"chat not found"}`, false},
+		{"Invalid chat", `request failed: invalid chat ID format`, false},
+		{"Not registered", `request failed: user not registered on WhatsApp`, false},
+		{"Blocked user", `request failed: user blocked`, false},
+		{"Session not found", `session not found`, false},
+		{"Session is not ready", `session is not ready`, false},
+		{"Status 500 - Internal error", `request failed with status 500: {"error":"internal server error"}`, true},
+		{"Status 500 - markedUnread", `request failed with status 500: Cannot read properties of undefined (reading 'markedUnread')`, true},
+		{"Status 502 - Bad Gateway", `request failed with status 502: bad gateway`, true},
+		{"Status 503 - Service Unavailable", `request failed with status 503: service unavailable`, true},
+		{"Status 504 - Gateway Timeout", `request failed with status 504: gateway timeout`, true},
+		{"Timeout error", `context deadline exceeded (timeout)`, true},
+		{"Network error", `dial tcp: network unreachable`, true},
+		{"Connection refused", `dial tcp 127.0.0.1:8080: connect: connection refused`, true},
+		{"Generic unknown error", `some unknown error occurred`, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &testError{msg: tt.errMsg}
+			result := isRetryableWhatsAppError(err)
+			assert.Equal(t, tt.wantRetry, result, "isRetryableWhatsAppError(%q) = %v, want %v", tt.errMsg, result, tt.wantRetry)
+		})
+	}
+
+	t.Run("nil error", func(t *testing.T) {
+		result := isRetryableWhatsAppError(nil)
+		assert.False(t, result, "nil error should return false")
+	})
+}
+
+func TestSendMessageToWhatsApp_RetriesOnTransientError(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	callCount := 0
+
+	mockWA := &mockWhatsAppClient{
+		sendTextFunc: func(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+			callCount++
+			if callCount < 3 {
+				return nil, &testError{msg: "request failed with status 500: markedUnread error"}
+			}
+			return &types.SendMessageResponse{
+				MessageID: "wa_msg_success",
+				Status:    "sent",
+			}, nil
+		},
+	}
+	bridge.waClient = mockWA
+
+	resp, err := bridge.sendMessageToWhatsApp(ctx, "123456789@g.us", "Test message", nil, "", "default")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, "wa_msg_success", resp.MessageID)
+	assert.Equal(t, 3, callCount, "Expected 3 attempts (2 failures + 1 success)")
+}
+
+func TestSendMessageToWhatsApp_FailsOnNonRetryableError(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	callCount := 0
+
+	mockWA := &mockWhatsAppClient{
+		sendTextFunc: func(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+			callCount++
+			return nil, &testError{msg: "request failed with status 404: chat not found"}
+		},
+	}
+	bridge.waClient = mockWA
+
+	resp, err := bridge.sendMessageToWhatsApp(ctx, "123456789@c.us", "Test message", nil, "", "default")
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "non-retryable")
+	assert.Equal(t, 1, callCount, "Should fail immediately on non-retryable error")
+}
+
+func TestSendMessageToWhatsApp_FailsAfterMaxRetries(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	callCount := 0
+
+	mockWA := &mockWhatsAppClient{
+		sendTextFunc: func(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+			callCount++
+			return nil, &testError{msg: "request failed with status 500: internal server error"}
+		},
+	}
+	bridge.waClient = mockWA
+
+	resp, err := bridge.sendMessageToWhatsApp(ctx, "123456789@c.us", "Test message", nil, "", "default")
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "after retries")
+	assert.Equal(t, 3, callCount, "Should retry MaxAttempts times (configured as 3)")
+}
+
+func TestSendMessageToWhatsApp_EmptyMessage(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	resp, err := bridge.sendMessageToWhatsApp(ctx, "123456789@c.us", "   ", nil, "", "default")
+
+	assert.NoError(t, err)
+	assert.Nil(t, resp, "Empty message should return nil response")
+}

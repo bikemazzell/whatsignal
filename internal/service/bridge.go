@@ -35,6 +35,20 @@ var nonRetryableSignalErrors = []string{
 	"Not found",            // User/resource not found
 }
 
+// nonRetryableWhatsAppErrors contains error substrings that indicate non-retryable WAHA/WhatsApp errors.
+// These errors require manual intervention and should not be retried.
+var nonRetryableWhatsAppErrors = []string{
+	"status 400",           // Bad request - invalid parameters
+	"status 401",           // Unauthorized - auth issue
+	"status 403",           // Forbidden - permission denied
+	"status 404",           // Not found - chat/resource doesn't exist
+	"invalid chat",         // Invalid chat ID format
+	"not registered",       // User not on WhatsApp
+	"blocked",              // User blocked
+	"session not found",    // Session doesn't exist
+	"session is not ready", // Session not authenticated
+}
+
 // isRetryableSignalError determines if a Signal API error should be retried.
 // Returns false for errors that require manual intervention or cannot succeed with retries.
 func isRetryableSignalError(err error) bool {
@@ -47,6 +61,39 @@ func isRetryableSignalError(err error) bool {
 		if strings.Contains(errStr, nonRetryable) {
 			return false
 		}
+	}
+
+	// Default to retryable for unknown/network errors
+	return true
+}
+
+// isRetryableWhatsAppError determines if a WAHA/WhatsApp API error should be retried.
+// Returns true for transient errors like 500 (markedUnread, JS errors), network issues.
+// Returns false for errors that require manual intervention.
+func isRetryableWhatsAppError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(err.Error())
+	for _, nonRetryable := range nonRetryableWhatsAppErrors {
+		if strings.Contains(errStr, strings.ToLower(nonRetryable)) {
+			return false
+		}
+	}
+
+	// Specifically retryable WAHA errors (500 with transient JS errors)
+	if strings.Contains(errStr, "status 500") {
+		return true
+	}
+	if strings.Contains(errStr, "status 502") || strings.Contains(errStr, "status 503") || strings.Contains(errStr, "status 504") {
+		return true
+	}
+	if strings.Contains(errStr, "markedunread") {
+		return true
+	}
+	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "network") {
+		return true
 	}
 
 	// Default to retryable for unknown/network errors
@@ -468,76 +515,93 @@ func (b *bridge) HandleSignalMessageDeletion(ctx context.Context, targetMessageI
 
 // sendMessageToWhatsApp sends a message to WhatsApp with proper media type routing.
 // This consolidates the send logic used by both direct and group message handlers.
+// Uses exponential backoff retry for transient WAHA errors (e.g., markedUnread, 500 errors).
 func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, message string, attachments []string, replyTo string, sessionName string) (*types.SendMessageResponse, error) {
-	var resp *types.SendMessageResponse
-	var sendErr error
-
-	switch {
-	case len(attachments) > 0 && b.mediaRouter.IsImageAttachment(attachments[0]):
-		b.logger.WithFields(logrus.Fields{
-			"method":      "SendImage",
-			"sessionName": sessionName,
-		}).Debug("Sending image to WhatsApp")
-		if replyTo != "" {
-			resp, sendErr = b.waClient.SendImageWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
-		} else {
-			resp, sendErr = b.waClient.SendImageWithSession(ctx, chatID, attachments[0], message, sessionName)
-		}
-
-	case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
-		b.logger.WithFields(logrus.Fields{
-			"method":      "SendVideo",
-			"sessionName": sessionName,
-		}).Debug("Sending video to WhatsApp")
-		if replyTo != "" {
-			resp, sendErr = b.waClient.SendVideoWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
-		} else {
-			resp, sendErr = b.waClient.SendVideoWithSession(ctx, chatID, attachments[0], message, sessionName)
-		}
-
-	case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
-		b.logger.WithFields(logrus.Fields{
-			"method":      "SendVoice",
-			"sessionName": sessionName,
-		}).Debug("Sending voice to WhatsApp")
-		if replyTo != "" {
-			resp, sendErr = b.waClient.SendVoiceWithSessionReply(ctx, chatID, attachments[0], replyTo, sessionName)
-		} else {
-			resp, sendErr = b.waClient.SendVoiceWithSession(ctx, chatID, attachments[0], sessionName)
-		}
-
-	case len(attachments) > 0:
-		b.logger.WithFields(logrus.Fields{
-			"method":      "SendDocument",
-			"filePath":    attachments[0],
-			"sessionName": sessionName,
-		}).Debug("Sending attachment as document to WhatsApp")
-		if replyTo != "" {
-			resp, sendErr = b.waClient.SendDocumentWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
-		} else {
-			resp, sendErr = b.waClient.SendDocumentWithSession(ctx, chatID, attachments[0], message, sessionName)
-		}
-
-	default:
-		trimmedMessage := strings.TrimSpace(message)
-		if trimmedMessage == "" {
-			// Nothing to send - skip empty messages
-			return nil, nil
-		}
-		b.logger.WithFields(logrus.Fields{
-			"method":        "SendText",
-			"sessionName":   sessionName,
-			"messageLength": len(trimmedMessage),
-		}).Debug("Sending text to WhatsApp")
-		if replyTo != "" {
-			resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, chatID, trimmedMessage, replyTo, sessionName)
-		} else {
-			resp, sendErr = b.waClient.SendTextWithSession(ctx, chatID, trimmedMessage, sessionName)
-		}
+	trimmedMessage := strings.TrimSpace(message)
+	if len(attachments) == 0 && trimmedMessage == "" {
+		return nil, nil
 	}
 
-	if sendErr != nil {
-		return nil, fmt.Errorf("failed to send whatsapp message: %w", sendErr)
+	backoffConfig := retry.BackoffConfig{
+		InitialDelay: time.Duration(b.retryConfig.InitialBackoffMs) * time.Millisecond,
+		MaxDelay:     time.Duration(b.retryConfig.MaxBackoffMs) * time.Millisecond,
+		Multiplier:   2.0,
+		MaxAttempts:  b.retryConfig.MaxAttempts,
+		Jitter:       true,
+	}
+	backoff := retry.NewBackoff(backoffConfig)
+
+	var resp *types.SendMessageResponse
+	retryErr := backoff.RetryWithPredicate(ctx, func() error {
+		var sendErr error
+
+		switch {
+		case len(attachments) > 0 && b.mediaRouter.IsImageAttachment(attachments[0]):
+			b.logger.WithFields(logrus.Fields{
+				"method":      "SendImage",
+				"sessionName": sessionName,
+			}).Debug("Sending image to WhatsApp")
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendImageWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendImageWithSession(ctx, chatID, attachments[0], message, sessionName)
+			}
+
+		case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
+			b.logger.WithFields(logrus.Fields{
+				"method":      "SendVideo",
+				"sessionName": sessionName,
+			}).Debug("Sending video to WhatsApp")
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendVideoWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendVideoWithSession(ctx, chatID, attachments[0], message, sessionName)
+			}
+
+		case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
+			b.logger.WithFields(logrus.Fields{
+				"method":      "SendVoice",
+				"sessionName": sessionName,
+			}).Debug("Sending voice to WhatsApp")
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendVoiceWithSessionReply(ctx, chatID, attachments[0], replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendVoiceWithSession(ctx, chatID, attachments[0], sessionName)
+			}
+
+		case len(attachments) > 0:
+			b.logger.WithFields(logrus.Fields{
+				"method":      "SendDocument",
+				"filePath":    attachments[0],
+				"sessionName": sessionName,
+			}).Debug("Sending attachment as document to WhatsApp")
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendDocumentWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendDocumentWithSession(ctx, chatID, attachments[0], message, sessionName)
+			}
+
+		default:
+			b.logger.WithFields(logrus.Fields{
+				"method":        "SendText",
+				"sessionName":   sessionName,
+				"messageLength": len(trimmedMessage),
+			}).Debug("Sending text to WhatsApp")
+			if replyTo != "" {
+				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, chatID, trimmedMessage, replyTo, sessionName)
+			} else {
+				resp, sendErr = b.waClient.SendTextWithSession(ctx, chatID, trimmedMessage, sessionName)
+			}
+		}
+
+		return sendErr
+	}, isRetryableWhatsAppError)
+
+	if retryErr != nil {
+		if !isRetryableWhatsAppError(retryErr) {
+			return nil, fmt.Errorf("whatsapp message failed (non-retryable): %w", retryErr)
+		}
+		return nil, fmt.Errorf("failed to send whatsapp message after retries: %w", retryErr)
 	}
 
 	return resp, nil

@@ -15,6 +15,7 @@ type mockWhatsAppClient struct {
 	mock.Mock
 	sendTextResp     *types.SendMessageResponse
 	sendTextErr      error
+	sendTextFunc     func(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error)
 	sendImageResp    *types.SendMessageResponse
 	sendImageErr     error
 	sendVideoResp    *types.SendMessageResponse
@@ -26,14 +27,23 @@ type mockWhatsAppClient struct {
 }
 
 func (m *mockWhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+	if m.sendTextFunc != nil {
+		return m.sendTextFunc(ctx, chatID, text)
+	}
 	return m.sendTextResp, m.sendTextErr
 }
 
 func (m *mockWhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, sessionName string) (*types.SendMessageResponse, error) {
+	if m.sendTextFunc != nil {
+		return m.sendTextFunc(ctx, chatID, text)
+	}
 	return m.sendTextResp, m.sendTextErr
 }
 
 func (m *mockWhatsAppClient) SendTextWithSessionReply(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if m.sendTextFunc != nil {
+		return m.sendTextFunc(ctx, chatID, text)
+	}
 	return m.sendTextResp, m.sendTextErr
 }
 

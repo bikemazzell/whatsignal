@@ -5,6 +5,20 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6]
+
+### Fixed
+- **Circuit breaker race condition**: Fixed dangerous RLock/Lock dance pattern in `GetState()` that could cause panic from double-unlock or state corruption during OPEN→HALF_OPEN transitions
+- **Attachment download context cancellation**: Fixed premature context cancellation in `extractAttachmentPaths` that caused intermittent missing attachments
+- **Group routing error handling**: Added explicit fallback notifications and improved error messages when group message routing fails or uses fallback behavior
+
+### Added
+- **Per-chat message locking**: Implemented `chatLockManager` to ensure messages to the same chat are processed sequentially, preventing out-of-order delivery
+- **Concurrent operation tests**: Added comprehensive race condition tests for circuit breaker, attachment downloads, and per-chat locking
+
+### Changed
+- **Group routing feedback**: Users now receive Signal notifications when fallback routing is used or when group context cannot be determined
+
 ## [1.2.3]
 
 ### Added

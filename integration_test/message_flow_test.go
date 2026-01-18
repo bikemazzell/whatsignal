@@ -470,3 +470,42 @@ func TestGroupMessageBidirectionalFlow(t *testing.T) {
 		t.Log("Successfully verified Signal reply is sent back to WhatsApp group")
 	})
 }
+
+func TestSignalToWhatsAppMessageFlowWithRetries(t *testing.T) {
+	env := NewTestEnvironment(t, "signal_to_whatsapp_retry", IsolationProcess)
+	defer env.Cleanup()
+
+	env.StartMessageFlowServer()
+	env.SetMockAPIFailures("whatsapp_send", 2)
+
+	scenario := env.fixtures.Scenarios()["signal_text"]
+	signalPayload := scenario.SignalWebhook
+	signalPayload.Envelope.Timestamp = time.Now().UnixMilli()
+	signalPayload.Envelope.DataMessage.Timestamp = time.Now().UnixMilli()
+
+	webhookData, err := json.Marshal(signalPayload)
+	if err != nil {
+		t.Fatalf("Failed to marshal Signal webhook: %v", err)
+	}
+
+	resp, err := http.Post(
+		fmt.Sprintf("%s/webhook/signal", env.httpServer.URL),
+		"application/json",
+		strings.NewReader(string(webhookData)),
+	)
+	if err != nil {
+		t.Fatalf("Failed to send Signal webhook: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	sends := env.CountMockAPIRequests("whatsapp_send")
+	if sends < 3 {
+		t.Errorf("Expected at least 3 WhatsApp send attempts (2 failures + 1 success), got %d", sends)
+	}
+}

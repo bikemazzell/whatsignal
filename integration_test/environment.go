@@ -562,6 +562,8 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			_, _ = w.Write([]byte(`{"contacts": []}`))
 
 		case strings.Contains(r.URL.Path, "/sendText"):
+			// Track all attempts (including failures) for retry testing
+			env.mockAPIRequests["whatsapp_send"]++
 			failures := env.mockAPIFailures["whatsapp_send"]
 			if failures > 0 {
 				env.mockAPIFailures["whatsapp_send"]--
@@ -569,8 +571,7 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
 				return
 			}
-			// Track send and inspect payload for reply_to
-			env.mockAPIRequests["whatsapp_send"]++
+			// Inspect payload for reply_to
 			body, _ := io.ReadAll(r.Body)
 			defer func() {
 				if err := r.Body.Close(); err != nil {

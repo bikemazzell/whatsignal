@@ -48,27 +48,62 @@ type MessageService interface {
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 }
 
+// chatLockManager provides per-chat locking to ensure message ordering within a chat
+type chatLockManager struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+func newChatLockManager() *chatLockManager {
+	return &chatLockManager{
+		locks: make(map[string]*sync.Mutex),
+	}
+}
+
+// getLock returns a mutex for the given chat ID, creating one if it doesn't exist
+func (m *chatLockManager) getLock(chatID string) *sync.Mutex {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.locks[chatID] == nil {
+		m.locks[chatID] = &sync.Mutex{}
+	}
+	return m.locks[chatID]
+}
+
+// cleanup removes locks that are no longer held (should be called periodically)
+func (m *chatLockManager) cleanup() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// In a more sophisticated implementation, we could track usage counts
+	// and remove unused locks. For now, we just reset if the map gets too large.
+	if len(m.locks) > constants.MaxChatLocks {
+		m.locks = make(map[string]*sync.Mutex)
+	}
+}
+
 type messageService struct {
-	logger         *logrus.Logger
-	db             Database
-	bridge         MessageBridge
-	mediaCache     MediaCache
-	signalClient   signal.Client
-	signalConfig   models.SignalConfig
-	channelManager *ChannelManager
-	mu             sync.RWMutex
+	logger          *logrus.Logger
+	db              Database
+	bridge          MessageBridge
+	mediaCache      MediaCache
+	signalClient    signal.Client
+	signalConfig    models.SignalConfig
+	channelManager  *ChannelManager
+	mu              sync.RWMutex
+	chatLockManager *chatLockManager
 }
 
 func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig, channelManager *ChannelManager) MessageService {
 	return &messageService{
-		logger:         logrus.New(),
-		bridge:         bridge,
-		db:             db,
-		mediaCache:     mediaCache,
-		signalClient:   signalClient,
-		signalConfig:   signalConfig,
-		channelManager: channelManager,
-		mu:             sync.RWMutex{},
+		logger:          logrus.New(),
+		bridge:          bridge,
+		db:              db,
+		mediaCache:      mediaCache,
+		signalClient:    signalClient,
+		signalConfig:    signalConfig,
+		channelManager:  channelManager,
+		mu:              sync.RWMutex{},
+		chatLockManager: newChatLockManager(),
 	}
 }
 
@@ -344,6 +379,13 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }() // Release semaphore slot
 
+			// Acquire per-chat lock to ensure message ordering within a chat
+			// Key combines sender and destination to handle multi-channel routing
+			chatKey := m.Sender + ":" + dest
+			chatLock := s.chatLockManager.getLock(chatKey)
+			chatLock.Lock()
+			defer chatLock.Unlock()
+
 			if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &m, dest); err != nil {
 				if IsVerboseLogging(ctx) {
 					s.logger.WithError(err).WithField("messageID", m.MessageID).Error("Failed to process Signal message from polling")
@@ -355,6 +397,10 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	}
 
 	wg.Wait()
+
+	// Opportunistic cleanup of per-chat locks
+	s.chatLockManager.cleanup()
+
 	return nil
 }
 

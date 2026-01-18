@@ -135,3 +135,8 @@ const (
 const (
 	MaxRateLimitPerMinute = 10000 // Maximum allowed rate limit per minute
 )
+
+// Concurrency control
+const (
+	MaxChatLocks = 1000 // Maximum number of per-chat locks to track before cleanup
+)

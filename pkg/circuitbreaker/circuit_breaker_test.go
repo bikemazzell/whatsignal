@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -436,4 +437,106 @@ func TestOnFailureInDifferentStates(t *testing.T) {
 
 	cb.onFailure()
 	assert.Equal(t, StateOpen, cb.GetState())
+}
+
+func TestConcurrentStateTransition(t *testing.T) {
+	// This test verifies that concurrent GetState() calls during the
+	// OPEN -> HALF_OPEN transition don't cause race conditions.
+	// Run with -race flag: go test -race ./pkg/circuitbreaker/...
+	logger := logrus.New()
+	logger.SetLevel(logrus.PanicLevel) // Silence logs in tests
+	cb := NewWithLogger("test-service", 1, time.Millisecond*50, logger)
+	ctx := context.Background()
+
+	// Trip the circuit breaker
+	_ = cb.Execute(ctx, func(ctx context.Context) error {
+		return errors.New("failure")
+	})
+	assert.Equal(t, StateOpen, cb.GetState())
+
+	// Wait for timeout to be almost ready
+	time.Sleep(time.Millisecond * 40)
+
+	// Launch many goroutines that will call GetState() concurrently
+	// during the transition window
+	var wg sync.WaitGroup
+	numGoroutines := 100
+	statesSeen := make([]State, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			// Small sleep to spread out the calls around the transition time
+			time.Sleep(time.Millisecond * time.Duration(idx%20))
+			statesSeen[idx] = cb.GetState()
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All states should be valid (either OPEN or HALF_OPEN after timeout)
+	for i, state := range statesSeen {
+		assert.True(t, state == StateOpen || state == StateHalfOpen,
+			"goroutine %d saw invalid state: %s", i, state)
+	}
+
+	// Final state should be HALF_OPEN (timeout has definitely elapsed)
+	time.Sleep(time.Millisecond * 20)
+	assert.Equal(t, StateHalfOpen, cb.GetState())
+}
+
+func TestConcurrentExecuteDuringRecovery(t *testing.T) {
+	// This test verifies that concurrent Execute() calls during recovery
+	// (HALF_OPEN state) are handled correctly without race conditions.
+	logger := logrus.New()
+	logger.SetLevel(logrus.PanicLevel)
+	cb := NewWithLogger("test-service", 1, time.Millisecond*50, logger)
+	ctx := context.Background()
+
+	// Trip the circuit breaker
+	_ = cb.Execute(ctx, func(ctx context.Context) error {
+		return errors.New("failure")
+	})
+
+	// Wait for timeout
+	time.Sleep(time.Millisecond * 60)
+
+	// Verify we're in half-open
+	assert.Equal(t, StateHalfOpen, cb.GetState())
+
+	// Launch concurrent successful requests
+	var wg sync.WaitGroup
+	var successCount int32
+	var rejectedCount int32
+	numGoroutines := 20
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := cb.Execute(ctx, func(ctx context.Context) error {
+				return nil
+			})
+			if err == nil {
+				atomic.AddInt32(&successCount, 1)
+			} else if IsCircuitBreakerError(err) {
+				atomic.AddInt32(&rejectedCount, 1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Should have processed exactly 3 (halfOpenMaxCalls) before closing
+	// and then allowed the rest after closing
+	finalState := cb.GetState()
+	assert.Equal(t, StateClosed, finalState, "Circuit should be closed after successful recovery")
+
+	// Total should be all goroutines
+	totalProcessed := successCount + rejectedCount
+	assert.Equal(t, int32(numGoroutines), totalProcessed, "All goroutines should have completed")
+
+	// At least halfOpenMaxCalls should have succeeded (the recovery calls)
+	assert.True(t, successCount >= 3, "At least 3 calls should have succeeded")
 }

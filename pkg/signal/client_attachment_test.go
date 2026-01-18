@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"whatsignal/pkg/signal/types"
@@ -258,6 +259,115 @@ func TestExtractAttachmentPaths_NoHTTPClient(t *testing.T) {
 
 	result := client.extractAttachmentPaths(context.Background(), attachments)
 	assert.Empty(t, result, "Should return empty slice when no HTTP client and files don't exist")
+}
+
+func TestExtractAttachmentPaths_ContextCancellation(t *testing.T) {
+	// This test verifies that context cancellation is handled properly
+	// and doesn't cause race conditions or goroutine leaks.
+	tmpDir, err := os.MkdirTemp("", "signal-context-cancel-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a server that delays response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(5 * time.Second):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("delayed response"))
+		case <-r.Context().Done():
+			return
+		}
+	}))
+	defer server.Close()
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.PanicLevel)
+
+	client := &SignalClient{
+		baseURL:        server.URL,
+		attachmentsDir: tmpDir,
+		client:         &http.Client{Timeout: 30 * time.Second},
+		logger:         logger,
+	}
+
+	attachments := []types.RestMessageAttachment{
+		{ID: "cancel1", Filename: "test.jpg", ContentType: "image/jpeg"},
+	}
+
+	// Create cancellable context and cancel it after a short delay
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	// This should return quickly after context is cancelled
+	start := time.Now()
+	result := client.extractAttachmentPaths(ctx, attachments)
+	elapsed := time.Since(start)
+
+	// Should return empty and not take 5 seconds (the server delay)
+	assert.Empty(t, result)
+	assert.Less(t, elapsed, 2*time.Second, "Should return quickly when context is cancelled")
+}
+
+func TestExtractAttachmentPaths_ConcurrentDownloads(t *testing.T) {
+	// This test verifies that concurrent attachment downloads don't cause
+	// race conditions. Run with -race flag.
+	tmpDir, err := os.MkdirTemp("", "signal-concurrent-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	var requestCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		// Small delay to increase chance of concurrency
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		pathParts := strings.Split(r.URL.Path, "/")
+		attachmentID := pathParts[len(pathParts)-1]
+		_, _ = w.Write([]byte("content for " + attachmentID))
+	}))
+	defer server.Close()
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.PanicLevel)
+
+	client := &SignalClient{
+		baseURL:        server.URL,
+		attachmentsDir: tmpDir,
+		client:         &http.Client{Timeout: 30 * time.Second},
+		logger:         logger,
+	}
+
+	// Multiple attachments to download
+	attachments := []types.RestMessageAttachment{
+		{ID: "att1", Filename: "file1.jpg", ContentType: "image/jpeg"},
+		{ID: "att2", Filename: "file2.pdf", ContentType: "application/pdf"},
+		{ID: "att3", Filename: "file3.png", ContentType: "image/png"},
+	}
+
+	// Run multiple times to increase chance of detecting race
+	for i := 0; i < 5; i++ {
+		// Clean up files from previous iteration
+		files, _ := os.ReadDir(tmpDir)
+		for _, f := range files {
+			_ = os.Remove(filepath.Join(tmpDir, f.Name()))
+		}
+
+		result := client.extractAttachmentPaths(context.Background(), attachments)
+
+		// Should get all 3 attachments
+		assert.Len(t, result, 3, "iteration %d: should download all attachments", i)
+
+		// Verify each file exists and has content
+		for _, path := range result {
+			assert.FileExists(t, path)
+			content, err := os.ReadFile(path)
+			assert.NoError(t, err)
+			assert.NotEmpty(t, content)
+		}
+	}
 }
 
 func TestDownloadAndSaveAttachment_Comprehensive(t *testing.T) {

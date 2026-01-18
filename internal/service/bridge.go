@@ -826,14 +826,37 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 	}).Debug("Processing Signal group message")
 
 	// Resolve target WhatsApp group chat
-	mapping, err := b.resolveGroupMessageMapping(ctx, msg, sessionName)
+	mapping, usedFallback, err := b.resolveGroupMessageMapping(ctx, msg, sessionName)
 	if err != nil {
+		// Provide helpful guidance when group routing fails
+		if strings.Contains(err.Error(), "no group context") {
+			// Send notification to Signal about how to route group messages
+			guidance := "Unable to determine target group. Please quote a message from the group you want to reply to."
+			if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, guidance); notifyErr != nil {
+				b.logger.WithError(notifyErr).Warn("Failed to send group routing guidance notification")
+			}
+		}
 		return err
 	}
 
 	// Verify it's actually a group
 	if !strings.HasSuffix(mapping.WhatsAppChatID, "@g.us") {
 		return fmt.Errorf("resolved chat is not a group: %s", mapping.WhatsAppChatID)
+	}
+
+	// Send warning if fallback routing was used (no quoted message)
+	if usedFallback {
+		// Extract group name for clearer notification
+		groupName := mapping.WhatsAppChatID
+		if b.groupService != nil {
+			if name := b.groupService.GetGroupName(ctx, mapping.WhatsAppChatID, sessionName); name != "" {
+				groupName = name
+			}
+		}
+		notice := fmt.Sprintf("Group message routed to: %s\nTip: Quote a message to reply to a specific group.", groupName)
+		if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
+			b.logger.WithError(notifyErr).Warn("Failed to send group fallback routing notification")
+		}
 	}
 
 	// Process attachments
@@ -863,7 +886,8 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 }
 
 // resolveGroupMessageMapping finds the target WhatsApp group chat for a Signal group message.
-func (b *bridge) resolveGroupMessageMapping(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) (*models.MessageMapping, error) {
+// Returns the mapping, whether fallback was used, and any error.
+func (b *bridge) resolveGroupMessageMapping(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) (*models.MessageMapping, bool, error) {
 	var mapping *models.MessageMapping
 	var err error
 
@@ -871,24 +895,32 @@ func (b *bridge) resolveGroupMessageMapping(ctx context.Context, msg *signaltype
 		b.logger.WithField("quotedMessageID", msg.QuotedMessage.ID).Debug("Looking up mapping for quoted message in group")
 		mapping, err = b.db.GetMessageMapping(ctx, msg.QuotedMessage.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get message mapping for quoted message: %w", err)
+			return nil, false, fmt.Errorf("failed to get message mapping for quoted message: %w", err)
 		}
 		if mapping == nil {
-			return nil, fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
+			return nil, false, fmt.Errorf("no mapping found for quoted message: %s (try quoting a more recent message)", msg.QuotedMessage.ID)
 		}
-		return mapping, nil
+		return mapping, false, nil // explicit quote, not fallback
 	}
 
-	b.logger.WithField("sessionName", sessionName).Debug("Resolving latest group mapping for session")
+	// Fallback: use latest group message mapping for the session
+	// WARNING: This can route to wrong group under concurrent load
+	b.logger.WithField("sessionName", sessionName).Debug("No quoted message - using fallback to latest group mapping")
 	mapping, err = b.db.GetLatestGroupMessageMappingBySession(ctx, sessionName, 25)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest group message mapping for session: %w", err)
+		return nil, true, fmt.Errorf("failed to get latest group message mapping for session: %w", err)
 	}
 	if mapping == nil {
-		return nil, fmt.Errorf("no group context found for session %s", sessionName)
+		return nil, true, fmt.Errorf("no group context found for session %s - quote a group message to establish context", sessionName)
 	}
 
-	return mapping, nil
+	b.logger.WithFields(logrus.Fields{
+		"sessionName":    sessionName,
+		"whatsappChatID": SanitizePhoneNumber(mapping.WhatsAppChatID),
+		"fallback":       true,
+	}).Warn("Using fallback routing to latest group chat")
+
+	return mapping, true, nil // fallback was used
 }
 
 func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.SignalMessage) error {

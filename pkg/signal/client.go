@@ -294,48 +294,48 @@ func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments [
 
 		// If files don't exist locally and we have an HTTP client, try downloading via API
 		if c.client != nil {
-
 			// Use a goroutine with timeout to prevent blocking the entire polling operation
-			downloadChan := make(chan string, constants.SignalDownloadChannelSize)
-			errorChan := make(chan error, constants.SignalDownloadChannelSize)
+			downloadChan := make(chan string, 1)
+			errorChan := make(chan error, 1)
 			downloadCtx, downloadCancel := context.WithTimeout(ctx, time.Duration(constants.AttachmentDownloadTimeoutSec)*time.Second)
-			defer downloadCancel()
 
-			go func() {
-				defer downloadCancel() // Ensure cleanup on early return
-				filePath, err := c.downloadAndSaveAttachment(downloadCtx, att)
+			// Capture attachment in closure to avoid loop variable issues
+			go func(attachment types.RestMessageAttachment) {
+				filePath, err := c.downloadAndSaveAttachment(downloadCtx, attachment)
 				if err != nil {
 					select {
 					case errorChan <- err:
 					case <-downloadCtx.Done():
-						return // Context cancelled, exit gracefully
+						// Context cancelled, exit gracefully
 					}
 				} else {
 					select {
 					case downloadChan <- filePath:
 					case <-downloadCtx.Done():
-						return // Context cancelled, exit gracefully
+						// Context cancelled, exit gracefully
 					}
 				}
-			}()
+			}(att)
 
 			// Wait for download with timeout
 			select {
 			case filePath := <-downloadChan:
 				paths = append(paths, filePath)
+				downloadCancel() // Cleanup after successful download
 			case err := <-errorChan:
 				// Log error but don't add non-existent file to paths
 				c.logger.WithFields(logrus.Fields{
 					"attachmentID": att.ID,
 					"error":        err,
 				}).Warn("Failed to download attachment, skipping")
-				// Don't add non-existent paths that will cause media processing to fail
+				downloadCancel() // Cleanup after error
 			case <-downloadCtx.Done():
 				// Download timeout or context cancelled - don't block polling
 				c.logger.WithFields(logrus.Fields{
 					"attachmentID": att.ID,
 				}).Warn("Attachment download timed out or cancelled, skipping")
-				// Don't add non-existent paths that will cause media processing to fail
+				// downloadCancel already called by context timeout, but calling again is safe
+				downloadCancel()
 			}
 		} else {
 			// No HTTP client available - skip attachment

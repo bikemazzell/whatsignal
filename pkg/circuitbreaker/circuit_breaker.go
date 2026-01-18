@@ -180,27 +180,21 @@ func (cb *CircuitBreaker) reset() {
 	cb.halfOpenCalls = 0
 }
 
-// GetState returns the current state of the circuit breaker
+// GetState returns the current state of the circuit breaker.
+// This method may transition from OPEN to HALF_OPEN if the timeout has elapsed.
 func (cb *CircuitBreaker) GetState() State {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
 	// Check if we should transition from open to half-open
 	if cb.state == StateOpen && cb.shouldAttemptReset() {
-		cb.mu.RUnlock()
-		cb.mu.Lock()
-		// Double-check pattern
-		if cb.state == StateOpen && cb.shouldAttemptReset() {
-			cb.state = StateHalfOpen
-			cb.halfOpenCalls = 0
-			cb.successCount = 0
-			cb.logger.WithFields(logrus.Fields{
-				"circuit_breaker": cb.name,
-				"state":           "HALF_OPEN",
-			}).Info("Circuit breaker transitioned to half-open")
-		}
-		cb.mu.Unlock()
-		cb.mu.RLock()
+		cb.state = StateHalfOpen
+		cb.halfOpenCalls = 0
+		cb.successCount = 0
+		cb.logger.WithFields(logrus.Fields{
+			"circuit_breaker": cb.name,
+			"state":           "HALF_OPEN",
+		}).Info("Circuit breaker transitioned to half-open")
 	}
 
 	return cb.state

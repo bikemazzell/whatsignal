@@ -1787,3 +1787,132 @@ func TestSendMessageToWhatsApp_EmptyMessage(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Nil(t, resp, "Empty message should return nil response")
 }
+
+func TestResolveGroupMessageMapping_WithQuotedMessage(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Setup: quoted message mapping pointing to a WhatsApp group chat
+	expectedMapping := &models.MessageMapping{
+		WhatsAppChatID: "group123@g.us",
+		WhatsAppMsgID:  "wa_quoted_msg",
+		SignalMsgID:    "sig_quoted_msg",
+		ForwardedAt:    time.Now(),
+	}
+
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "quoted_msg_id").Return(expectedMapping, nil).Once()
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig_reply_1",
+		Sender:    "group.123",
+		Message:   "Group reply",
+		Timestamp: time.Now().UnixMilli(),
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID: "quoted_msg_id",
+		},
+	}
+
+	mapping, usedFallback, err := bridge.resolveGroupMessageMapping(ctx, msg, "default")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, mapping)
+	assert.False(t, usedFallback, "Should not use fallback when quoted message is provided")
+	assert.Equal(t, "group123@g.us", mapping.WhatsAppChatID)
+}
+
+func TestResolveGroupMessageMapping_FallbackToLatestGroup(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Setup: no quoted message, fallback to latest group mapping
+	fallbackMapping := &models.MessageMapping{
+		WhatsAppChatID: "latestgroup@g.us",
+		WhatsAppMsgID:  "wa_latest_msg",
+		SignalMsgID:    "sig_latest_msg",
+		ForwardedAt:    time.Now(),
+	}
+
+	bridge.db.(*mockDatabaseService).On("GetLatestGroupMessageMappingBySession", ctx, "default", 25).Return(fallbackMapping, nil).Once()
+
+	// Message without quoted message
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig_msg_1",
+		Sender:    "group.123",
+		Message:   "Group message without quote",
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	mapping, usedFallback, err := bridge.resolveGroupMessageMapping(ctx, msg, "default")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, mapping)
+	assert.True(t, usedFallback, "Should use fallback when no quoted message is provided")
+	assert.Equal(t, "latestgroup@g.us", mapping.WhatsAppChatID)
+}
+
+func TestResolveGroupMessageMapping_NoGroupContext(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Setup: no quoted message and no group history
+	bridge.db.(*mockDatabaseService).On("GetLatestGroupMessageMappingBySession", ctx, "default", 25).Return(nil, nil).Once()
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig_msg_1",
+		Sender:    "group.123",
+		Message:   "Group message with no context",
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	mapping, usedFallback, err := bridge.resolveGroupMessageMapping(ctx, msg, "default")
+
+	assert.Error(t, err)
+	assert.Nil(t, mapping)
+	assert.True(t, usedFallback, "Should indicate fallback was attempted")
+	assert.Contains(t, err.Error(), "no group context")
+	assert.Contains(t, err.Error(), "quote a group message")
+}
+
+func TestResolveGroupMessageMapping_QuotedMessageNotFound(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Setup: quoted message not found in database
+	bridge.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "nonexistent_msg").Return(nil, nil).Once()
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig_msg_1",
+		Sender:    "group.123",
+		Message:   "Reply to old message",
+		Timestamp: time.Now().UnixMilli(),
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID: "nonexistent_msg",
+		},
+	}
+
+	mapping, usedFallback, err := bridge.resolveGroupMessageMapping(ctx, msg, "default")
+
+	assert.Error(t, err)
+	assert.Nil(t, mapping)
+	assert.False(t, usedFallback, "Should not indicate fallback when explicit quote fails")
+	assert.Contains(t, err.Error(), "no mapping found for quoted message")
+	assert.Contains(t, err.Error(), "try quoting a more recent message")
+}

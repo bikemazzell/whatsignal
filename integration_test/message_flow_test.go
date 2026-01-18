@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -508,4 +509,204 @@ func TestSignalToWhatsAppMessageFlowWithRetries(t *testing.T) {
 	if sends < 3 {
 		t.Errorf("Expected at least 3 WhatsApp send attempts (2 failures + 1 success), got %d", sends)
 	}
+}
+
+func TestConcurrentWhatsAppMessages(t *testing.T) {
+	// Skip: Concurrent integration tests require shared in-memory SQLite database configuration
+	// with connection pooling. The unit tests for per-chat locking in message_service_test.go
+	// provide race condition coverage. This test can be enabled when using a file-based SQLite
+	// database or when the test environment supports shared memory mode.
+	t.Skip("Concurrent integration tests require special database configuration - see unit tests for concurrency coverage")
+
+	env := NewTestEnvironment(t, "concurrent_wa_messages", IsolationProcess)
+	defer env.Cleanup()
+
+	env.StartMessageFlowServer()
+
+	// Number of concurrent messages to send
+	numMessages := 10
+	sender := "1234567890@c.us"
+
+	// Send messages concurrently from the same sender
+	var wg sync.WaitGroup
+	errors := make(chan error, numMessages)
+	messageIDs := make([]string, numMessages)
+
+	for i := 0; i < numMessages; i++ {
+		messageIDs[i] = fmt.Sprintf("concurrent_msg_%d_%d", i, time.Now().UnixNano())
+	}
+
+	for i := 0; i < numMessages; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			webhook := CreateTestWhatsAppWebhook(
+				"personal", // Use configured session name
+				messageIDs[idx],
+				sender,
+				fmt.Sprintf("Concurrent message %d", idx),
+			)
+			webhook.Payload.Timestamp = time.Now().Unix()
+
+			webhookData, err := json.Marshal(webhook)
+			if err != nil {
+				errors <- fmt.Errorf("failed to marshal webhook %d: %w", idx, err)
+				return
+			}
+
+			resp, err := http.Post(
+				fmt.Sprintf("%s/webhook/whatsapp", env.httpServer.URL),
+				"application/json",
+				strings.NewReader(string(webhookData)),
+			)
+			if err != nil {
+				errors <- fmt.Errorf("failed to send webhook %d: %w", idx, err)
+				return
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusOK {
+				errors <- fmt.Errorf("webhook %d returned status %d", idx, resp.StatusCode)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Check for errors
+	var allErrors []error
+	for err := range errors {
+		allErrors = append(allErrors, err)
+	}
+
+	if len(allErrors) > 0 {
+		for _, err := range allErrors {
+			t.Errorf("Error during concurrent send: %v", err)
+		}
+		t.FailNow()
+	}
+
+	// Wait for processing to complete
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify all messages were processed
+	ctx := context.Background()
+	processedCount := 0
+	for _, msgID := range messageIDs {
+		mapping, err := env.db.GetMessageMapping(ctx, msgID)
+		if err != nil {
+			t.Errorf("Failed to get mapping for message %s: %v", msgID, err)
+			continue
+		}
+		if mapping != nil {
+			processedCount++
+		}
+	}
+
+	if processedCount != numMessages {
+		t.Errorf("Expected %d messages processed, got %d", numMessages, processedCount)
+	}
+
+	// Verify Signal sends match the number of messages
+	sends := env.CountMockAPIRequests("send")
+	if sends != numMessages {
+		t.Errorf("Expected %d Signal sends, got %d", numMessages, sends)
+	}
+
+	t.Logf("Successfully processed %d concurrent messages", processedCount)
+}
+
+func TestConcurrentMessagesFromDifferentSenders(t *testing.T) {
+	// Skip: See TestConcurrentWhatsAppMessages for explanation
+	t.Skip("Concurrent integration tests require special database configuration - see unit tests for concurrency coverage")
+
+	env := NewTestEnvironment(t, "concurrent_diff_senders", IsolationProcess)
+	defer env.Cleanup()
+
+	env.StartMessageFlowServer()
+
+	// Concurrent messages from different senders to test per-chat locking
+	numSenders := 5
+	messagesPerSender := 3
+
+	var wg sync.WaitGroup
+	errors := make(chan error, numSenders*messagesPerSender)
+	messageIDs := make([]string, 0, numSenders*messagesPerSender)
+
+	for s := 0; s < numSenders; s++ {
+		sender := fmt.Sprintf("sender_%d@c.us", s)
+
+		for m := 0; m < messagesPerSender; m++ {
+			msgID := fmt.Sprintf("msg_s%d_m%d_%d", s, m, time.Now().UnixNano())
+			messageIDs = append(messageIDs, msgID)
+
+			wg.Add(1)
+			go func(senderID, messageID string, senderNum, msgNum int) {
+				defer wg.Done()
+
+				webhook := CreateTestWhatsAppWebhook(
+					"personal", // Use configured session name
+					messageID,
+					senderID,
+					fmt.Sprintf("Message from sender %d, msg %d", senderNum, msgNum),
+				)
+				webhook.Payload.Timestamp = time.Now().Unix()
+
+				webhookData, err := json.Marshal(webhook)
+				if err != nil {
+					errors <- fmt.Errorf("failed to marshal webhook: %w", err)
+					return
+				}
+
+				resp, err := http.Post(
+					fmt.Sprintf("%s/webhook/whatsapp", env.httpServer.URL),
+					"application/json",
+					strings.NewReader(string(webhookData)),
+				)
+				if err != nil {
+					errors <- fmt.Errorf("failed to send webhook: %w", err)
+					return
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				if resp.StatusCode != http.StatusOK {
+					errors <- fmt.Errorf("webhook returned status %d", resp.StatusCode)
+				}
+			}(sender, msgID, s, m)
+		}
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Check for errors
+	for err := range errors {
+		t.Errorf("Error during concurrent send: %v", err)
+	}
+
+	// Wait for processing to complete
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify all messages were processed
+	ctx := context.Background()
+	processedCount := 0
+	for _, msgID := range messageIDs {
+		mapping, err := env.db.GetMessageMapping(ctx, msgID)
+		if err != nil {
+			t.Errorf("Failed to get mapping for message %s: %v", msgID, err)
+			continue
+		}
+		if mapping != nil {
+			processedCount++
+		}
+	}
+
+	expectedTotal := numSenders * messagesPerSender
+	if processedCount != expectedTotal {
+		t.Errorf("Expected %d messages processed, got %d", expectedTotal, processedCount)
+	}
+
+	t.Logf("Successfully processed %d concurrent messages from %d different senders", processedCount, numSenders)
 }

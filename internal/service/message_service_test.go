@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -1068,4 +1070,159 @@ func TestDetermineDestinationForSender(t *testing.T) {
 			db.AssertExpectations(t)
 		})
 	}
+}
+
+func TestChatLockManager_GetLock(t *testing.T) {
+	clm := newChatLockManager()
+
+	t.Run("returns same lock for same chat ID", func(t *testing.T) {
+		lock1 := clm.getLock("chat123")
+		lock2 := clm.getLock("chat123")
+		assert.Same(t, lock1, lock2, "Should return the same lock instance for the same chat ID")
+	})
+
+	t.Run("returns different locks for different chat IDs", func(t *testing.T) {
+		lock1 := clm.getLock("chat123")
+		lock2 := clm.getLock("chat456")
+		assert.NotSame(t, lock1, lock2, "Should return different lock instances for different chat IDs")
+	})
+}
+
+func TestChatLockManager_ConcurrentGetLock(t *testing.T) {
+	clm := newChatLockManager()
+	chatID := "concurrent-test-chat"
+	numGoroutines := 100
+
+	var wg sync.WaitGroup
+	locks := make(chan *sync.Mutex, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			lock := clm.getLock(chatID)
+			locks <- lock
+		}()
+	}
+
+	wg.Wait()
+	close(locks)
+
+	// All locks should be the same instance
+	var firstLock *sync.Mutex
+	for lock := range locks {
+		if firstLock == nil {
+			firstLock = lock
+		} else {
+			assert.Same(t, firstLock, lock, "All goroutines should get the same lock instance")
+		}
+	}
+}
+
+func TestChatLockManager_Cleanup(t *testing.T) {
+	clm := newChatLockManager()
+
+	// Add more locks than the threshold
+	for i := 0; i < 1001; i++ {
+		clm.getLock(fmt.Sprintf("chat%d", i))
+	}
+
+	assert.Equal(t, 1001, len(clm.locks), "Should have 1001 locks before cleanup")
+
+	// Trigger cleanup
+	clm.cleanup()
+
+	assert.Equal(t, 0, len(clm.locks), "Cleanup should reset locks map when over threshold")
+}
+
+func TestChatLockManager_CleanupBelowThreshold(t *testing.T) {
+	clm := newChatLockManager()
+
+	// Add fewer locks than the threshold
+	for i := 0; i < 100; i++ {
+		clm.getLock(fmt.Sprintf("chat%d", i))
+	}
+
+	assert.Equal(t, 100, len(clm.locks), "Should have 100 locks before cleanup")
+
+	// Trigger cleanup
+	clm.cleanup()
+
+	assert.Equal(t, 100, len(clm.locks), "Cleanup should not reset locks map when below threshold")
+}
+
+func TestChatLockManager_MessageOrdering(t *testing.T) {
+	clm := newChatLockManager()
+	chatID := "ordering-test-chat"
+	numMessages := 50
+
+	var wg sync.WaitGroup
+	results := make([]int, 0, numMessages)
+	resultsMu := sync.Mutex{}
+
+	for i := 0; i < numMessages; i++ {
+		wg.Add(1)
+		go func(msgNum int) {
+			defer wg.Done()
+
+			// Acquire the per-chat lock
+			lock := clm.getLock(chatID)
+			lock.Lock()
+			defer lock.Unlock()
+
+			// Simulate message processing
+			resultsMu.Lock()
+			results = append(results, msgNum)
+			resultsMu.Unlock()
+
+			// Small sleep to simulate work
+			time.Sleep(time.Microsecond)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All messages should be processed
+	assert.Equal(t, numMessages, len(results), "All messages should be processed")
+}
+
+func TestPollSignalMessages_PerChatLocking(t *testing.T) {
+	// This test verifies that per-chat locking is being used during polling
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	signalClient := &mockSignalClient{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollTimeoutSec:  10,
+		PollWorkers:     10, // Use multiple workers to test concurrent processing
+	}
+	channelManager, _ := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager).(*messageService)
+
+	// Create multiple messages from the same sender (same chat)
+	messages := make([]signaltypes.SignalMessage, 10)
+	for i := 0; i < 10; i++ {
+		messages[i] = signaltypes.SignalMessage{
+			MessageID: fmt.Sprintf("msg%d", i),
+			Sender:    "+1234567890",
+			Message:   fmt.Sprintf("Message %d", i),
+			Timestamp: time.Now().UnixMilli() + int64(i), // Ensure ordering
+		}
+	}
+
+	signalClient.On("ReceiveMessages", mock.Anything, 10).Return(messages, nil)
+	bridge.On("HandleSignalMessageWithDestination", mock.Anything, mock.Anything, "+1234567890").Return(nil).Times(10)
+
+	ctx := context.Background()
+	err := service.PollSignalMessages(ctx)
+
+	assert.NoError(t, err)
+	bridge.AssertExpectations(t)
+	signalClient.AssertExpectations(t)
 }

@@ -82,15 +82,16 @@ func (m *chatLockManager) cleanup() {
 }
 
 type messageService struct {
-	logger          *logrus.Logger
-	db              Database
-	bridge          MessageBridge
-	mediaCache      MediaCache
-	signalClient    signal.Client
-	signalConfig    models.SignalConfig
-	channelManager  *ChannelManager
-	mu              sync.RWMutex
-	chatLockManager *chatLockManager
+	logger             *logrus.Logger
+	db                 Database
+	bridge             MessageBridge
+	mediaCache         MediaCache
+	signalClient       signal.Client
+	signalConfig       models.SignalConfig
+	channelManager     *ChannelManager
+	mu                 sync.RWMutex
+	chatLockManager    *chatLockManager
+	inProgressMessages sync.Map // tracks message IDs currently being processed
 }
 
 func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig, channelManager *ChannelManager) MessageService {
@@ -266,6 +267,15 @@ func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
 }
 
 func (s *messageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error {
+	// Check if message is already being processed (in-flight deduplication)
+	if _, alreadyProcessing := s.inProgressMessages.LoadOrStore(msgID, true); alreadyProcessing {
+		s.logger.Debug("Message already being processed, skipping duplicate webhook")
+		return nil
+	}
+	// Ensure we clean up the in-progress marker when done
+	defer s.inProgressMessages.Delete(msgID)
+
+	// Check if message was already processed (persisted deduplication)
 	s.mu.RLock()
 	existingMapping, err := s.db.GetMessageMapping(ctx, msgID)
 	s.mu.RUnlock()

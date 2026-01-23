@@ -1226,3 +1226,55 @@ func TestPollSignalMessages_PerChatLocking(t *testing.T) {
 	bridge.AssertExpectations(t)
 	signalClient.AssertExpectations(t)
 }
+
+func TestMessageService_ConcurrentDuplicateWebhooks(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	signalClient := new(mockSignalClient)
+
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 15,
+		PollTimeoutSec:  10,
+	}
+
+	channelManager, _ := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager).(*messageService)
+
+	ctx := context.Background()
+	msgID := "duplicate-test-msg"
+
+	// DB returns no existing mapping (message not yet processed)
+	db.On("GetMessageMapping", ctx, msgID).Return(nil, nil).Maybe()
+	// Bridge should only be called ONCE despite multiple concurrent calls
+	bridge.On("HandleWhatsAppMessageWithSession", ctx, "default", "chat1", msgID, "sender1", "", "Test message", "").Return(nil).Once()
+
+	// Simulate concurrent duplicate webhooks
+	var wg sync.WaitGroup
+	results := make(chan error, 5)
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := service.HandleWhatsAppMessageWithSession(ctx, "default", "chat1", msgID, "sender1", "", "Test message", "")
+			results <- err
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	// All should succeed (either processed or deduplicated)
+	for err := range results {
+		assert.NoError(t, err)
+	}
+
+	// Bridge should have been called exactly once
+	bridge.AssertExpectations(t)
+}

@@ -532,7 +532,9 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 	backoff := retry.NewBackoff(backoffConfig)
 
 	var resp *types.SendMessageResponse
+	attempt := 0
 	retryErr := backoff.RetryWithPredicate(ctx, func() error {
+		attempt++
 		var sendErr error
 
 		switch {
@@ -540,6 +542,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 			b.logger.WithFields(logrus.Fields{
 				"method":      "SendImage",
 				"sessionName": sessionName,
+				"attempt":     attempt,
 			}).Debug("Sending image to WhatsApp")
 			if replyTo != "" {
 				resp, sendErr = b.waClient.SendImageWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
@@ -551,6 +554,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 			b.logger.WithFields(logrus.Fields{
 				"method":      "SendVideo",
 				"sessionName": sessionName,
+				"attempt":     attempt,
 			}).Debug("Sending video to WhatsApp")
 			if replyTo != "" {
 				resp, sendErr = b.waClient.SendVideoWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
@@ -562,6 +566,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 			b.logger.WithFields(logrus.Fields{
 				"method":      "SendVoice",
 				"sessionName": sessionName,
+				"attempt":     attempt,
 			}).Debug("Sending voice to WhatsApp")
 			if replyTo != "" {
 				resp, sendErr = b.waClient.SendVoiceWithSessionReply(ctx, chatID, attachments[0], replyTo, sessionName)
@@ -574,6 +579,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"method":      "SendDocument",
 				"filePath":    attachments[0],
 				"sessionName": sessionName,
+				"attempt":     attempt,
 			}).Debug("Sending attachment as document to WhatsApp")
 			if replyTo != "" {
 				resp, sendErr = b.waClient.SendDocumentWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
@@ -586,6 +592,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"method":        "SendText",
 				"sessionName":   sessionName,
 				"messageLength": len(trimmedMessage),
+				"attempt":       attempt,
 			}).Debug("Sending text to WhatsApp")
 			if replyTo != "" {
 				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, chatID, trimmedMessage, replyTo, sessionName)
@@ -594,15 +601,39 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 			}
 		}
 
+		if sendErr != nil {
+			isRetryable := isRetryableWhatsAppError(sendErr)
+			b.logger.WithFields(logrus.Fields{
+				"sessionName": sessionName,
+				"chatID":      SanitizePhoneNumber(chatID),
+				"attempt":     attempt,
+				"maxAttempts": b.retryConfig.MaxAttempts,
+				"error":       sendErr.Error(),
+				"retryable":   isRetryable,
+			}).Warn("WhatsApp send attempt failed")
+		}
+
 		return sendErr
 	}, isRetryableWhatsAppError)
 
 	if retryErr != nil {
+		b.logger.WithFields(logrus.Fields{
+			"sessionName":   sessionName,
+			"chatID":        SanitizePhoneNumber(chatID),
+			"totalAttempts": attempt,
+			"error":         retryErr.Error(),
+		}).Error("WhatsApp message failed after all retry attempts")
 		if !isRetryableWhatsAppError(retryErr) {
 			return nil, fmt.Errorf("whatsapp message failed (non-retryable): %w", retryErr)
 		}
 		return nil, fmt.Errorf("failed to send whatsapp message after retries: %w", retryErr)
 	}
+
+	b.logger.WithFields(logrus.Fields{
+		"sessionName": sessionName,
+		"chatID":      SanitizePhoneNumber(chatID),
+		"attempts":    attempt,
+	}).Debug("WhatsApp message sent successfully")
 
 	return resp, nil
 }

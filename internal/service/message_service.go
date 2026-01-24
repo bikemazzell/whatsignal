@@ -319,6 +319,14 @@ func (s *messageService) ProcessIncomingSignalMessage(ctx context.Context, rawSi
 }
 
 func (s *messageService) ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error {
+	// Check if message is already being processed (in-flight deduplication)
+	if _, alreadyProcessing := s.inProgressMessages.LoadOrStore(rawSignalMsg.MessageID, true); alreadyProcessing {
+		s.logger.WithField("messageID", rawSignalMsg.MessageID).Debug("Signal message already being processed, skipping duplicate")
+		return nil
+	}
+	// Ensure we clean up the in-progress marker when done
+	defer s.inProgressMessages.Delete(rawSignalMsg.MessageID)
+
 	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
 	return s.bridge.HandleSignalMessageWithDestination(ctx, rawSignalMsg, destination)

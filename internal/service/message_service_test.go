@@ -1249,23 +1249,44 @@ func TestMessageService_ConcurrentDuplicateWebhooks(t *testing.T) {
 	ctx := context.Background()
 	msgID := "duplicate-test-msg"
 
+	// Use channels to synchronize goroutines:
+	// - startBarrier ensures all goroutines are ready before any proceed
+	// - processingDone blocks the bridge call until we release it
+	const numGoroutines = 5
+	startBarrier := make(chan struct{})
+	processingDone := make(chan struct{})
+
 	// DB returns no existing mapping (message not yet processed)
 	db.On("GetMessageMapping", ctx, msgID).Return(nil, nil).Maybe()
 	// Bridge should only be called ONCE despite multiple concurrent calls
-	bridge.On("HandleWhatsAppMessageWithSession", ctx, "default", "chat1", msgID, "sender1", "", "Test message", "").Return(nil).Once()
+	// The mock blocks until processingDone is closed to simulate real processing time
+	bridge.On("HandleWhatsAppMessageWithSession", ctx, "default", "chat1", msgID, "sender1", "", "Test message", "").
+		Run(func(args mock.Arguments) {
+			<-processingDone // Block until test releases
+		}).Return(nil).Once()
 
 	// Simulate concurrent duplicate webhooks
 	var wg sync.WaitGroup
-	results := make(chan error, 5)
+	results := make(chan error, numGoroutines)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-startBarrier // Wait for all goroutines to be ready
 			err := service.HandleWhatsAppMessageWithSession(ctx, "default", "chat1", msgID, "sender1", "", "Test message", "")
 			results <- err
 		}()
 	}
+
+	// Release all goroutines at once to maximize concurrency
+	close(startBarrier)
+
+	// Give goroutines time to hit the deduplication check
+	time.Sleep(50 * time.Millisecond)
+
+	// Release the bridge call to complete
+	close(processingDone)
 
 	wg.Wait()
 	close(results)

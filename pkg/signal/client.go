@@ -217,57 +217,138 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 
 	result := make([]types.SignalMessage, 0, len(messages))
 	for _, msg := range messages {
-		if msg.Envelope.DataMessage == nil {
+		// Handle incoming messages (DataMessage)
+		if msg.Envelope.DataMessage != nil {
+			sigMsg := c.convertDataMessageToSignalMessage(ctx, msg)
+			result = append(result, sigMsg)
 			continue
 		}
 
-		sigMsg := types.SignalMessage{
-			Timestamp:   msg.Envelope.Timestamp,
-			Sender:      msg.Envelope.Source,
-			MessageID:   fmt.Sprintf("%d", msg.Envelope.Timestamp),
-			Message:     msg.Envelope.DataMessage.Message,
-			Attachments: c.extractAttachmentPaths(ctx, msg.Envelope.DataMessage.Attachments),
+		// Handle outgoing messages sent from another device (SyncMessage.SentMessage)
+		if msg.Envelope.SyncMessage != nil && msg.Envelope.SyncMessage.SentMessage != nil {
+			sigMsg := c.convertSyncMessageToSignalMessage(ctx, msg)
+			if sigMsg != nil {
+				result = append(result, *sigMsg)
+			}
+			continue
 		}
 
-		// Handle remote deletion
-		if msg.Envelope.DataMessage.RemoteDelete != nil {
-			sigMsg.Deletion = &types.SignalDeletion{
-				TargetMessageID: fmt.Sprintf("%d", msg.Envelope.DataMessage.RemoteDelete.Timestamp),
-				TargetTimestamp: msg.Envelope.DataMessage.RemoteDelete.Timestamp,
-			}
-		}
-
-		if msg.Envelope.DataMessage.Quote != nil {
-			sigMsg.QuotedMessage = &struct {
-				ID        string `json:"id"`
-				Author    string `json:"author"`
-				Text      string `json:"text"`
-				Timestamp int64  `json:"timestamp"`
-			}{
-				ID:        fmt.Sprintf("%d", msg.Envelope.DataMessage.Quote.ID),
-				Author:    msg.Envelope.DataMessage.Quote.Author,
-				Text:      msg.Envelope.DataMessage.Quote.Text,
-				Timestamp: msg.Envelope.DataMessage.Quote.ID,
-			}
-		}
-
-		if msg.Envelope.DataMessage.Reaction != nil {
-			sigMsg.Reaction = &types.SignalReaction{
-				Emoji:           msg.Envelope.DataMessage.Reaction.Emoji,
-				TargetAuthor:    msg.Envelope.DataMessage.Reaction.TargetAuthor,
-				TargetTimestamp: msg.Envelope.DataMessage.Reaction.TargetTimestamp,
-				IsRemove:        msg.Envelope.DataMessage.Reaction.IsRemove,
-			}
-			// For reactions, we might not have a regular message text
-			if sigMsg.Message == "" && sigMsg.Reaction != nil {
-				sigMsg.Message = sigMsg.Reaction.Emoji // Store emoji as message for easy access
-			}
-		}
-
-		result = append(result, sigMsg)
+		// Skip other message types (receipts, typing indicators, etc.)
 	}
 
 	return result, nil
+}
+
+// convertDataMessageToSignalMessage converts an incoming DataMessage to a SignalMessage
+func (c *SignalClient) convertDataMessageToSignalMessage(ctx context.Context, msg types.RestMessage) types.SignalMessage {
+	sigMsg := types.SignalMessage{
+		Timestamp:   msg.Envelope.Timestamp,
+		Sender:      msg.Envelope.Source,
+		MessageID:   fmt.Sprintf("%d", msg.Envelope.Timestamp),
+		Message:     msg.Envelope.DataMessage.Message,
+		Attachments: c.extractAttachmentPaths(ctx, msg.Envelope.DataMessage.Attachments),
+	}
+
+	// Handle remote deletion
+	if msg.Envelope.DataMessage.RemoteDelete != nil {
+		sigMsg.Deletion = &types.SignalDeletion{
+			TargetMessageID: fmt.Sprintf("%d", msg.Envelope.DataMessage.RemoteDelete.Timestamp),
+			TargetTimestamp: msg.Envelope.DataMessage.RemoteDelete.Timestamp,
+		}
+	}
+
+	if msg.Envelope.DataMessage.Quote != nil {
+		sigMsg.QuotedMessage = &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:        fmt.Sprintf("%d", msg.Envelope.DataMessage.Quote.ID),
+			Author:    msg.Envelope.DataMessage.Quote.Author,
+			Text:      msg.Envelope.DataMessage.Quote.Text,
+			Timestamp: msg.Envelope.DataMessage.Quote.ID,
+		}
+	}
+
+	if msg.Envelope.DataMessage.Reaction != nil {
+		sigMsg.Reaction = &types.SignalReaction{
+			Emoji:           msg.Envelope.DataMessage.Reaction.Emoji,
+			TargetAuthor:    msg.Envelope.DataMessage.Reaction.TargetAuthor,
+			TargetTimestamp: msg.Envelope.DataMessage.Reaction.TargetTimestamp,
+			IsRemove:        msg.Envelope.DataMessage.Reaction.IsRemove,
+		}
+		// For reactions, we might not have a regular message text
+		if sigMsg.Message == "" && sigMsg.Reaction != nil {
+			sigMsg.Message = sigMsg.Reaction.Emoji // Store emoji as message for easy access
+		}
+	}
+
+	return sigMsg
+}
+
+// convertSyncMessageToSignalMessage converts a SyncMessage (user's sent message) to a SignalMessage
+// Returns nil if the message should be skipped (e.g., no content)
+func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, msg types.RestMessage) *types.SignalMessage {
+	sent := msg.Envelope.SyncMessage.SentMessage
+
+	// Skip empty messages
+	if sent.Message == "" && len(sent.Attachments) == 0 {
+		return nil
+	}
+
+	// For sync messages, the "sender" is the user's own account (msg.Account or msg.Envelope.Source)
+	// The destination is where the message was sent TO
+	sender := msg.Envelope.Source
+	if sender == "" {
+		sender = msg.Account
+	}
+
+	// Mark as a sync/sent message by prefixing sender with "self:"
+	// This allows downstream code to distinguish sent vs received messages
+	sigMsg := types.SignalMessage{
+		Timestamp:   sent.Timestamp,
+		Sender:      sender,
+		MessageID:   fmt.Sprintf("%d", sent.Timestamp),
+		Message:     sent.Message,
+		Attachments: c.extractAttachmentPaths(ctx, sent.Attachments),
+		IsSentByMe:  true, // Mark as sent by user
+	}
+
+	// Include destination information for routing
+	if sent.Destination != "" {
+		sigMsg.Destination = sent.Destination
+	} else if sent.DestinationNumber != "" {
+		sigMsg.Destination = sent.DestinationNumber
+	}
+
+	// Handle group messages
+	if sent.GroupInfo != nil && sent.GroupInfo.GroupID != "" {
+		sigMsg.Sender = "group." + sent.GroupInfo.GroupID
+	}
+
+	if sent.Quote != nil {
+		sigMsg.QuotedMessage = &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:        fmt.Sprintf("%d", sent.Quote.ID),
+			Author:    sent.Quote.Author,
+			Text:      sent.Quote.Text,
+			Timestamp: sent.Quote.ID,
+		}
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"messageID":   sigMsg.MessageID,
+		"sender":      sigMsg.Sender,
+		"destination": sigMsg.Destination,
+		"isSentByMe":  true,
+	}).Debug("Processed sync message (sent by user)")
+
+	return &sigMsg
 }
 
 func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments []types.RestMessageAttachment) []string {

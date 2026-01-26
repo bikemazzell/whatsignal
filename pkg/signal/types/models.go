@@ -78,8 +78,10 @@ type SignalMessage struct {
 		Text      string `json:"text"`
 		Timestamp int64  `json:"timestamp"`
 	} `json:"quotedMessage,omitempty"`
-	Reaction *SignalReaction `json:"reaction,omitempty"`
-	Deletion *SignalDeletion `json:"deletion,omitempty"`
+	Reaction    *SignalReaction `json:"reaction,omitempty"`
+	Deletion    *SignalDeletion `json:"deletion,omitempty"`
+	IsSentByMe  bool            `json:"isSentByMe,omitempty"`
+	Destination string          `json:"destination,omitempty"`
 }
 
 // SignalDeletion represents a message deletion event
@@ -97,27 +99,54 @@ type SignalReaction struct {
 	IsRemove        bool   `json:"isRemove"`
 }
 
+// RestDataMessage represents the data message content in Signal messages
+type RestDataMessage struct {
+	Timestamp    int64                   `json:"timestamp"`
+	Message      string                  `json:"message"`
+	Attachments  []RestMessageAttachment `json:"attachments"`
+	Quote        *RestMessageQuote       `json:"quote,omitempty"`
+	Reaction     *RestMessageReaction    `json:"reaction,omitempty"`
+	RemoteDelete *struct {
+		Timestamp int64 `json:"timestamp"`
+	} `json:"remoteDelete,omitempty"`
+}
+
+// RestSentMessage represents a message sent by the user (received via sync)
+type RestSentMessage struct {
+	Destination       string                  `json:"destination,omitempty"`
+	DestinationNumber string                  `json:"destinationNumber,omitempty"`
+	DestinationUUID   string                  `json:"destinationUuid,omitempty"`
+	Timestamp         int64                   `json:"timestamp"`
+	Message           string                  `json:"message"`
+	ExpiresInSeconds  int                     `json:"expiresInSeconds,omitempty"`
+	Attachments       []RestMessageAttachment `json:"attachments,omitempty"`
+	Quote             *RestMessageQuote       `json:"quote,omitempty"`
+	GroupInfo         *RestGroupInfo          `json:"groupInfo,omitempty"`
+}
+
+// RestGroupInfo represents group information in a message
+type RestGroupInfo struct {
+	GroupID string `json:"groupId"`
+	Type    string `json:"type,omitempty"`
+}
+
+// RestSyncMessage represents a sync message (messages sent by the user on another device)
+type RestSyncMessage struct {
+	SentMessage *RestSentMessage `json:"sentMessage,omitempty"`
+}
+
 // REST API message types for receiving messages
 type RestMessage struct {
 	Envelope struct {
-		Source       string `json:"source"`
-		SourceNumber string `json:"sourceNumber"`
-		SourceUUID   string `json:"sourceUuid"`
-		SourceName   string `json:"sourceName"`
-		Timestamp    int64  `json:"timestamp"`
-		DataMessage  *struct {
-			Timestamp    int64                   `json:"timestamp"`
-			Message      string                  `json:"message"`
-			Attachments  []RestMessageAttachment `json:"attachments"`
-			Quote        *RestMessageQuote       `json:"quote,omitempty"`
-			Reaction     *RestMessageReaction    `json:"reaction,omitempty"`
-			RemoteDelete *struct {
-				Timestamp int64 `json:"timestamp"`
-			} `json:"remoteDelete,omitempty"`
-		} `json:"dataMessage,omitempty"`
-		SyncMessage    interface{} `json:"syncMessage,omitempty"`
-		ReceiptMessage interface{} `json:"receiptMessage,omitempty"`
-		TypingMessage  interface{} `json:"typingMessage,omitempty"`
+		Source         string           `json:"source"`
+		SourceNumber   string           `json:"sourceNumber"`
+		SourceUUID     string           `json:"sourceUuid"`
+		SourceName     string           `json:"sourceName"`
+		Timestamp      int64            `json:"timestamp"`
+		DataMessage    *RestDataMessage `json:"dataMessage,omitempty"`
+		SyncMessage    *RestSyncMessage `json:"syncMessage,omitempty"`
+		ReceiptMessage interface{}      `json:"receiptMessage,omitempty"`
+		TypingMessage  interface{}      `json:"typingMessage,omitempty"`
 	} `json:"envelope"`
 	Account string `json:"account"`
 }

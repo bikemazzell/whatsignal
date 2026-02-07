@@ -37,16 +37,16 @@ var nonRetryableSignalErrors = []string{
 
 // nonRetryableWhatsAppErrors contains error substrings that indicate non-retryable WAHA/WhatsApp errors.
 // These errors require manual intervention and should not be retried.
+// Note: "session is not ready" errors are now retryable (session status validation with backoff)
 var nonRetryableWhatsAppErrors = []string{
-	"status 400",           // Bad request - invalid parameters
-	"status 401",           // Unauthorized - auth issue
-	"status 403",           // Forbidden - permission denied
-	"status 404",           // Not found - chat/resource doesn't exist
-	"invalid chat",         // Invalid chat ID format
-	"not registered",       // User not on WhatsApp
-	"blocked",              // User blocked
-	"session not found",    // Session doesn't exist
-	"session is not ready", // Session not authenticated
+	"status 400",        // Bad request - invalid parameters
+	"status 401",        // Unauthorized - auth issue
+	"status 403",        // Forbidden - permission denied
+	"status 404",        // Not found - chat/resource doesn't exist
+	"invalid chat",      // Invalid chat ID format
+	"not registered",    // User not on WhatsApp
+	"blocked",           // User blocked
+	"session not found", // Session doesn't exist
 }
 
 // isRetryableSignalError determines if a Signal API error should be retried.
@@ -92,7 +92,33 @@ func isRetryableWhatsAppError(err error) bool {
 	if strings.Contains(errStr, "markedunread") {
 		return true
 	}
-	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "network") {
+
+	// Retryable network and timeout errors
+	if strings.Contains(errStr, "timeout") {
+		return true
+	}
+	if strings.Contains(errStr, "network") {
+		return true
+	}
+	if strings.Contains(errStr, "connection refused") {
+		return true
+	}
+	if strings.Contains(errStr, "connection reset") {
+		return true
+	}
+	if strings.Contains(errStr, "connection timeout") {
+		return true
+	}
+	if strings.Contains(errStr, "temporary failure") {
+		return true
+	}
+	if strings.Contains(errStr, "temporary error") {
+		return true
+	}
+	if strings.Contains(errStr, "EOF") {
+		return true
+	}
+	if strings.Contains(errStr, "broken pipe") {
 		return true
 	}
 
@@ -958,9 +984,9 @@ func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.Sig
 	b.logger.WithFields(logrus.Fields{
 		"messageID": msg.MessageID,
 		"sender":    msg.Sender,
-	}).Warn("New thread creation is not yet supported - message ignored")
+	}).Error("Cannot start new conversation from Signal to WhatsApp - no message mapping found")
 
-	return nil
+	return fmt.Errorf("cannot start new conversations from Signal to WhatsApp. Please send a message from WhatsApp first, or quote an existing message to reply to a specific conversation")
 }
 
 func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.SignalMessage) error {

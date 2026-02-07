@@ -47,7 +47,7 @@ func NewClient(config types.ClientConfig) types.WAClient {
 		client:         &http.Client{Timeout: config.Timeout},
 		sessionMgr:     NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
 		logger:         logrus.New(),
-		circuitBreaker: circuitbreaker.New("whatsapp-api", 5, 30*time.Second),
+		circuitBreaker: circuitbreaker.New("whatsapp-api", 15, 15*time.Second),
 	}
 	return client
 }
@@ -202,6 +202,7 @@ func (c *WhatsAppClient) GetSessionStatusByName(ctx context.Context, sessionName
 }
 
 // validateSessionStatus checks if a session is ready to send messages
+// Waits for temporary states (e.g., STARTING) but fails quickly for permanent states
 func (c *WhatsAppClient) validateSessionStatus(ctx context.Context, sessionName string) error {
 	// Use default session name if not provided
 	if sessionName == "" {
@@ -213,12 +214,47 @@ func (c *WhatsAppClient) validateSessionStatus(ctx context.Context, sessionName 
 		return fmt.Errorf("failed to get session status: %w", err)
 	}
 
-	// Check if session is in WORKING status
-	if session.Status != "WORKING" {
-		return fmt.Errorf("session '%s' is not ready (status: %s). Please ensure the WhatsApp session is authenticated and in WORKING state", sessionName, session.Status)
+	// Check if session is already in WORKING status
+	if session.Status == "WORKING" {
+		return nil
+	}
+
+	// Permanent states - fail immediately without waiting
+	if c.isPermanentSessionError(string(session.Status)) {
+		return fmt.Errorf("session '%s' is in a permanent error state (status: %s). Please check the WhatsApp session and restart if needed", sessionName, session.Status)
+	}
+
+	// Temporary states - wait for session to become WORKING
+	if c.logger != nil {
+		c.logger.WithFields(logrus.Fields{
+			"session": sessionName,
+			"status":  session.Status,
+		}).Info("Session not ready, waiting for WORKING status")
+	}
+
+	// Use existing WaitForSessionReady with a 30-second timeout
+	waitTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
+	if err := c.WaitForSessionReady(ctx, waitTimeout); err != nil {
+		return fmt.Errorf("session '%s' did not become ready after waiting: %w", sessionName, err)
 	}
 
 	return nil
+}
+
+// isPermanentSessionError checks if a session status represents a permanent error
+// that cannot be recovered from by waiting
+func (c *WhatsAppClient) isPermanentSessionError(status string) bool {
+	permanentStates := []string{
+		"STOPPED",
+		"FAILED",
+		"ERROR",
+	}
+	for _, state := range permanentStates {
+		if status == state {
+			return true
+		}
+	}
+	return false
 }
 
 // WaitForSessionReady waits for the WhatsApp session to be in WORKING status

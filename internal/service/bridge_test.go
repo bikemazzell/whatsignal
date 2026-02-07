@@ -912,7 +912,8 @@ func TestHandleNewSignalThread(t *testing.T) {
 	}
 
 	err := bridge.handleNewSignalThread(ctx, msg)
-	assert.NoError(t, err) // Should not error with graceful degradation
+	assert.Error(t, err) // Should error with clear user message
+	assert.Contains(t, err.Error(), "cannot start new conversations")
 }
 
 func TestHandleSignalReaction(t *testing.T) {
@@ -1248,11 +1249,12 @@ func TestHandleSignalMessageAutoReplyNoHistory(t *testing.T) {
 	bridge.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(nil, nil)
 	bridge.db.(*mockDatabaseService).On("GetLatestMessageMapping", ctx).Return(nil, nil)
 
-	// Process the Signal message - should call handleNewSignalThread (which currently logs and returns nil)
+	// Process Signal message - should call handleNewSignalThread and return clear error
 	err := bridge.HandleSignalMessage(ctx, msg)
-	assert.NoError(t, err) // Should not error, just log and ignore
+	assert.Error(t, err) // Should error with clear message
+	assert.Contains(t, err.Error(), "cannot start new conversations")
 
-	// Verify that the auto-reply logic was attempted but found no history
+	// Verify that auto-reply logic was attempted but found no history
 	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetLatestMessageMappingBySession", ctx, "default")
 }
 
@@ -1675,7 +1677,7 @@ func TestIsRetryableWhatsAppError(t *testing.T) {
 		{"Not registered", `request failed: user not registered on WhatsApp`, false},
 		{"Blocked user", `request failed: user blocked`, false},
 		{"Session not found", `session not found`, false},
-		{"Session is not ready", `session is not ready`, false},
+		{"Session is not ready", `session is not ready`, true},
 		{"Status 500 - Internal error", `request failed with status 500: {"error":"internal server error"}`, true},
 		{"Status 500 - markedUnread", `request failed with status 500: Cannot read properties of undefined (reading 'markedUnread')`, true},
 		{"Status 502 - Bad Gateway", `request failed with status 502: bad gateway`, true},

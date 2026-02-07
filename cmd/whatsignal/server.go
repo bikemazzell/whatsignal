@@ -681,13 +681,22 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 		statusText = "Unknown"
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	ackLogFields := logrus.Fields{
 		"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.ID),
 		"from":      service.SanitizePhoneNumber(payload.Payload.From),
 		"to":        service.SanitizePhoneNumber(payload.Payload.To),
 		"ack":       ackStatus,
 		"status":    statusText,
-	}).Debug("Processing WhatsApp ACK status")
+	}
+
+	switch ackStatus {
+	case models.ACKError:
+		s.logger.WithFields(ackLogFields).Error("WhatsApp message delivery failed (ACK error)")
+	case models.ACKPending:
+		s.logger.WithFields(ackLogFields).Info("WhatsApp ACK status update")
+	default:
+		s.logger.WithFields(ackLogFields).Info("WhatsApp ACK status update")
+	}
 
 	// Update delivery status in database if we have a mapping
 	mapping, err := s.msgService.GetMessageMappingByWhatsAppID(ctx, payload.Payload.ID)

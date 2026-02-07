@@ -882,6 +882,21 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 		messageID = wahaResult.Data.ID.Serialized
 	}
 
+	// Log successful WAHA response for delivery observability
+	if c.logger != nil {
+		logFields := logrus.Fields{
+			"endpoint":   endpoint,
+			"messageId":  messageID,
+			"status":     "sent",
+			"statusCode": resp.StatusCode,
+		}
+		if messageID == "" {
+			c.logger.WithFields(logFields).Warn("WAHA returned success but no message ID")
+		} else {
+			c.logger.WithFields(logFields).Info("WAHA message sent successfully")
+		}
+	}
+
 	// Convert to our standard response format
 	result := &types.SendMessageResponse{
 		MessageID: messageID,

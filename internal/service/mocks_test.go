@@ -417,6 +417,11 @@ func (m *mockDatabaseService) HasMessageHistoryBetween(ctx context.Context, sess
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockDatabaseService) GetStaleMessageCount(ctx context.Context, threshold time.Duration) (int, error) {
+	args := m.Called(ctx, threshold)
+	return args.Int(0), args.Error(1)
+}
+
 // Mock contact service
 type mockContactService struct {
 	mock.Mock

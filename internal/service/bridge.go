@@ -158,6 +158,7 @@ type DatabaseService interface {
 	HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
+	GetStaleMessageCount(ctx context.Context, threshold time.Duration) (int, error)
 }
 
 type bridge struct {
@@ -412,6 +413,8 @@ func (b *bridge) HandleSignalMessage(ctx context.Context, msg *signaltypes.Signa
 }
 
 func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error {
+	startTime := time.Now()
+
 	// Delegate group messages to specialized handler
 	if strings.HasPrefix(msg.Sender, "group.") {
 		return b.handleSignalGroupMessage(ctx, msg, destination)
@@ -420,6 +423,12 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	// Determine the WhatsApp session based on the Signal destination
 	sessionName, err := b.channelManager.GetWhatsAppSession(destination)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      "unknown",
+			"message_type": "unknown",
+			"stage":        "session_lookup",
+		}, "Message processing failures by stage")
 		return fmt.Errorf("failed to determine WhatsApp session for Signal destination %s: %w", destination, err)
 	}
 
@@ -431,12 +440,32 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		return b.handleSignalDeletionWithSession(ctx, msg, sessionName)
 	}
 
+	hasMedia := fmt.Sprintf("%t", len(msg.Attachments) > 0)
+	metrics.IncrementCounter("message_processing_total", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "direct",
+		"has_media":    hasMedia,
+	}, "Total message processing attempts")
+
 	// Resolve target WhatsApp chat
 	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, sessionName)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "direct",
+			"stage":        "resolve_mapping",
+		}, "Message processing failures by stage")
 		return err
 	}
 	if mapping == nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "direct",
+			"stage":        "resolve_mapping",
+		}, "Message processing failures by stage")
 		return b.handleNewSignalThread(ctx, msg)
 	}
 
@@ -451,6 +480,12 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	// Process attachments
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "direct",
+			"stage":        "process_attachments",
+		}, "Message processing failures by stage")
 		return fmt.Errorf("failed to process attachments: %w", err)
 	}
 
@@ -463,15 +498,52 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 	// Send message to WhatsApp
 	resp, err := b.sendMessageToWhatsApp(ctx, mapping.WhatsAppChatID, msg.Message, attachments, replyTo, sessionName)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "direct",
+			"stage":        "send_whatsapp",
+		}, "Message processing failures by stage")
 		return err
 	}
 	if resp == nil {
-		// Empty message was skipped
 		return nil
 	}
 
 	// Save message mapping
-	return b.saveSignalToWhatsAppMapping(ctx, msg, resp, mapping.WhatsAppChatID, attachments, sessionName)
+	if err := b.saveSignalToWhatsAppMapping(ctx, msg, resp, mapping.WhatsAppChatID, attachments, sessionName); err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "direct",
+			"stage":        "save_mapping",
+		}, "Message processing failures by stage")
+		return err
+	}
+
+	metrics.IncrementCounter("message_processing_success", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "direct",
+		"has_media":    hasMedia,
+	}, "Successful message processing operations")
+	metrics.RecordTimer("message_processing_duration", time.Since(startTime), map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "direct",
+	}, "Message processing duration")
+
+	b.logger.WithFields(logrus.Fields{
+		LogFieldChatID:    SanitizePhoneNumber(mapping.WhatsAppChatID),
+		LogFieldMessageID: SanitizeMessageID(resp.MessageID),
+		LogFieldDirection: "outgoing",
+		LogFieldPlatform:  "whatsapp",
+		LogFieldSession:   sessionName,
+		LogFieldDuration:  time.Since(startTime).Milliseconds(),
+		"signal_msg_id":   SanitizeMessageID(msg.MessageID),
+	}).Info("Signal message forwarded to WhatsApp successfully")
+
+	return nil
 }
 
 // saveSignalToWhatsAppMapping creates and persists the message mapping for a Signal-to-WhatsApp message.
@@ -547,6 +619,8 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 	if len(attachments) == 0 && trimmedMessage == "" {
 		return nil, nil
 	}
+
+	sendStart := time.Now()
 
 	backoffConfig := retry.BackoffConfig{
 		InitialDelay: time.Duration(b.retryConfig.InitialBackoffMs) * time.Millisecond,
@@ -643,6 +717,19 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 	}, isRetryableWhatsAppError)
 
 	if retryErr != nil {
+		retryable := fmt.Sprintf("%t", isRetryableWhatsAppError(retryErr))
+		metrics.IncrementCounter("whatsapp_send_total", map[string]string{
+			"session": sessionName,
+			"status":  "failure",
+		}, "WhatsApp send outcomes")
+		metrics.IncrementCounter("whatsapp_send_failures", map[string]string{
+			"session":   sessionName,
+			"retryable": retryable,
+		}, "WhatsApp send failures by retryability")
+		metrics.RecordTimer("whatsapp_send_duration", time.Since(sendStart), map[string]string{
+			"session": sessionName,
+			"status":  "failure",
+		}, "WhatsApp send duration including retries")
 		b.logger.WithFields(logrus.Fields{
 			"sessionName":   sessionName,
 			"chatID":        SanitizePhoneNumber(chatID),
@@ -654,6 +741,15 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 		}
 		return nil, fmt.Errorf("failed to send whatsapp message after retries: %w", retryErr)
 	}
+
+	metrics.IncrementCounter("whatsapp_send_total", map[string]string{
+		"session": sessionName,
+		"status":  "success",
+	}, "WhatsApp send outcomes")
+	metrics.RecordTimer("whatsapp_send_duration", time.Since(sendStart), map[string]string{
+		"session": sessionName,
+		"status":  "success",
+	}, "WhatsApp send duration including retries")
 
 	b.logger.WithFields(logrus.Fields{
 		"sessionName": sessionName,
@@ -870,11 +966,27 @@ func (b *bridge) cleanupSignalAttachments(retentionDays int) error {
 }
 
 func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error {
+	startTime := time.Now()
+
 	// Resolve WhatsApp session from Signal destination
 	sessionName, err := b.channelManager.GetWhatsAppSession(destination)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      "unknown",
+			"message_type": "group",
+			"stage":        "session_lookup",
+		}, "Message processing failures by stage")
 		return fmt.Errorf("failed to determine WhatsApp session for Signal destination %s: %w", destination, err)
 	}
+
+	hasMedia := fmt.Sprintf("%t", len(msg.Attachments) > 0)
+	metrics.IncrementCounter("message_processing_total", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "group",
+		"has_media":    hasMedia,
+	}, "Total message processing attempts")
 
 	b.logger.WithFields(logrus.Fields{
 		"messageID": msg.MessageID,
@@ -885,6 +997,12 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 	// Resolve target WhatsApp group chat
 	mapping, usedFallback, err := b.resolveGroupMessageMapping(ctx, msg, sessionName)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "group",
+			"stage":        "resolve_mapping",
+		}, "Message processing failures by stage")
 		// Provide helpful guidance when group routing fails
 		if strings.Contains(err.Error(), "no group context") {
 			// Send notification to Signal about how to route group messages
@@ -898,6 +1016,12 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 
 	// Verify it's actually a group
 	if !strings.HasSuffix(mapping.WhatsAppChatID, "@g.us") {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "group",
+			"stage":        "not_group",
+		}, "Message processing failures by stage")
 		return fmt.Errorf("resolved chat is not a group: %s", mapping.WhatsAppChatID)
 	}
 
@@ -919,6 +1043,12 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 	// Process attachments
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "group",
+			"stage":        "process_attachments",
+		}, "Message processing failures by stage")
 		return fmt.Errorf("failed to process attachments: %w", err)
 	}
 
@@ -931,6 +1061,12 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 	// Send message to WhatsApp
 	resp, err := b.sendMessageToWhatsApp(ctx, mapping.WhatsAppChatID, msg.Message, attachments, replyTo, sessionName)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "group",
+			"stage":        "send_whatsapp",
+		}, "Message processing failures by stage")
 		return err
 	}
 	if resp == nil {
@@ -939,7 +1075,40 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 	}
 
 	// Save message mapping
-	return b.saveSignalToWhatsAppMapping(ctx, msg, resp, mapping.WhatsAppChatID, attachments, sessionName)
+	if err := b.saveSignalToWhatsAppMapping(ctx, msg, resp, mapping.WhatsAppChatID, attachments, sessionName); err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "group",
+			"stage":        "save_mapping",
+		}, "Message processing failures by stage")
+		return err
+	}
+
+	metrics.IncrementCounter("message_processing_success", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "group",
+		"has_media":    hasMedia,
+	}, "Successful message processing operations")
+	metrics.RecordTimer("message_processing_duration", time.Since(startTime), map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "group",
+	}, "Message processing duration")
+
+	b.logger.WithFields(logrus.Fields{
+		LogFieldChatID:    SanitizePhoneNumber(mapping.WhatsAppChatID),
+		LogFieldMessageID: SanitizeMessageID(resp.MessageID),
+		LogFieldDirection: "outgoing",
+		LogFieldPlatform:  "whatsapp",
+		LogFieldSession:   sessionName,
+		LogFieldDuration:  time.Since(startTime).Milliseconds(),
+		"signal_msg_id":   SanitizeMessageID(msg.MessageID),
+		"group":           true,
+	}).Info("Signal group message forwarded to WhatsApp successfully")
+
+	return nil
 }
 
 // resolveGroupMessageMapping finds the target WhatsApp group chat for a Signal group message.
@@ -995,6 +1164,15 @@ func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.Sign
 }
 
 func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
+	startTime := time.Now()
+
+	metrics.IncrementCounter("message_processing_total", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "reaction",
+		"has_media":    "false",
+	}, "Total message processing attempts")
+
 	b.logger.WithFields(logrus.Fields{
 		"messageID":       msg.MessageID,
 		"sender":          msg.Sender,
@@ -1007,11 +1185,23 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 	targetID := fmt.Sprintf("%d", msg.Reaction.TargetTimestamp)
 	mapping, err := b.db.GetMessageMapping(ctx, targetID)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "reaction",
+			"stage":        "resolve_mapping",
+		}, "Message processing failures by stage")
 		b.logger.WithError(err).Error("Failed to get message mapping for reaction target")
 		return fmt.Errorf("failed to get message mapping for reaction target: %w", err)
 	}
 
 	if mapping == nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "reaction",
+			"stage":        "resolve_mapping",
+		}, "Message processing failures by stage")
 		b.logger.WithField("targetID", targetID).Warn("No mapping found for reaction target message")
 		return fmt.Errorf("no mapping found for reaction target message: %s", targetID)
 	}
@@ -1025,9 +1215,27 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 
 	resp, err := b.waClient.SendReactionWithSession(ctx, mapping.WhatsAppChatID, mapping.WhatsAppMsgID, reaction, sessionName)
 	if err != nil {
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "reaction",
+			"stage":        "send_whatsapp",
+		}, "Message processing failures by stage")
 		b.logger.WithError(err).Error("Failed to send reaction to WhatsApp")
 		return fmt.Errorf("failed to send reaction to WhatsApp: %w", err)
 	}
+
+	metrics.IncrementCounter("message_processing_success", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "reaction",
+		"has_media":    "false",
+	}, "Successful message processing operations")
+	metrics.RecordTimer("message_processing_duration", time.Since(startTime), map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "reaction",
+	}, "Message processing duration")
 
 	b.logger.WithFields(logrus.Fields{
 		"whatsappMsgID": SanitizeWhatsAppMessageID(mapping.WhatsAppMsgID),
@@ -1044,6 +1252,15 @@ func (b *bridge) handleSignalDeletion(ctx context.Context, msg *signaltypes.Sign
 }
 
 func (b *bridge) handleSignalDeletionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
+	startTime := time.Now()
+
+	metrics.IncrementCounter("message_processing_total", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "deletion",
+		"has_media":    "false",
+	}, "Total message processing attempts")
+
 	b.logger.WithFields(logrus.Fields{
 		"messageID":       msg.MessageID,
 		"sender":          msg.Sender,
@@ -1060,7 +1277,33 @@ func (b *bridge) handleSignalDeletionWithSession(ctx context.Context, msg *signa
 		targetID = fmt.Sprintf("%d", msg.Deletion.TargetTimestamp)
 	}
 
-	return b.HandleSignalMessageDeletion(ctx, targetID, msg.Sender)
+	if err := b.HandleSignalMessageDeletion(ctx, targetID, msg.Sender); err != nil {
+		stage := "send_whatsapp"
+		if strings.Contains(err.Error(), "no mapping found") || strings.Contains(err.Error(), "failed to get message mapping") {
+			stage = "resolve_mapping"
+		}
+		metrics.IncrementCounter("message_processing_failures", map[string]string{
+			"direction":    "signal_to_whatsapp",
+			"session":      sessionName,
+			"message_type": "deletion",
+			"stage":        stage,
+		}, "Message processing failures by stage")
+		return err
+	}
+
+	metrics.IncrementCounter("message_processing_success", map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "deletion",
+		"has_media":    "false",
+	}, "Successful message processing operations")
+	metrics.RecordTimer("message_processing_duration", time.Since(startTime), map[string]string{
+		"direction":    "signal_to_whatsapp",
+		"session":      sessionName,
+		"message_type": "deletion",
+	}, "Message processing duration")
+
+	return nil
 }
 
 func (b *bridge) SendSignalNotificationForSession(ctx context.Context, sessionName, message string) error {

@@ -83,6 +83,13 @@ const (
 		DELETE FROM message_mappings
 		WHERE created_at < datetime('now', '-' || ? || ' days')
 	`
+
+	CountStaleMessagesQuery = `
+		SELECT COUNT(*)
+		FROM message_mappings
+		WHERE delivery_status = 'sent'
+		  AND forwarded_at < datetime('now', '-' || ? || ' seconds')
+	`
 )
 
 // Contact queries

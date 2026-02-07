@@ -31,15 +31,16 @@ type Client interface {
 }
 
 type SignalClient struct {
-	baseURL        string
-	client         *http.Client
-	phoneNumber    string
-	deviceName     string
-	attachmentsDir string
-	logger         *logrus.Logger
-	circuitBreaker *circuitbreaker.CircuitBreaker
-	initialized    bool   // Tracks whether InitializeDevice succeeded
-	initError      string // Stores initialization error message if any
+	baseURL            string
+	client             *http.Client
+	phoneNumber        string
+	deviceName         string
+	attachmentsDir     string
+	logger             *logrus.Logger
+	sendCircuitBreaker *circuitbreaker.CircuitBreaker
+	pollCircuitBreaker *circuitbreaker.CircuitBreaker
+	initialized        bool   // Tracks whether InitializeDevice succeeded
+	initError          string // Stores initialization error message if any
 }
 
 func NewClient(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client) Client {
@@ -59,30 +60,39 @@ func NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir string
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	return &SignalClient{
-		baseURL:        baseURL,
-		phoneNumber:    phoneNumber,
-		deviceName:     deviceName,
-		attachmentsDir: attachmentsDir,
-		client:         httpClient,
-		logger:         logger,
-		circuitBreaker: circuitbreaker.NewWithLogger("signal-api", 5, 30*time.Second, logger),
+		baseURL:            baseURL,
+		phoneNumber:        phoneNumber,
+		deviceName:         deviceName,
+		attachmentsDir:     attachmentsDir,
+		client:             httpClient,
+		logger:             logger,
+		sendCircuitBreaker: circuitbreaker.NewWithLogger("signal-api-send", 10, 15*time.Second, logger),
+		pollCircuitBreaker: circuitbreaker.NewWithLogger("signal-api-poll", 20, 15*time.Second, logger),
 	}
 }
 
-// doRequestWithCircuitBreaker wraps HTTP requests with circuit breaker protection
-func (c *SignalClient) doRequestWithCircuitBreaker(ctx context.Context, req *http.Request) (*http.Response, error) {
-	// If circuit breaker is not initialized (e.g., in tests), fall back to direct call
-	if c.circuitBreaker == nil {
+func (c *SignalClient) doRequestWithCB(ctx context.Context, req *http.Request, cb *circuitbreaker.CircuitBreaker) (*http.Response, error) {
+	if cb == nil {
 		return c.client.Do(req)
 	}
 
 	var resp *http.Response
-	err := c.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
+	err := cb.Execute(ctx, func(ctx context.Context) error {
 		var httpErr error
 		resp, httpErr = c.client.Do(req)
 		return httpErr
 	})
 	return resp, err
+}
+
+// doRequestWithCircuitBreaker wraps send/general HTTP requests with the send circuit breaker
+func (c *SignalClient) doRequestWithCircuitBreaker(ctx context.Context, req *http.Request) (*http.Response, error) {
+	return c.doRequestWithCB(ctx, req, c.sendCircuitBreaker)
+}
+
+// doPollRequestWithCircuitBreaker wraps polling HTTP requests with the poll circuit breaker
+func (c *SignalClient) doPollRequestWithCircuitBreaker(ctx context.Context, req *http.Request) (*http.Response, error) {
+	return c.doRequestWithCB(ctx, req, c.pollCircuitBreaker)
 }
 
 func (c *SignalClient) SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error) {
@@ -148,6 +158,13 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 		MessageID: fmt.Sprintf("%d", timestamp),
 	}
 
+	c.logger.WithFields(logrus.Fields{
+		"recipient":  recipient,
+		"timestamp":  timestamp,
+		"messageId":  response.MessageID,
+		"statusCode": resp.StatusCode,
+	}).Info("Signal message sent successfully")
+
 	return response, nil
 }
 
@@ -165,7 +182,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
+	resp, err := c.doPollRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to send Signal polling request")
 		return nil, fmt.Errorf("failed to send request: %w", err)
@@ -725,7 +742,7 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
+	resp, err := c.doPollRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("signal API health check failed: %w", err)
 	}

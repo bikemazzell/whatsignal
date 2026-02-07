@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/middleware"
 	"whatsignal/internal/models"
 	"whatsignal/internal/service"
@@ -700,8 +701,18 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 
 	// Update delivery status in database if we have a mapping
 	mapping, err := s.msgService.GetMessageMappingByWhatsAppID(ctx, payload.Payload.ID)
-	if err != nil || mapping == nil {
-		// No mapping found, might be a message we don't track
+	if err != nil {
+		s.logger.WithError(err).WithFields(ackLogFields).Warn("Failed to look up message mapping for ACK")
+		metrics.IncrementCounter("whatsapp_ack_total", map[string]string{
+			"result": "lookup_error",
+		}, "WhatsApp ACK processing outcomes")
+		return nil
+	}
+	if mapping == nil {
+		s.logger.WithFields(ackLogFields).Debug("No mapping found for ACK message ID (untracked message)")
+		metrics.IncrementCounter("whatsapp_ack_total", map[string]string{
+			"result": "no_mapping",
+		}, "WhatsApp ACK processing outcomes")
 		return nil
 	}
 
@@ -721,7 +732,19 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 	if deliveryStatus != "" {
 		err = s.msgService.UpdateDeliveryStatus(ctx, payload.Payload.ID, deliveryStatus)
 		if err != nil {
-			s.logger.WithError(err).Warn("Failed to update delivery status")
+			s.logger.WithError(err).WithFields(ackLogFields).Warn("Failed to update delivery status")
+			metrics.IncrementCounter("whatsapp_ack_total", map[string]string{
+				"result": "update_error",
+			}, "WhatsApp ACK processing outcomes")
+		} else {
+			s.logger.WithFields(logrus.Fields{
+				"messageId":      service.SanitizeWhatsAppMessageID(payload.Payload.ID),
+				"deliveryStatus": deliveryStatus,
+				"ack":            ackStatus,
+			}).Info("Delivery status updated from ACK")
+			metrics.IncrementCounter("whatsapp_ack_total", map[string]string{
+				"result": deliveryStatus,
+			}, "WhatsApp ACK processing outcomes")
 		}
 	}
 

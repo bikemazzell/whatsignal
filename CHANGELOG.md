@@ -5,6 +5,37 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.14]
+
+### Fixed
+- **ACK webhook events not subscribed**: Added `message.ack` and `message.waiting` to WAHA webhook event subscription in docker-compose, fixing delivery status tracking being completely non-functional (all messages stuck at "sent" status indefinitely)
+- **Silent ACK handler failures**: Replaced silent `return nil` in ACK handler with diagnostic logging and metrics when message mapping lookup fails or returns no result
+- **Signal circuit breaker too aggressive**: Tuned Signal API circuit breaker from 5 failures/30s to 15 failures/15s, matching the WhatsApp CB fix and reducing false blackouts from transient Signal CLI REST API timeouts
+- **WhatsApp circuit breaker too aggressive**: Tuned WhatsApp API circuit breaker from 5 failures/30s to 15 failures/15s to reduce false-positive circuit opens during transient WAHA errors
+- **Session STARTING state not handled**: Added wait logic for WhatsApp sessions in STARTING status instead of immediately failing
+- **New thread creation error**: Changed "new thread" from silent drop to explicit error notification to Signal user
+- **Expanded retryable error set**: Added more transient error patterns to retry logic for better resilience
+
+### Added
+- **Split Signal circuit breakers**: Separated polling and sending into independent circuit breakers (`signal-api-poll` and `signal-api-send`) so polling timeouts don't block sends and vice versa
+- **Stale message detection**: Periodic monitor (every 5 min) checks for messages stuck in "sent" status beyond a configurable threshold, with warn-level logging and gauge metric
+- **Signal-to-WhatsApp metrics instrumentation**: Added 11 new metrics for the previously invisible Signal→WhatsApp direction:
+  - `message_processing_total/success/failures/duration` with `direction: "signal_to_whatsapp"` labels across direct, group, reaction, and deletion message types
+  - `whatsapp_send_total/failures/duration` for WAHA send outcomes with retryable/permanent failure classification
+  - `signal_poll_messages_received/dispatched/skipped` for poll-to-dispatch handoff visibility
+  - `delivery_stale_messages` gauge for stuck message count
+- **ACK handler metrics**: Added `whatsapp_ack_total` counter with result labels (`delivered`, `read`, `failed`, `sent`, `no_mapping`, `lookup_error`, `update_error`) for delivery confirmation visibility
+- **Signal→WhatsApp completion logging**: Added INFO-level log on successful Signal message forwarding with chatID, signalMsgID, whatsappMsgID, session, and duration fields
+- **ACK logging promoted**: Changed ACK processing from DEBUG to INFO level; ACK errors logged at ERROR level
+- **WAHA/Signal response logging**: Added INFO-level logging of successful send responses from both WAHA and Signal APIs
+- **In-flight deduplication**: Added deduplication for Signal messages to prevent duplicate forwarding during concurrent poll cycles
+
+### Changed
+- **Go toolchain**: Upgraded from 1.24.11 to 1.24.12 to fix CVE-2025-61726 (net/url memory exhaustion) and CVE-2025-61728 (archive/zip CPU exhaustion)
+
+### Testing
+- Added 9-case unit test suite for WhatsApp ACK handler covering all ACK status codes, missing data, lookup errors, and update failures
+
 ## [1.2.6]
 
 ### Fixed
@@ -787,6 +818,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.13]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.13
 [1.1.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.1.0
 [1.0.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.0.0
 [0.54.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.54.0

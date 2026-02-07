@@ -56,7 +56,7 @@ services:
         max-file: "10"
     environment:
       - WHATSAPP_HOOK_URL=http://whatsignal:8082/webhook/whatsapp
-      - WHATSAPP_HOOK_EVENTS=message,message.reaction,message.edited
+      - WHATSAPP_HOOK_EVENTS=message,message.reaction,message.edited,message.ack,message.waiting
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY:-your-api-key}
       - PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --crash-dumps-dir=/var/crashes
     healthcheck:

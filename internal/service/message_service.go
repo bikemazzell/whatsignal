@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
@@ -352,6 +353,10 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 
 	LogSignalPolling(ctx, s.logger, len(messages))
 
+	if len(messages) > 0 {
+		metrics.AddToCounter("signal_poll_messages_received", float64(len(messages)), nil, "Messages received per poll")
+	}
+
 	if len(messages) == 0 {
 		return nil
 	}
@@ -365,12 +370,16 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	// Use worker pool for parallel processing
 	sem := make(chan struct{}, numWorkers)
 	var wg sync.WaitGroup
+	dispatchedCount := 0
 
 	for _, msg := range messages {
 		// For polled messages, we need to determine the correct Signal destination
 		destinations := s.channelManager.GetAllSignalDestinations()
 		if len(destinations) == 0 {
 			s.logger.Error("No Signal destinations configured")
+			metrics.IncrementCounter("signal_poll_messages_skipped", map[string]string{
+				"reason": "no_destinations",
+			}, "Messages skipped at dispatch")
 			continue
 		}
 
@@ -387,10 +396,14 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 					"sender":    SanitizePhoneNumber(msg.Sender),
 					"messageID": SanitizeMessageID(msg.MessageID),
 				}).Warn("Could not determine destination for Signal sender, skipping message")
+				metrics.IncrementCounter("signal_poll_messages_skipped", map[string]string{
+					"reason": "no_destination_for_sender",
+				}, "Messages skipped at dispatch")
 				continue
 			}
 		}
 
+		dispatchedCount++
 		wg.Add(1)
 		sem <- struct{}{} // Acquire semaphore slot
 		go func(m signaltypes.SignalMessage, dest string) {
@@ -415,6 +428,10 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 	}
 
 	wg.Wait()
+
+	if dispatchedCount > 0 {
+		metrics.AddToCounter("signal_poll_messages_dispatched", float64(dispatchedCount), nil, "Messages dispatched to bridge")
+	}
 
 	// Opportunistic cleanup of per-chat locks
 	s.chatLockManager.cleanup()

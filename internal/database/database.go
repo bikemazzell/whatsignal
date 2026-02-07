@@ -406,6 +406,15 @@ func (d *Database) updateDeliveryStatusInternal(ctx context.Context, id string, 
 	return fmt.Errorf("no message found with ID: %s", id)
 }
 
+func (d *Database) GetStaleMessageCount(ctx context.Context, threshold time.Duration) (int, error) {
+	var count int
+	err := d.db.QueryRowContext(ctx, CountStaleMessagesQuery, int(threshold.Seconds())).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count stale messages: %w", err)
+	}
+	return count, nil
+}
+
 func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, whatsappChatID string) (*models.MessageMapping, error) {
 	// Encrypt the chat ID for database query (deterministic for lookup)
 	chatHash, err := d.encryptor.LookupHash(whatsappChatID)

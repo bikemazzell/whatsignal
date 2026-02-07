@@ -226,6 +226,10 @@ func run(ctx context.Context) error {
 	go scheduler.Start(ctx)
 	defer scheduler.Stop()
 
+	deliveryMonitor := service.NewDeliveryMonitor(db, 5*time.Minute, 5*time.Minute, logger)
+	go deliveryMonitor.Start(ctx)
+	defer deliveryMonitor.Stop()
+
 	// Start session monitor if auto-restart is enabled
 	if cfg.WhatsApp.SessionAutoRestart {
 		checkInterval := getTimeoutDuration(cfg.WhatsApp.SessionHealthCheckSec, constants.DefaultSessionHealthCheckSec)

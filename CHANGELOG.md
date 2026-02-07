@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **In-flight deduplication**: Added deduplication for Signal messages to prevent duplicate forwarding during concurrent poll cycles
 
 ### Changed
-- **Go toolchain**: Upgraded from 1.24.11 to 1.24.12 to fix CVE-2025-61726 (net/url memory exhaustion) and CVE-2025-61728 (archive/zip CPU exhaustion)
+- **Go toolchain**: Upgraded from 1.24.11 to 1.24.13 to fix CVE-2025-61726 (net/url memory exhaustion), CVE-2025-61728 (archive/zip CPU exhaustion), and GO-2026-4337 (crypto/tls unexpected session resumption)
 
 ### Testing
 - Added 9-case unit test suite for WhatsApp ACK handler covering all ACK status codes, missing data, lookup errors, and update failures

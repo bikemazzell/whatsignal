@@ -404,7 +404,9 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 
 		s.logger.WithField("event", payload.Event).Debug("Received WhatsApp webhook payload")
 
-		if payload.Payload.FromMe {
+		// Skip messages from ourselves to avoid loops, but only for content events.
+		// ACK and waiting events for our own messages are expected and must be processed.
+		if payload.Payload.FromMe && payload.Event != models.EventMessageACK && payload.Event != models.EventMessageWaiting {
 			s.logger.Debug("Skipping message from ourselves")
 			w.WriteHeader(http.StatusOK)
 			return

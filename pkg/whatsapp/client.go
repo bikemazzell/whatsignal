@@ -891,7 +891,14 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 			"statusCode": resp.StatusCode,
 		}
 		if messageID == "" {
-			c.logger.WithFields(logFields).Warn("WAHA returned success but no message ID")
+			// Only warn for endpoints that should return a message ID.
+			// Auxiliary endpoints (sendSeen, startTyping, stopTyping, reaction) never return one.
+			if !strings.HasSuffix(endpoint, types.EndpointSendSeen) &&
+				!strings.HasSuffix(endpoint, types.EndpointStartTyping) &&
+				!strings.HasSuffix(endpoint, types.EndpointStopTyping) &&
+				!strings.HasSuffix(endpoint, types.EndpointReaction) {
+				c.logger.WithFields(logFields).Warn("WAHA returned success but no message ID")
+			}
 		} else {
 			c.logger.WithFields(logFields).Info("WAHA message sent successfully")
 		}

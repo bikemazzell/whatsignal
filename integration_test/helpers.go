@@ -47,15 +47,15 @@ func CreateTestWhatsAppWebhook(session, messageID, from, body string) models.Wha
 		Session: session,
 		Event:   models.EventMessage,
 		Payload: struct {
-			ID          string `json:"id"`
-			Timestamp   int64  `json:"timestamp"`
-			From        string `json:"from"`
-			FromMe      bool   `json:"fromMe"`
-			To          string `json:"to"`
-			Body        string `json:"body"`
-			HasMedia    bool   `json:"hasMedia"`
-			Participant string `json:"participant,omitempty"`
-			NotifyName  string `json:"notifyName,omitempty"`
+			ID          string                   `json:"id"`
+			Timestamp   models.FlexibleTimestamp `json:"timestamp"`
+			From        string                   `json:"from"`
+			FromMe      bool                     `json:"fromMe"`
+			To          string                   `json:"to"`
+			Body        string                   `json:"body"`
+			HasMedia    bool                     `json:"hasMedia"`
+			Participant string                   `json:"participant,omitempty"`
+			NotifyName  string                   `json:"notifyName,omitempty"`
 			Media       *struct {
 				URL      string `json:"url"`
 				MimeType string `json:"mimetype"`
@@ -76,7 +76,7 @@ func CreateTestWhatsAppWebhook(session, messageID, from, body string) models.Wha
 			From:      from,
 			To:        session + "@c.us",
 			Body:      body,
-			Timestamp: time.Now().Unix(),
+			Timestamp: models.FlexibleTimestamp(time.Now().Unix()),
 			FromMe:    false,
 			HasMedia:  false,
 		},

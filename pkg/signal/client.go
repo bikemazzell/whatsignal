@@ -175,14 +175,22 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		endpoint += fmt.Sprintf("?timeout=%d", timeoutSeconds)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	// Use a per-request context with a timeout that accounts for the long-poll duration
+	// plus network overhead. Signal CLI's /v1/receive is destructive (messages are consumed
+	// on read), so we must ensure the HTTP response is fully received. If the client times
+	// out after Signal CLI has dequeued messages, those messages are permanently lost.
+	receiveTimeout := time.Duration(timeoutSeconds)*time.Second + 15*time.Second
+	receiveCtx, receiveCancel := context.WithTimeout(ctx, receiveTimeout)
+	defer receiveCancel()
+
+	req, err := http.NewRequestWithContext(receiveCtx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Signal CLI REST API typically doesn't require authentication headers
 
-	resp, err := c.doPollRequestWithCircuitBreaker(ctx, req)
+	resp, err := c.doPollRequestWithCircuitBreaker(receiveCtx, req)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to send Signal polling request")
 		return nil, fmt.Errorf("failed to send request: %w", err)

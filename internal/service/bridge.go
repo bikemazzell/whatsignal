@@ -345,7 +345,7 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 		SignalMsgID:     resp.MessageID,
 		SignalTimestamp: time.Unix(resp.Timestamp/constants.MillisecondsPerSecond, 0),
 		ForwardedAt:     time.Now(),
-		DeliveryStatus:  models.DeliveryStatusSent,
+		DeliveryStatus:  models.DeliveryStatusDelivered,
 		SessionName:     sessionName,
 	}
 

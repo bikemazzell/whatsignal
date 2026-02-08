@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"whatsignal/internal/models"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -52,7 +54,7 @@ func TestWhatsAppToSignalMessageFlow(t *testing.T) {
 
 			webhook := scenario.WhatsAppWebhook
 			webhook.Payload.ID = fmt.Sprintf("msg_%d", time.Now().UnixNano())
-			webhook.Payload.Timestamp = time.Now().Unix()
+			webhook.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 			webhookData, err := json.Marshal(webhook)
 			if err != nil {
@@ -381,7 +383,7 @@ func TestGroupMessageBidirectionalFlow(t *testing.T) {
 		scenario := env.fixtures.Scenarios()["group_message"]
 		webhook := scenario.WhatsAppWebhook
 		webhook.Payload.ID = fmt.Sprintf("group_msg_%d", time.Now().UnixNano())
-		webhook.Payload.Timestamp = time.Now().Unix()
+		webhook.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 		webhookData, err := json.Marshal(webhook)
 		if err != nil {
@@ -547,7 +549,7 @@ func TestConcurrentWhatsAppMessages(t *testing.T) {
 				sender,
 				fmt.Sprintf("Concurrent message %d", idx),
 			)
-			webhook.Payload.Timestamp = time.Now().Unix()
+			webhook.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 			webhookData, err := json.Marshal(webhook)
 			if err != nil {
@@ -652,7 +654,7 @@ func TestConcurrentMessagesFromDifferentSenders(t *testing.T) {
 					senderID,
 					fmt.Sprintf("Message from sender %d, msg %d", senderNum, msgNum),
 				)
-				webhook.Payload.Timestamp = time.Now().Unix()
+				webhook.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 				webhookData, err := json.Marshal(webhook)
 				if err != nil {

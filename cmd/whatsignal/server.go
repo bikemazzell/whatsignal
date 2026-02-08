@@ -412,18 +412,25 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 			return
 		}
 
+		// Use a detached context for processing to survive WAHA connection timeouts.
+		// WAHA may close the webhook HTTP connection before processing completes (especially
+		// for WA→Signal forwards that involve retrying the Signal send). Using r.Context()
+		// would cancel the processing mid-flight, causing message loss.
+		processCtx, processCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer processCancel()
+
 		// Handle different event types
 		switch payload.Event {
 		case models.EventMessage:
-			err = s.handleWhatsAppMessage(r.Context(), &payload)
+			err = s.handleWhatsAppMessage(processCtx, &payload)
 		case models.EventMessageReaction:
-			err = s.handleWhatsAppReaction(r.Context(), &payload)
+			err = s.handleWhatsAppReaction(processCtx, &payload)
 		case models.EventMessageEdited:
-			err = s.handleWhatsAppEditedMessage(r.Context(), &payload)
+			err = s.handleWhatsAppEditedMessage(processCtx, &payload)
 		case models.EventMessageACK:
-			err = s.handleWhatsAppACK(r.Context(), &payload)
+			err = s.handleWhatsAppACK(processCtx, &payload)
 		case models.EventMessageWaiting:
-			err = s.handleWhatsAppWaitingMessage(r.Context(), &payload)
+			err = s.handleWhatsAppWaitingMessage(processCtx, &payload)
 		default:
 			s.logger.WithField("event", payload.Event).Debug("Skipping unsupported WhatsApp event")
 			w.WriteHeader(http.StatusOK)

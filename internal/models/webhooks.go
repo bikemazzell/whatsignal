@@ -1,5 +1,33 @@
 package models
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// FlexibleTimestamp handles JSON timestamps that may be integers or floats.
+// WAHA sends float timestamps (e.g. 1770567080.597) for some events like message.waiting.
+type FlexibleTimestamp int64
+
+func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error {
+	var i int64
+	if err := json.Unmarshal(data, &i); err == nil {
+		*t = FlexibleTimestamp(i)
+		return nil
+	}
+
+	var f float64
+	if err := json.Unmarshal(data, &f); err != nil {
+		return fmt.Errorf("timestamp must be a number, got %s", string(data))
+	}
+	*t = FlexibleTimestamp(int64(f))
+	return nil
+}
+
+func (t FlexibleTimestamp) Int64() int64 {
+	return int64(t)
+}
+
 // WhatsApp webhook event types
 const (
 	EventMessage         = "message"
@@ -34,22 +62,22 @@ const (
 )
 
 type WhatsAppWebhookPayload struct {
-	ID        string `json:"id"`
-	Timestamp int64  `json:"timestamp"`
-	Event     string `json:"event"`
-	Session   string `json:"session"`
+	ID        string            `json:"id"`
+	Timestamp FlexibleTimestamp `json:"timestamp"`
+	Event     string            `json:"event"`
+	Session   string            `json:"session"`
 	Me        struct {
 		ID       string `json:"id"`
 		PushName string `json:"pushName"`
 	} `json:"me"`
 	Payload struct {
-		ID        string `json:"id"`
-		Timestamp int64  `json:"timestamp"`
-		From      string `json:"from"`
-		FromMe    bool   `json:"fromMe"`
-		To        string `json:"to"`
-		Body      string `json:"body"`
-		HasMedia  bool   `json:"hasMedia"`
+		ID        string            `json:"id"`
+		Timestamp FlexibleTimestamp `json:"timestamp"`
+		From      string            `json:"from"`
+		FromMe    bool              `json:"fromMe"`
+		To        string            `json:"to"`
+		Body      string            `json:"body"`
+		HasMedia  bool              `json:"hasMedia"`
 		// Participant is the actual sender in group chats (may be @c.us or @lid format)
 		Participant string `json:"participant,omitempty"`
 		// NotifyName is the sender's display name (pushName) if available

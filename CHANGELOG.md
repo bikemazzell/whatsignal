@@ -5,6 +5,15 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.15]
+
+### Fixed
+- **ACK and waiting events silently dropped**: The `fromMe` guard in the webhook handler was unconditionally blocking ALL events with `fromMe=true`, including `message.ack` and `message.waiting` events which always have `fromMe=true` by design (they report delivery status of messages we sent). This caused delivery status tracking to be completely non-functional even after correct WAHA webhook subscription. Fixed by exempting ACK and waiting event types from the `fromMe` check.
+- **Noisy WAHA warnings for auxiliary endpoints**: Suppressed spurious "WAHA returned success but no message ID" warnings for `sendSeen`, `startTyping`, `stopTyping`, and `reaction` endpoints, which never return message IDs by design.
+
+### Testing
+- Added 3 test cases for `fromMe` exemption behavior: ACK events with `fromMe=true` reach the handler, waiting events with `fromMe=true` reach the handler, and regular messages with `fromMe=true` are still dropped.
+
 ## [1.2.14]
 
 ### Fixed
@@ -818,7 +827,8 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
-[1.2.13]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.13
+[1.2.15]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.15
+[1.2.14]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.14
 [1.1.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.1.0
 [1.0.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.0.0
 [0.54.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v0.54.0

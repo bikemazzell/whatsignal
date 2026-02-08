@@ -871,6 +871,25 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 			useSignature: true,
 		},
 		{
+			name: "message with fromMe=true is dropped",
+			payload: map[string]interface{}{
+				"event":   "message",
+				"session": "default",
+				"payload": map[string]interface{}{
+					"id":       "msg_echo_ours",
+					"from":     "+1234567890",
+					"fromMe":   true,
+					"body":     "Our own message echoed back",
+					"hasMedia": false,
+				},
+			},
+			setup: func() {
+				// No service calls should be made for our own messages
+			},
+			wantStatus:   http.StatusOK,
+			useSignature: true,
+		},
+		{
 			name: "invalid signature",
 			payload: map[string]interface{}{
 				"event": "message",
@@ -1317,6 +1336,34 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			},
 		},
 		{
+			name:  "message.ack event with fromMe=true is not skipped",
+			event: models.EventMessageACK,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageACK,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "msg_ack_fromme",
+					"from":   "+0987654321",
+					"to":     "+1234567890",
+					"fromMe": true,
+					"ack":    2, // ACKDevice (Delivered)
+				},
+			},
+			setup: func() {
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_ack_fromme").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:  "msg_ack_fromme",
+						SignalMsgID:    "sig_ack_fromme",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "default",
+						DeliveryStatus: models.DeliveryStatusSent,
+					}, nil).Once()
+				msgService.On("UpdateDeliveryStatus", mock.Anything, "msg_ack_fromme", "delivered").
+					Return(nil).Once()
+			},
+		},
+		{
 			name:  "message.waiting event",
 			event: models.EventMessageWaiting,
 			payload: map[string]interface{}{
@@ -1331,6 +1378,23 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			},
 			setup: func() {
 				// Mock sending waiting notification to Signal
+				msgService.On("SendSignalNotification", mock.Anything, "default", "⏳ WhatsApp is waiting for a message").Return(nil).Once()
+			},
+		},
+		{
+			name:  "message.waiting event with fromMe=true is not skipped",
+			event: models.EventMessageWaiting,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageWaiting,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "waiting_fromme",
+					"from":   "+0987654321",
+					"fromMe": true,
+				},
+			},
+			setup: func() {
 				msgService.On("SendSignalNotification", mock.Anything, "default", "⏳ WhatsApp is waiting for a message").Return(nil).Once()
 			},
 		},

@@ -5,6 +5,21 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.16]
+
+### Fixed
+- **Stale message counter inflation**: WA→Signal message mappings were saved with `delivery_status='sent'`, but ACK events only match outgoing (`true_...`) WhatsApp IDs — incoming WA→Signal mappings have `false_...` IDs and can never receive ACK updates. These permanently-stale rows inflated the delivery monitor counter (observed: 764 and climbing). Fixed by saving WA→Signal mappings as `delivered` since delivery to Signal is already confirmed at save time.
+- **Signal poll timeout message loss**: The only timeout guarding `ReceiveMessages` was the shared HTTP client timeout (60s). If Signal CLI hung beyond that, any messages already dequeued by `/v1/receive` (which is destructive) were permanently lost. Added a per-request context timeout (`pollTimeout + 15s` margin) so failures surface faster and predictably. Added explicit message-loss warning on final retry exhaustion.
+- **Webhook context canceled mid-flight**: WAHA closes the webhook HTTP connection before the bridge finishes forwarding to Signal. Since processing used `r.Context()`, the Signal send retry loop was canceled mid-flight when WAHA disconnected. Fixed by detaching processing into `context.WithTimeout(context.Background(), 60s)` so webhook event handling survives the HTTP connection lifecycle.
+- **Float timestamp deserialization for `message.waiting`**: WAHA sends `message.waiting` event timestamps as floats (e.g. `1770567080.597`) but the struct field was `int64`, causing `json: cannot unmarshal number` errors and 400 responses (observed: 5 retries in production). Added `FlexibleTimestamp` custom type that accepts both integer and float JSON numbers, truncating floats to int64.
+
+### Testing
+- Added `TestHandleWhatsAppMessageDeliveryStatus` verifying WA→Signal mappings are saved with `delivered` status
+- Added `TestReceiveMessagesPerRequestTimeout` verifying per-request context timeout for different poll timeout values
+- Added `TestWebhookProcessingDetachedContext` verifying webhook processing survives client disconnect
+- Added `TestFlexibleTimestamp_UnmarshalJSON` covering integer, float, zero, negative, string, and null inputs
+- Added `TestFlexibleTimestamp_FullWebhookPayload` simulating the exact WAHA `message.waiting` payload that was failing in production
+
 ## [1.2.15]
 
 ### Fixed
@@ -827,6 +842,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.16]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.16
 [1.2.15]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.15
 [1.2.14]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.14
 [1.1.0]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.1.0

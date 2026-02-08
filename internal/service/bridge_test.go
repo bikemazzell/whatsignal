@@ -178,7 +178,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 					return m.WhatsAppChatID == "chat123" &&
 						m.WhatsAppMsgID == "msg123" &&
 						m.SignalMsgID == "sig123" &&
-						m.DeliveryStatus == models.DeliveryStatusSent
+						m.DeliveryStatus == models.DeliveryStatusDelivered
 				})).Return(nil).Once()
 			},
 		},
@@ -200,7 +200,7 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 					return m.WhatsAppChatID == "chat123" &&
 						m.WhatsAppMsgID == "msg124" &&
 						m.SignalMsgID == "sig124" &&
-						m.DeliveryStatus == models.DeliveryStatusSent &&
+						m.DeliveryStatus == models.DeliveryStatusDelivered &&
 						*m.MediaPath == mediaPath
 				})).Return(nil).Once()
 			},
@@ -234,6 +234,35 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 	}
 }
 
+func TestHandleWhatsAppMessageDeliveryStatus(t *testing.T) {
+	bridge, tmpDir, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a test media file
+	mediaContent := []byte("test media content")
+	mediaPath := filepath.Join(tmpDir, "test.jpg")
+	err := os.WriteFile(mediaPath, mediaContent, 0644)
+	require.NoError(t, err)
+
+	// Verify that WA→Signal message mapping uses DeliveryStatusDelivered
+	bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
+		MessageID: "sig123",
+		Timestamp: time.Now().UnixMilli(),
+	}
+	bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
+		// This is the critical assertion: delivery status should be DeliveryStatusDelivered
+		return m.WhatsAppChatID == "chat123" &&
+			m.WhatsAppMsgID == "msg123" &&
+			m.SignalMsgID == "sig123" &&
+			m.DeliveryStatus == models.DeliveryStatusDelivered
+	})).Return(nil).Once()
+
+	err = bridge.HandleWhatsAppMessageWithSession(ctx, "default", "chat123", "msg123", "sender123", "", "Hello Signal", "")
+	assert.NoError(t, err)
+}
+
 func TestHandleSignalMessage(t *testing.T) {
 	bridge, tmpDir, cleanup := setupTestBridge(t)
 	defer cleanup()
@@ -253,7 +282,7 @@ func TestHandleSignalMessage(t *testing.T) {
 		SignalMsgID:     "sig123",
 		SignalTimestamp: time.Now(),
 		ForwardedAt:     time.Now(),
-		DeliveryStatus:  models.DeliveryStatusSent,
+		DeliveryStatus:  models.DeliveryStatusDelivered,
 	}
 
 	// Set up mock expectations for the initial message mapping
@@ -261,7 +290,7 @@ func TestHandleSignalMessage(t *testing.T) {
 		return m.WhatsAppChatID == "chat123" &&
 			m.WhatsAppMsgID == "msg123" &&
 			m.SignalMsgID == "sig123" &&
-			m.DeliveryStatus == models.DeliveryStatusSent
+			m.DeliveryStatus == models.DeliveryStatusDelivered
 	})).Return(nil).Once()
 
 	err = bridge.db.SaveMessageMapping(ctx, mapping)

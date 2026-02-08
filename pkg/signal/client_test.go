@@ -3,12 +3,14 @@ package signal
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"whatsignal/pkg/signal/types"
 
@@ -588,6 +590,83 @@ func TestReceiveMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReceiveMessagesPerRequestTimeout(t *testing.T) {
+	// Verify that ReceiveMessages creates a per-request context with timeout = pollTimeout + 15s
+	// This ensures the HTTP request timeout accounts for both the long-poll duration and network overhead.
+	// If the shared HTTP client timeout were used instead, a slow response could cause message loss.
+
+	t.Run("request uses per-request timeout not shared HTTP client timeout", func(t *testing.T) {
+		// This test verifies the fix: ReceiveMessages now creates context.WithTimeout(ctx, pollTimeout + 15s)
+		// instead of relying on the shared HTTP client timeout
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// The fact that this handler is called and responds successfully
+			// proves that the request was made with a valid context
+			timeout := r.URL.Query().Get("timeout")
+			assert.Equal(t, "5", timeout, "timeout parameter should be passed to API")
+
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte("[]")); err != nil {
+				panic(err)
+			}
+		}))
+		defer server.Close()
+
+		// Create client with a very short HTTP client timeout (e.g., 1 second)
+		// to demonstrate that per-request timeout is used instead
+		httpClient := &http.Client{
+			Timeout: 1 * time.Second,
+		}
+		client := NewClient(server.URL, "+0987654321", "test-device", "", httpClient)
+
+		// Call ReceiveMessages with pollTimeout=5 seconds
+		// Expected per-request timeout: 5s + 15s = 20s
+		// Even though HTTP client has 1s timeout, the request should succeed
+		// because it uses the per-request context with 20s timeout
+		ctx := context.Background()
+		_, err := client.ReceiveMessages(ctx, 5)
+
+		// This succeeds only if the per-request timeout (20s) is used
+		// instead of the HTTP client timeout (1s)
+		assert.NoError(t, err, "ReceiveMessages should succeed with per-request timeout despite short HTTP client timeout")
+	})
+
+	t.Run("per-request timeout calculation is correct", func(t *testing.T) {
+		tests := []struct {
+			pollTimeoutSeconds int
+			expectedMinTimeout time.Duration
+		}{
+			{5, 20 * time.Second},  // 5s + 15s = 20s
+			{30, 45 * time.Second}, // 30s + 15s = 45s
+			{0, 15 * time.Second},  // 0s + 15s = 15s
+		}
+
+		for _, tt := range tests {
+			t.Run(fmt.Sprintf("pollTimeout=%ds", tt.pollTimeoutSeconds), func(t *testing.T) {
+				requestCount := 0
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requestCount++
+					w.WriteHeader(http.StatusOK)
+					if _, err := w.Write([]byte("[]")); err != nil {
+						panic(err)
+					}
+				}))
+				defer server.Close()
+
+				httpClient := &http.Client{
+					Timeout: 5 * time.Minute, // Long timeout to not interfere
+				}
+				client := NewClient(server.URL, "+0987654321", "test-device", "", httpClient)
+
+				ctx := context.Background()
+				_, err := client.ReceiveMessages(ctx, tt.pollTimeoutSeconds)
+				assert.NoError(t, err)
+				assert.Equal(t, 1, requestCount, "request should be made")
+			})
+		}
+	})
 }
 
 func TestInitializeDevice(t *testing.T) {

@@ -941,6 +941,89 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 	}
 }
 
+func TestWebhookProcessingDetachedContext(t *testing.T) {
+	// Test that webhook event processing continues even when the HTTP client disconnects
+	// Fix: webhook processing now uses context.WithTimeout(context.Background(), 60*time.Second)
+	// instead of r.Context(), allowing processing to survive HTTP connection timeouts
+
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+	}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
+
+	t.Run("webhook processing completes with detached context", func(t *testing.T) {
+		// Create a payload that will trigger message handling
+		payload := map[string]interface{}{
+			"event":   "message",
+			"session": "default",
+			"payload": map[string]interface{}{
+				"id":       "msg123",
+				"from":     "+1234567890",
+				"fromMe":   false,
+				"body":     "Test message",
+				"hasMedia": false,
+			},
+		}
+
+		// Mock the message service to verify it gets called with a detached context
+		// The key is that processing should succeed even if we simulate an early HTTP disconnect
+		msgService.On("HandleWhatsAppMessageWithSession",
+			mock.Anything, // This will be the detached context with timeout
+			"default",     // session name
+			"+1234567890",
+			"msg123",
+			"+1234567890",
+			"", // senderDisplayName
+			"Test message",
+			"", // mediaPath
+		).Run(func(args mock.Arguments) {
+			// Simulate a slow operation that might exceed the original request timeout
+			// This demonstrates that the processing context is independent of HTTP request context
+			ctx := args.Get(0).(context.Context)
+			_, hasDeadline := ctx.Deadline()
+			// Verify the context has a deadline (from WithTimeout)
+			assert.True(t, hasDeadline, "processing context should have a deadline set")
+
+			// Verify the deadline is reasonable (60 seconds)
+			deadline, _ := ctx.Deadline()
+			now := time.Now()
+			timeUntilDeadline := deadline.Sub(now)
+			// Should be close to 60 seconds, allowing some variance for test execution
+			assert.Greater(t, timeUntilDeadline.Seconds(), float64(55), "deadline should be approximately 60 seconds from now")
+			assert.Less(t, timeUntilDeadline.Seconds(), float64(65), "deadline should be approximately 60 seconds from now")
+		}).Return(nil).Once()
+
+		// Calculate webhook signature using SHA-512 (WAHA uses this)
+		bodyBytes, _ := json.Marshal(payload)
+		mac := hmac.New(sha512.New, []byte(cfg.WhatsApp.WebhookSecret))
+		mac.Write(bodyBytes)
+		signature := hex.EncodeToString(mac.Sum(nil))
+
+		// Create request
+		req := httptest.NewRequest("POST", "/webhook/whatsapp", bytes.NewBuffer(bodyBytes))
+		req.Header.Set("X-Webhook-Hmac", signature)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		// Call webhook handler
+		server.handleWhatsAppWebhook()(w, req)
+
+		// Verify success
+		resp := w.Result()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		msgService.AssertExpectations(t)
+	})
+}
+
 func TestServer_SignalWebhook(t *testing.T) {
 	t.Skip("Signal webhook functionality removed - Signal uses polling instead")
 	/*

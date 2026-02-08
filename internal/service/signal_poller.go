@@ -437,5 +437,5 @@ func (sp *SignalPoller) pollWithRetry() {
 		}).Error("Signal polling experiencing persistent failures")
 	}
 
-	sp.logger.WithFields(sp.logFields()).Error("Signal polling failed after all retry attempts")
+	sp.logger.WithFields(sp.logFields()).Error("Signal polling failed after all retry attempts — messages may have been lost (Signal CLI /v1/receive is destructive)")
 }

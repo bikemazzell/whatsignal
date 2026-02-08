@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"whatsignal/internal/models"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,7 +25,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		// Send message from Test Group
 		groupMsg1 := env.fixtures.WhatsAppWebhooks()["group_message"]
 		groupMsg1.Payload.ID = fmt.Sprintf("multi_group1_%d", time.Now().UnixNano())
-		groupMsg1.Payload.Timestamp = time.Now().Unix()
+		groupMsg1.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 		webhookData1, err := json.Marshal(groupMsg1)
 		if err != nil {
@@ -45,7 +47,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		// Send message from Family Group
 		familyMsg := env.fixtures.WhatsAppWebhooks()["group_family_message"]
 		familyMsg.Payload.ID = fmt.Sprintf("multi_family_%d", time.Now().UnixNano())
-		familyMsg.Payload.Timestamp = time.Now().Unix()
+		familyMsg.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 		webhookData2, err := json.Marshal(familyMsg)
 		if err != nil {
@@ -67,7 +69,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		// Send message from Work Group
 		workMsg := env.fixtures.WhatsAppWebhooks()["group_work_message"]
 		workMsg.Payload.ID = fmt.Sprintf("multi_work_%d", time.Now().UnixNano())
-		workMsg.Payload.Timestamp = time.Now().Unix()
+		workMsg.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 		webhookData3, err := json.Marshal(workMsg)
 		if err != nil {
@@ -215,7 +217,7 @@ func TestGroupSpecificFeatures(t *testing.T) {
 		// Send a group message with @mention
 		workMsg := env.fixtures.WhatsAppWebhooks()["group_work_message"]
 		workMsg.Payload.ID = fmt.Sprintf("mention_msg_%d", time.Now().UnixNano())
-		workMsg.Payload.Timestamp = time.Now().Unix()
+		workMsg.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 		workMsg.Payload.Body = "@Alice can you review the PR?"
 
 		webhookData, err := json.Marshal(workMsg)
@@ -272,7 +274,7 @@ func TestGroupSpecificFeatures(t *testing.T) {
 		// Send a quoted message in a group
 		quotedMsg := env.fixtures.WhatsAppWebhooks()["group_message_quoted"]
 		quotedMsg.Payload.ID = fmt.Sprintf("quoted_msg_%d", time.Now().UnixNano())
-		quotedMsg.Payload.Timestamp = time.Now().Unix()
+		quotedMsg.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 
 		webhookData, err := json.Marshal(quotedMsg)
 		if err != nil {
@@ -331,7 +333,7 @@ func TestGroupSpecificFeatures(t *testing.T) {
 		for i := 0; i < messageCount; i++ {
 			webhook := env.fixtures.WhatsAppWebhooks()["group_message"]
 			webhook.Payload.ID = fmt.Sprintf("multi_msg_%d_%d", i, time.Now().UnixNano())
-			webhook.Payload.Timestamp = time.Now().Unix()
+			webhook.Payload.Timestamp = models.FlexibleTimestamp(time.Now().Unix())
 			webhook.Payload.Body = fmt.Sprintf("Message %d in the group", i+1)
 
 			webhookData, err := json.Marshal(webhook)

@@ -109,6 +109,11 @@ func (m *mockMessageService) GetMessageMappingByWhatsAppID(ctx context.Context, 
 	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
+func (m *mockMessageService) ProcessPendingMessages(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func TestSignalPoller_NewSignalPoller(t *testing.T) {
 	mockSignalClient := &mockSignalClient{}
 	mockMessageService := &mockMessageService{}
@@ -145,6 +150,8 @@ func TestSignalPoller_Start_Disabled(t *testing.T) {
 	}
 	logger := logrus.New()
 
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
+
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
 
 	ctx := context.Background()
@@ -170,6 +177,7 @@ func TestSignalPoller_Start_InitializationFailure(t *testing.T) {
 
 	expectedError := errors.New("initialization failed")
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(expectedError)
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
 
@@ -197,6 +205,7 @@ func TestSignalPoller_Start_Success(t *testing.T) {
 	logger := logrus.New()
 
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
@@ -235,6 +244,7 @@ func TestSignalPoller_Start_AlreadyRunning(t *testing.T) {
 	logger := logrus.New()
 
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
@@ -288,7 +298,9 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
 
 	// First two calls fail, subsequent calls succeed
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("temporary failure")).Twice()
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
@@ -435,6 +447,7 @@ func TestSignalPoller_ConfigValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil).Maybe()
+			mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 
 			poller := NewSignalPoller(mockSignalClient, mockMessageService, tt.signalConfig, tt.retryConfig, logger)
 
@@ -545,6 +558,7 @@ func TestSignalPoller_ContextCancellationDuringRetry(t *testing.T) {
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
 
 	// Always fail to trigger retries
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("temporary failure"))
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)
@@ -611,8 +625,10 @@ func TestSignalPoller_NonRetryableErrorStopsRetries(t *testing.T) {
 	mockSignalClient.On("InitializeDevice", mock.Anything).Return(nil)
 
 	// Return non-retryable error
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(errors.New("unauthorized access")).Once()
 	// Should not be called again
+	mockMessageService.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
 	mockMessageService.On("PollSignalMessages", mock.Anything).Return(nil)
 
 	poller := NewSignalPoller(mockSignalClient, mockMessageService, signalConfig, retryConfig, logger)

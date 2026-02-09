@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -84,10 +83,10 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, fn func(ctx context.Conte
 		}
 	}
 
-	// Track request
-	atomic.AddUint32(&cb.requestCount, 1)
+	cb.mu.Lock()
+	cb.requestCount++
+	cb.mu.Unlock()
 
-	// Execute the function
 	err := fn(ctx)
 
 	if err != nil {
@@ -140,7 +139,7 @@ func (cb *CircuitBreaker) onSuccess() {
 			}).Info("Circuit breaker closed after successful recovery")
 		}
 	case StateClosed:
-		atomic.AddUint32(&cb.successCount, 1)
+		cb.successCount++
 	}
 }
 
@@ -149,7 +148,7 @@ func (cb *CircuitBreaker) onFailure() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	atomic.AddUint32(&cb.failures, 1)
+	cb.failures++
 	cb.lastFailureTime = time.Now()
 
 	switch cb.state {

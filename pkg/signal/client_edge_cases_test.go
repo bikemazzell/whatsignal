@@ -53,7 +53,7 @@ func TestSignalClient_HealthCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "GET", r.Method)
-				assert.Contains(t, r.URL.Path, "/v1/receive/")
+				assert.Equal(t, "/v1/about", r.URL.Path)
 				assert.Equal(t, "application/json", r.Header.Get("Accept"))
 
 				w.WriteHeader(tt.statusCode)

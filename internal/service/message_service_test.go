@@ -102,6 +102,29 @@ func (m *mockDB) HasMessageHistoryBetween(ctx context.Context, sessionName, sign
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockDB) SavePendingMessages(ctx context.Context, messages []models.PendingSignalMessage) error {
+	args := m.Called(ctx, messages)
+	return args.Error(0)
+}
+
+func (m *mockDB) GetPendingMessages(ctx context.Context, limit int) ([]models.PendingSignalMessage, error) {
+	args := m.Called(ctx, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.PendingSignalMessage), args.Error(1)
+}
+
+func (m *mockDB) DeletePendingMessage(ctx context.Context, messageID string, destination string) error {
+	args := m.Called(ctx, messageID, destination)
+	return args.Error(0)
+}
+
+func (m *mockDB) IncrementPendingRetryCount(ctx context.Context, messageID string, destination string) error {
+	args := m.Called(ctx, messageID, destination)
+	return args.Error(0)
+}
+
 type mockMediaCache struct {
 	mock.Mock
 }
@@ -815,6 +838,9 @@ func TestPollSignalMessages(t *testing.T) {
 				tt.setup(bridge, signalClient)
 			}
 
+			db.On("SavePendingMessages", mock.Anything, mock.Anything).Return(nil).Maybe()
+			db.On("DeletePendingMessage", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
 			ctx := context.Background()
 			err := service.PollSignalMessages(ctx)
 
@@ -966,6 +992,8 @@ func TestPollSignalMessages_MultiChannel(t *testing.T) {
 			signalClient.On("ReceiveMessages", mock.Anything, 10).Return(tt.messages, nil)
 			tt.setupHistory(db)
 			tt.expectations(bridge)
+			db.On("SavePendingMessages", mock.Anything, mock.Anything).Return(nil).Maybe()
+			db.On("DeletePendingMessage", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			ctx := context.Background()
 			err := service.PollSignalMessages(ctx)
@@ -1218,6 +1246,8 @@ func TestPollSignalMessages_PerChatLocking(t *testing.T) {
 
 	signalClient.On("ReceiveMessages", mock.Anything, 10).Return(messages, nil)
 	bridge.On("HandleSignalMessageWithDestination", mock.Anything, mock.Anything, "+1234567890").Return(nil).Times(10)
+	db.On("SavePendingMessages", mock.Anything, mock.Anything).Return(nil).Maybe()
+	db.On("DeletePendingMessage", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	ctx := context.Background()
 	err := service.PollSignalMessages(ctx)

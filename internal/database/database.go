@@ -930,3 +930,146 @@ func (d *Database) HealthCheck(ctx context.Context) error {
 
 	return nil
 }
+
+func (d *Database) SavePendingMessages(ctx context.Context, messages []models.PendingSignalMessage) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx, InsertPendingSignalMessageQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, msg := range messages {
+		msgIDHash, err := d.encryptor.LookupHash(msg.MessageID)
+		if err != nil {
+			return fmt.Errorf("failed to compute message ID hash: %w", err)
+		}
+
+		encryptedMsgID, err := d.encryptor.EncryptIfEnabled(msg.MessageID)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt message ID: %w", err)
+		}
+
+		encryptedSender, err := d.encryptor.EncryptIfEnabled(msg.Sender)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt sender: %w", err)
+		}
+
+		encryptedMessage, err := d.encryptor.EncryptIfEnabled(msg.Message)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt message: %w", err)
+		}
+
+		encryptedGroupID, err := d.encryptor.EncryptIfEnabled(msg.GroupID)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt group ID: %w", err)
+		}
+
+		encryptedRawJSON, err := d.encryptor.EncryptIfEnabled(msg.RawJSON)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt raw JSON: %w", err)
+		}
+
+		_, err = stmt.ExecContext(ctx,
+			encryptedMsgID, msgIDHash, encryptedSender, encryptedMessage,
+			encryptedGroupID, msg.Timestamp, encryptedRawJSON, msg.Destination,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert pending message: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (d *Database) GetPendingMessages(ctx context.Context, limit int) ([]models.PendingSignalMessage, error) {
+	rows, err := d.db.QueryContext(ctx, SelectPendingSignalMessagesQuery, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending messages: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var messages []models.PendingSignalMessage
+	for rows.Next() {
+		var msg models.PendingSignalMessage
+		var encryptedMsgID, encryptedSender, encryptedRawJSON string
+		var encryptedMessage, encryptedGroupID sql.NullString
+
+		err := rows.Scan(
+			&msg.ID, &encryptedMsgID, &encryptedSender, &encryptedMessage,
+			&encryptedGroupID, &msg.Timestamp, &encryptedRawJSON,
+			&msg.Destination, &msg.RetryCount, &msg.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan pending message: %w", err)
+		}
+
+		msg.MessageID, err = d.encryptor.DecryptIfEnabled(encryptedMsgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt message ID: %w", err)
+		}
+
+		msg.Sender, err = d.encryptor.DecryptIfEnabled(encryptedSender)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt sender: %w", err)
+		}
+
+		if encryptedMessage.Valid {
+			msg.Message, err = d.encryptor.DecryptIfEnabled(encryptedMessage.String)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt message: %w", err)
+			}
+		}
+
+		if encryptedGroupID.Valid {
+			msg.GroupID, err = d.encryptor.DecryptIfEnabled(encryptedGroupID.String)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt group ID: %w", err)
+			}
+		}
+
+		msg.RawJSON, err = d.encryptor.DecryptIfEnabled(encryptedRawJSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt raw JSON: %w", err)
+		}
+
+		messages = append(messages, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating pending messages: %w", err)
+	}
+
+	return messages, nil
+}
+
+func (d *Database) DeletePendingMessage(ctx context.Context, messageID string, destination string) error {
+	msgIDHash, err := d.encryptor.LookupHash(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to compute message ID hash: %w", err)
+	}
+
+	_, err = d.db.ExecContext(ctx, DeletePendingSignalMessageQuery, msgIDHash, destination)
+	if err != nil {
+		return fmt.Errorf("failed to delete pending message: %w", err)
+	}
+	return nil
+}
+
+func (d *Database) IncrementPendingRetryCount(ctx context.Context, messageID string, destination string) error {
+	msgIDHash, err := d.encryptor.LookupHash(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to compute message ID hash: %w", err)
+	}
+
+	_, err = d.db.ExecContext(ctx, IncrementPendingRetryCountQuery, msgIDHash, destination)
+	if err != nil {
+		return fmt.Errorf("failed to increment retry count: %w", err)
+	}
+	return nil
+}

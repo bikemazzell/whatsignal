@@ -376,6 +376,11 @@ func (m *mockMessageService) GetMessageMappingByWhatsAppID(ctx context.Context, 
 	return args.Get(0).(*models.MessageMapping), args.Error(1)
 }
 
+func (m *mockMessageService) ProcessPendingMessages(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 func TestVerifySignature(t *testing.T) {
 	secretKey := "test-secret-key"
 	payload := []byte(`{"test": "data"}`)

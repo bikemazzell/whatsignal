@@ -159,6 +159,10 @@ func (sp *SignalPoller) Start(ctx context.Context) error {
 
 	sp.mu.Unlock()
 
+	if err := sp.messageService.ProcessPendingMessages(ctx); err != nil {
+		sp.logger.WithError(err).Warn("Failed to reprocess pending messages from previous session")
+	}
+
 	// Start polling goroutine
 	sp.wg.Add(1)
 	go sp.pollLoop()

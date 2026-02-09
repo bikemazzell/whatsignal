@@ -5,6 +5,14 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.17]
+
+### Fixed
+- **Health check consuming messages**: `HealthCheck()` was calling the destructive `/v1/receive` endpoint, silently discarding all pending Signal messages on every health check cycle. Switched to non-destructive `/v1/about` endpoint and moved to the send circuit breaker so health check failures no longer block message polling.
+- **Circuit breaker data race**: `requestCount` was incremented via `atomic.AddUint32` without holding the mutex while `GetStats()` read it under `RLock`, triggering the race detector. Moved all counter increments under consistent mutex protection and removed redundant atomics from already-locked methods.
+- **Silent message loss on processing failure**: Worker goroutines in `PollSignalMessages()` logged errors but never retried. Since `/v1/receive` is destructive, any transient failure meant permanent message loss. Added per-message retry with exponential backoff (3 attempts, 500ms initial) while preserving per-chat ordering.
+- **No crash recovery for in-flight messages**: Messages existed only in memory between `ReceiveMessages()` and successful processing. A crash during that window meant permanent loss. Added encrypted `pending_signal_messages` table with persist-before-process semantics and automatic startup recovery of orphaned messages.
+
 ## [1.2.16]
 
 ### Fixed

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -25,6 +26,10 @@ type Database interface {
 	GetMessageMappingBySignalID(ctx context.Context, signalID string) (*models.MessageMapping, error)
 	HasMessageHistoryBetween(ctx context.Context, sessionName, signalSender string) (bool, error)
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
+	SavePendingMessages(ctx context.Context, messages []models.PendingSignalMessage) error
+	GetPendingMessages(ctx context.Context, limit int) ([]models.PendingSignalMessage, error)
+	DeletePendingMessage(ctx context.Context, messageID string, destination string) error
+	IncrementPendingRetryCount(ctx context.Context, messageID string, destination string) error
 }
 
 type MediaCache interface {
@@ -47,6 +52,7 @@ type MessageService interface {
 	PollSignalMessages(ctx context.Context) error
 	SendSignalNotification(ctx context.Context, sessionName, message string) error
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
+	ProcessPendingMessages(ctx context.Context) error
 }
 
 // chatLockManager provides per-chat locking to ensure message ordering within a chat
@@ -361,19 +367,14 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 		return nil
 	}
 
-	// Determine number of workers
-	numWorkers := s.signalConfig.PollWorkers
-	if numWorkers <= 0 {
-		numWorkers = constants.DefaultSignalPollWorkers
+	type messageWithDest struct {
+		msg         signaltypes.SignalMessage
+		destination string
 	}
 
-	// Use worker pool for parallel processing
-	sem := make(chan struct{}, numWorkers)
-	var wg sync.WaitGroup
-	dispatchedCount := 0
+	var dispatched []messageWithDest
 
 	for _, msg := range messages {
-		// For polled messages, we need to determine the correct Signal destination
 		destinations := s.channelManager.GetAllSignalDestinations()
 		if len(destinations) == 0 {
 			s.logger.Error("No Signal destinations configured")
@@ -385,11 +386,8 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 
 		var destination string
 		if len(destinations) == 1 {
-			// If there's only one channel, use its destination
 			destination = destinations[0]
 		} else {
-			// For multiple channels, determine destination based on message history
-			// Check which session has previously communicated with this Signal sender
 			destination = s.determineDestinationForSender(ctx, msg.Sender, destinations)
 			if destination == "" {
 				s.logger.WithFields(logrus.Fields{
@@ -403,38 +401,160 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 			}
 		}
 
-		dispatchedCount++
-		wg.Add(1)
-		sem <- struct{}{} // Acquire semaphore slot
-		go func(m signaltypes.SignalMessage, dest string) {
-			defer wg.Done()
-			defer func() { <-sem }() // Release semaphore slot
+		dispatched = append(dispatched, messageWithDest{msg: msg, destination: destination})
+	}
 
-			// Acquire per-chat lock to ensure message ordering within a chat
-			// Key combines sender and destination to handle multi-channel routing
+	if len(dispatched) == 0 {
+		return nil
+	}
+
+	persisted := false
+	var pendingMessages []models.PendingSignalMessage
+	for _, d := range dispatched {
+		rawJSON, jsonErr := json.Marshal(d.msg)
+		if jsonErr != nil {
+			s.logger.WithError(jsonErr).WithField("messageID", d.msg.MessageID).Warn("Failed to serialize message for persistence")
+			continue
+		}
+		pendingMessages = append(pendingMessages, models.PendingSignalMessage{
+			MessageID:   d.msg.MessageID,
+			Sender:      d.msg.Sender,
+			Message:     d.msg.Message,
+			Timestamp:   d.msg.Timestamp,
+			RawJSON:     string(rawJSON),
+			Destination: d.destination,
+		})
+	}
+
+	if len(pendingMessages) > 0 {
+		if saveErr := s.db.SavePendingMessages(ctx, pendingMessages); saveErr != nil {
+			s.logger.WithError(saveErr).Warn("Failed to persist pending messages, continuing with in-memory processing")
+			metrics.IncrementCounter("signal_pending_save_failures", nil, "Failed attempts to persist pending messages")
+		} else {
+			persisted = true
+		}
+	}
+
+	numWorkers := s.signalConfig.PollWorkers
+	if numWorkers <= 0 {
+		numWorkers = constants.DefaultSignalPollWorkers
+	}
+
+	sem := make(chan struct{}, numWorkers)
+	var wg sync.WaitGroup
+
+	for _, d := range dispatched {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(m signaltypes.SignalMessage, dest string, isPersisted bool) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
 			chatKey := m.Sender + ":" + dest
 			chatLock := s.chatLockManager.getLock(chatKey)
 			chatLock.Lock()
 			defer chatLock.Unlock()
 
-			if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &m, dest); err != nil {
-				if IsVerboseLogging(ctx) {
-					s.logger.WithError(err).WithField("messageID", m.MessageID).Error("Failed to process Signal message from polling")
+			var lastErr error
+			maxAttempts := constants.DefaultMessageProcessRetryAttempts
+			backoff := time.Duration(constants.DefaultMessageProcessRetryBackoffMs) * time.Millisecond
+
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &m, dest); err != nil {
+					lastErr = err
+					if attempt < maxAttempts {
+						s.logger.WithFields(logrus.Fields{
+							"messageID": m.MessageID,
+							"attempt":   attempt,
+						}).WithError(err).Warn("Message processing failed, retrying")
+						select {
+						case <-ctx.Done():
+							s.logger.WithField("messageID", m.MessageID).Error("Context cancelled during message retry")
+							metrics.IncrementCounter("signal_message_process_failures", map[string]string{
+								"reason": "context_cancelled",
+							}, "Signal message processing failures")
+							return
+						case <-time.After(backoff):
+							backoff *= 2
+						}
+					}
 				} else {
-					s.logger.WithError(err).Error("Failed to process Signal message from polling")
+					if attempt > 1 {
+						metrics.IncrementCounter("signal_message_process_retries_succeeded", nil,
+							"Signal messages that succeeded after retry")
+					}
+					if isPersisted {
+						if delErr := s.db.DeletePendingMessage(ctx, m.MessageID, dest); delErr != nil {
+							s.logger.WithError(delErr).WithField("messageID", m.MessageID).Warn("Failed to delete pending message after success")
+						}
+					}
+					return
 				}
 			}
-		}(msg, destination)
+
+			s.logger.WithFields(logrus.Fields{
+				"messageID": m.MessageID,
+				"attempts":  maxAttempts,
+			}).WithError(lastErr).Error("Message processing failed after all retry attempts")
+			metrics.IncrementCounter("signal_message_process_failures", map[string]string{
+				"reason": "retries_exhausted",
+			}, "Signal message processing failures")
+
+			if isPersisted {
+				if incErr := s.db.IncrementPendingRetryCount(ctx, m.MessageID, dest); incErr != nil {
+					s.logger.WithError(incErr).WithField("messageID", m.MessageID).Warn("Failed to increment pending retry count")
+				}
+			}
+		}(d.msg, d.destination, persisted)
 	}
 
 	wg.Wait()
 
-	if dispatchedCount > 0 {
-		metrics.AddToCounter("signal_poll_messages_dispatched", float64(dispatchedCount), nil, "Messages dispatched to bridge")
+	if len(dispatched) > 0 {
+		metrics.AddToCounter("signal_poll_messages_dispatched", float64(len(dispatched)), nil, "Messages dispatched to bridge")
 	}
 
-	// Opportunistic cleanup of per-chat locks
 	s.chatLockManager.cleanup()
+
+	return nil
+}
+
+func (s *messageService) ProcessPendingMessages(ctx context.Context) error {
+	pending, err := s.db.GetPendingMessages(ctx, 100)
+	if err != nil {
+		return fmt.Errorf("failed to get pending messages: %w", err)
+	}
+
+	if len(pending) == 0 {
+		return nil
+	}
+
+	s.logger.WithField("count", len(pending)).Info("Reprocessing pending messages from previous session")
+
+	for _, pm := range pending {
+		var msg signaltypes.SignalMessage
+		if err := json.Unmarshal([]byte(pm.RawJSON), &msg); err != nil {
+			s.logger.WithError(err).WithField("messageID", pm.MessageID).Error("Failed to deserialize pending message, deleting")
+			if delErr := s.db.DeletePendingMessage(ctx, pm.MessageID, pm.Destination); delErr != nil {
+				s.logger.WithError(delErr).Warn("Failed to delete corrupt pending message")
+			}
+			continue
+		}
+
+		if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &msg, pm.Destination); err != nil {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"messageID":  pm.MessageID,
+				"retryCount": pm.RetryCount,
+			}).Error("Failed to reprocess pending message")
+			if incErr := s.db.IncrementPendingRetryCount(ctx, pm.MessageID, pm.Destination); incErr != nil {
+				s.logger.WithError(incErr).Warn("Failed to increment pending retry count")
+			}
+		} else {
+			if delErr := s.db.DeletePendingMessage(ctx, pm.MessageID, pm.Destination); delErr != nil {
+				s.logger.WithError(delErr).Warn("Failed to delete processed pending message")
+			}
+		}
+	}
 
 	return nil
 }

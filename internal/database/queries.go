@@ -134,3 +134,32 @@ const (
 		WHERE cached_at < datetime('now', '-' || ? || ' days')
 	`
 )
+
+// Pending signal message queries
+const (
+	InsertPendingSignalMessageQuery = `
+		INSERT OR IGNORE INTO pending_signal_messages (
+			message_id, message_id_hash, sender, message, group_id,
+			timestamp, raw_json, destination, retry_count
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+	`
+
+	SelectPendingSignalMessagesQuery = `
+		SELECT id, message_id, sender, message, group_id,
+			   timestamp, raw_json, destination, retry_count, created_at
+		FROM pending_signal_messages
+		ORDER BY created_at ASC
+		LIMIT ?
+	`
+
+	DeletePendingSignalMessageQuery = `
+		DELETE FROM pending_signal_messages
+		WHERE message_id_hash = ? AND destination = ?
+	`
+
+	IncrementPendingRetryCountQuery = `
+		UPDATE pending_signal_messages
+		SET retry_count = retry_count + 1
+		WHERE message_id_hash = ? AND destination = ?
+	`
+)

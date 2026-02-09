@@ -140,3 +140,9 @@ const (
 const (
 	MaxChatLocks = 1000 // Maximum number of per-chat locks to track before cleanup
 )
+
+// Message processing retry configuration
+const (
+	DefaultMessageProcessRetryAttempts  = 3
+	DefaultMessageProcessRetryBackoffMs = 500
+)

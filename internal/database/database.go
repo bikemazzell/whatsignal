@@ -208,6 +208,7 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 		query := SelectMessageMappingByWhatsAppIDQuery
 		var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
 		var encryptedMediaPath *string
+		var nullableMediaType sql.NullString
 		mapping := &models.MessageMapping{}
 
 		err := d.db.QueryRowContext(ctx, query, param).Scan(
@@ -219,12 +220,15 @@ func (d *Database) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID
 			&mapping.ForwardedAt,
 			&mapping.DeliveryStatus,
 			&encryptedMediaPath,
+			&mapping.SessionName,
+			&nullableMediaType,
 			&mapping.CreatedAt,
 			&mapping.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		mapping.MediaType = nullableMediaType.String
 
 		mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedChatID)
 		if err != nil {
@@ -286,6 +290,7 @@ func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID str
 
 	var encryptedChatID, encryptedWhatsAppMsgID, encryptedSignalMsgID string
 	var encryptedMediaPath *string
+	var nullableMediaType sql.NullString
 	mapping := &models.MessageMapping{}
 
 	err = d.db.QueryRowContext(ctx, query, sigHash).Scan(
@@ -297,6 +302,8 @@ func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID str
 		&mapping.ForwardedAt,
 		&mapping.DeliveryStatus,
 		&encryptedMediaPath,
+		&mapping.SessionName,
+		&nullableMediaType,
 		&mapping.CreatedAt,
 		&mapping.UpdatedAt,
 	)
@@ -307,6 +314,7 @@ func (d *Database) GetMessageMappingBySignalID(ctx context.Context, signalID str
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message mapping: %w", err)
 	}
+	mapping.MediaType = nullableMediaType.String
 
 	mapping.WhatsAppChatID, err = d.encryptor.DecryptAuto(encryptedChatID)
 	if err != nil {
@@ -428,6 +436,7 @@ func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, 
 
 	var encryptedWAChatID, encryptedWAMsgID, encryptedSignalMsgID string
 	var encryptedMediaPath *string
+	var nullableMediaType sql.NullString
 	mapping := &models.MessageMapping{}
 
 	err = row.Scan(
@@ -439,6 +448,8 @@ func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, 
 		&mapping.ForwardedAt,
 		&mapping.DeliveryStatus,
 		&encryptedMediaPath,
+		&mapping.SessionName,
+		&nullableMediaType,
 		&mapping.CreatedAt,
 		&mapping.UpdatedAt,
 	)
@@ -449,6 +460,7 @@ func (d *Database) GetLatestMessageMappingByWhatsAppChatID(ctx context.Context, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest message mapping by WhatsApp chat ID: %w", err)
 	}
+	mapping.MediaType = nullableMediaType.String
 
 	// Decrypt fields
 	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedWAChatID)
@@ -484,6 +496,7 @@ func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.Message
 
 	var encryptedWAChatID, encryptedWAMsgID, encryptedSignalMsgID string
 	var encryptedMediaPath *string
+	var nullableMediaType sql.NullString
 	mapping := &models.MessageMapping{}
 
 	err := row.Scan(
@@ -495,6 +508,8 @@ func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.Message
 		&mapping.ForwardedAt,
 		&mapping.DeliveryStatus,
 		&encryptedMediaPath,
+		&mapping.SessionName,
+		&nullableMediaType,
 		&mapping.CreatedAt,
 		&mapping.UpdatedAt,
 	)
@@ -505,6 +520,7 @@ func (d *Database) GetLatestMessageMapping(ctx context.Context) (*models.Message
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest message mapping: %w", err)
 	}
+	mapping.MediaType = nullableMediaType.String
 
 	// Decrypt fields
 	mapping.WhatsAppChatID, err = d.encryptor.DecryptIfEnabled(encryptedWAChatID)

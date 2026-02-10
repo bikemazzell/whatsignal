@@ -14,6 +14,7 @@ const (
 	SelectMessageMappingByWhatsAppIDQuery = `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			   signal_timestamp, forwarded_at, delivery_status, media_path,
+			   session_name, media_type,
 			   created_at, updated_at
 		FROM message_mappings
 		WHERE whatsapp_msg_id_hash = ?
@@ -22,6 +23,7 @@ const (
 	SelectMessageMappingBySignalIDQuery = `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id,
 			   signal_timestamp, forwarded_at, delivery_status, media_path,
+			   session_name, media_type,
 			   created_at, updated_at
 		FROM message_mappings
 		WHERE signal_msg_id_hash = ?
@@ -41,7 +43,7 @@ const (
 
 	SelectLatestMessageMappingByWhatsAppChatIDQuery = `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
-		       forwarded_at, delivery_status, media_path,
+		       forwarded_at, delivery_status, media_path, session_name, media_type,
 		       created_at, updated_at
 		FROM message_mappings
 		WHERE chat_id_hash = ?
@@ -51,7 +53,7 @@ const (
 
 	SelectLatestMessageMappingQuery = `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
-		       forwarded_at, delivery_status, media_path,
+		       forwarded_at, delivery_status, media_path, session_name, media_type,
 		       created_at, updated_at
 		FROM message_mappings
 		ORDER BY forwarded_at DESC

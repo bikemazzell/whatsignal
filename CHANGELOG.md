@@ -5,6 +5,16 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.18]
+
+### Fixed
+- **Session name missing for reactions and edits**: Database queries for message mappings did not SELECT `session_name` or `media_type`, so retrieved mappings always had empty `SessionName`. Additionally, `handleWhatsAppReaction` and `handleWhatsAppEditedMessage` discarded the webhook session name. Fixed by adding both columns to all four lookup queries and falling back to the webhook session when the mapping's session is empty.
+
+### Testing
+- Added server tests for reaction/edit session fallback when `mapping.SessionName` is empty
+- Added `SessionName` and `MediaType` assertions to existing database retrieval tests
+- Added `TestDatabase_MediaTypeRetrieval` covering all query paths including nullable `media_type`
+
 ## [1.2.17]
 
 ### Fixed

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/metrics"
 	"whatsignal/internal/security"
 	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/signal/types"
@@ -240,16 +241,41 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	if len(messages) > 0 {
+		var dataCount, syncCount, receiptCount, typingCount, otherCount int
+		for _, msg := range messages {
+			switch {
+			case msg.Envelope.DataMessage != nil:
+				dataCount++
+			case msg.Envelope.SyncMessage != nil:
+				syncCount++
+			case msg.Envelope.ReceiptMessage != nil:
+				receiptCount++
+			case msg.Envelope.TypingMessage != nil:
+				typingCount++
+			default:
+				otherCount++
+			}
+		}
+		c.logger.WithFields(logrus.Fields{
+			"total":   len(messages),
+			"data":    dataCount,
+			"sync":    syncCount,
+			"receipt": receiptCount,
+			"typing":  typingCount,
+			"other":   otherCount,
+		}).Info("Signal API returned envelopes")
+		metrics.AddToCounter("signal_poll_raw_envelopes", float64(len(messages)), nil, "Raw envelopes from Signal API before filtering")
+	}
+
 	result := make([]types.SignalMessage, 0, len(messages))
 	for _, msg := range messages {
-		// Handle incoming messages (DataMessage)
 		if msg.Envelope.DataMessage != nil {
 			sigMsg := c.convertDataMessageToSignalMessage(ctx, msg)
 			result = append(result, sigMsg)
 			continue
 		}
 
-		// Handle outgoing messages sent from another device (SyncMessage.SentMessage)
 		if msg.Envelope.SyncMessage != nil && msg.Envelope.SyncMessage.SentMessage != nil {
 			sigMsg := c.convertSyncMessageToSignalMessage(ctx, msg)
 			if sigMsg != nil {
@@ -257,8 +283,6 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			}
 			continue
 		}
-
-		// Skip other message types (receipts, typing indicators, etc.)
 	}
 
 	return result, nil

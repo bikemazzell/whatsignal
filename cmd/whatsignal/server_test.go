@@ -1486,6 +1486,91 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 				msgService.On("SendSignalNotification", mock.Anything, "default", "⏳ WhatsApp is waiting for a message").Return(nil).Once()
 			},
 		},
+		{
+			name:  "message.reaction with empty session in mapping falls back to webhook session",
+			event: models.EventMessageReaction,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageReaction,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "reaction_fallback",
+					"from":   "+0987654321",
+					"fromMe": false,
+					"reaction": map[string]interface{}{
+						"text":      "❤️",
+						"messageId": "original_msg_empty_session",
+					},
+				},
+			},
+			setup: func() {
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_empty_session").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:  "original_msg_empty_session",
+						SignalMsgID:    "sig_empty",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "",
+						DeliveryStatus: models.DeliveryStatusSent,
+					}, nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "❤️ Reacted with ❤️").Return(nil).Once()
+			},
+		},
+		{
+			name:  "message.edited with empty session in mapping falls back to webhook session",
+			event: models.EventMessageEdited,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageEdited,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":              "edit_fallback",
+					"from":            "+0987654321",
+					"fromMe":          false,
+					"body":            "Edited text",
+					"editedMessageId": "original_msg_empty_session_edit",
+				},
+			},
+			setup: func() {
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_empty_session_edit").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:  "original_msg_empty_session_edit",
+						SignalMsgID:    "sig_empty_edit",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "",
+						DeliveryStatus: models.DeliveryStatusSent,
+					}, nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "✏️ Message edited: Edited text").Return(nil).Once()
+			},
+		},
+		{
+			name:  "message.reaction uses mapping session when present",
+			event: models.EventMessageReaction,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageReaction,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "reaction_mapping_session",
+					"from":   "+0987654321",
+					"fromMe": false,
+					"reaction": map[string]interface{}{
+						"text":      "🔥",
+						"messageId": "original_msg_with_session",
+					},
+				},
+			},
+			setup: func() {
+				msgService.On("GetMessageMappingByWhatsAppID", mock.Anything, "original_msg_with_session").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:  "original_msg_with_session",
+						SignalMsgID:    "sig_with_session",
+						WhatsAppChatID: "+0987654321@c.us",
+						SessionName:    "default",
+						DeliveryStatus: models.DeliveryStatusSent,
+					}, nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "🔥 Reacted with 🔥").Return(nil).Once()
+			},
+		},
 	}
 
 	for _, tt := range tests {

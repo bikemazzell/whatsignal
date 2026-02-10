@@ -552,7 +552,7 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 	}
 
 	// Validate session from webhook payload
-	_, sessionErr, skip := s.validateWebhookSession(payload, "reaction")
+	webhookSessionName, sessionErr, skip := s.validateWebhookSession(payload, "reaction")
 	if sessionErr != nil {
 		return sessionErr
 	}
@@ -586,12 +586,10 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 		reactionText = fmt.Sprintf("%s Reacted with %s", payload.Payload.Reaction.Text, payload.Payload.Reaction.Text)
 	}
 
-	// Send reaction notification to the appropriate Signal destination
-	// Use the session from the mapping to determine the destination
+	// Use the session from the mapping, falling back to the webhook session
 	reactionSessionName := mapping.SessionName
 	if reactionSessionName == "" {
-		s.logger.Error("Session name missing in message mapping for reaction")
-		return ValidationError{Message: "session name required but not found in message mapping"}
+		reactionSessionName = webhookSessionName
 	}
 
 	// Use the message service to send via the bridge with session context
@@ -619,7 +617,7 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	}
 
 	// Validate session from webhook payload
-	_, sessionErr, skip := s.validateWebhookSession(payload, "edited message")
+	webhookSessionName, sessionErr, skip := s.validateWebhookSession(payload, "edited message")
 	if sessionErr != nil {
 		return sessionErr
 	}
@@ -648,12 +646,10 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 	// For now, send an edit notification to Signal as a new message
 	editNotification := fmt.Sprintf("✏️ Message edited: %s", payload.Payload.Body)
 
-	// Send to Signal using message service
-	// Send edit notification to the appropriate Signal destination
+	// Use the session from the mapping, falling back to the webhook session
 	editSessionName := mapping.SessionName
 	if editSessionName == "" {
-		s.logger.Error("Session name missing in message mapping for edited message")
-		return ValidationError{Message: "session name required but not found in message mapping"}
+		editSessionName = webhookSessionName
 	}
 
 	// Use the message service to send via the bridge with session context

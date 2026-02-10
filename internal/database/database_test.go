@@ -358,13 +358,15 @@ func TestMessageMappingCRUD(t *testing.T) {
 	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
 	assert.Equal(t, mapping.SignalMsgID, retrieved.SignalMsgID)
 	assert.Equal(t, mapping.DeliveryStatus, retrieved.DeliveryStatus)
+	assert.Equal(t, "personal", retrieved.SessionName)
+	assert.Equal(t, "", retrieved.MediaType)
 
 	// Test non-existent message
 	retrieved, err = db.GetMessageMappingByWhatsAppID(ctx, "nonexistent")
 	require.NoError(t, err)
 	assert.Nil(t, retrieved)
 
-	// Test with media path
+	// Test with media path and media type
 	mediaPath := "/path/to/media.jpg"
 	mapping = &models.MessageMapping{
 		WhatsAppChatID:  "chat124",
@@ -374,6 +376,7 @@ func TestMessageMappingCRUD(t *testing.T) {
 		ForwardedAt:     time.Now(),
 		DeliveryStatus:  models.DeliveryStatusSent,
 		MediaPath:       &mediaPath,
+		MediaType:       "image",
 		SessionName:     "personal",
 	}
 
@@ -384,6 +387,8 @@ func TestMessageMappingCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, retrieved)
 	assert.Equal(t, mediaPath, *retrieved.MediaPath)
+	assert.Equal(t, "image", retrieved.MediaType)
+	assert.Equal(t, "personal", retrieved.SessionName)
 }
 
 func TestUpdateDeliveryStatus(t *testing.T) {
@@ -1002,6 +1007,7 @@ func TestDatabase_GetMessageMappingBySignalID(t *testing.T) {
 	assert.Equal(t, mapping.WhatsAppChatID, retrieved.WhatsAppChatID)
 	assert.Equal(t, mapping.WhatsAppMsgID, retrieved.WhatsAppMsgID)
 	assert.Equal(t, mapping.SignalMsgID, retrieved.SignalMsgID)
+	assert.Equal(t, "personal", retrieved.SessionName)
 }
 
 func TestDatabase_GetLatestMessageMappingByWhatsAppChatID(t *testing.T) {
@@ -1062,12 +1068,14 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID(t *testing.T) {
 	assert.Equal(t, "wa_msg_2", latest.WhatsAppMsgID)
 	assert.Equal(t, "sig_msg_2", latest.SignalMsgID)
 	assert.Equal(t, chatID, latest.WhatsAppChatID)
+	assert.Equal(t, "personal", latest.SessionName)
 
 	// Test with different chat ID
 	latest, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, "+9876543210@c.us")
 	assert.NoError(t, err)
 	require.NotNil(t, latest)
 	assert.Equal(t, "wa_msg_3", latest.WhatsAppMsgID)
+	assert.Equal(t, "business", latest.SessionName)
 
 	// Test with non-existent chat ID
 	latest, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, "+0000000000@c.us")
@@ -1132,6 +1140,71 @@ func TestDatabase_GetLatestMessageMapping(t *testing.T) {
 	assert.Equal(t, "wa_msg_2", latest.WhatsAppMsgID)
 	assert.Equal(t, "sig_msg_2", latest.SignalMsgID)
 	assert.Equal(t, "+2222222222@c.us", latest.WhatsAppChatID)
+	assert.Equal(t, "s2", latest.SessionName)
+}
+
+func TestDatabase_MediaTypeRetrieval(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	mediaPath := "/path/to/video.mp4"
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat_media_test",
+		WhatsAppMsgID:   "msg_media_test",
+		SignalMsgID:     "sig_media_test",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "test-session",
+		MediaType:       "video",
+		MediaPath:       &mediaPath,
+	}
+
+	err := db.SaveMessageMapping(ctx, mapping)
+	require.NoError(t, err)
+
+	retrieved, err := db.GetMessageMappingByWhatsAppID(ctx, "msg_media_test")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, "video", retrieved.MediaType)
+	assert.Equal(t, "test-session", retrieved.SessionName)
+
+	retrieved, err = db.GetMessageMappingBySignalID(ctx, "sig_media_test")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, "video", retrieved.MediaType)
+	assert.Equal(t, "test-session", retrieved.SessionName)
+
+	latest, err := db.GetLatestMessageMapping(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "video", latest.MediaType)
+
+	latest, err = db.GetLatestMessageMappingByWhatsAppChatID(ctx, "chat_media_test")
+	require.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, "video", latest.MediaType)
+
+	noMediaMapping := &models.MessageMapping{
+		WhatsAppChatID:  "chat_no_media",
+		WhatsAppMsgID:   "msg_no_media",
+		SignalMsgID:     "sig_no_media",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "test-session",
+	}
+
+	err = db.SaveMessageMapping(ctx, noMediaMapping)
+	require.NoError(t, err)
+
+	retrieved, err = db.GetMessageMappingByWhatsAppID(ctx, "msg_no_media")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, "", retrieved.MediaType)
+	assert.Equal(t, "test-session", retrieved.SessionName)
 }
 
 func TestDatabase_GetLatestMessageMappingBySession(t *testing.T) {

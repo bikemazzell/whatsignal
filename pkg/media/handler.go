@@ -219,7 +219,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 		req.Header.Set("X-Api-Key", h.wahaAPIKey)
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req) // #nosec G704 - URL validated by validateDownloadURL above
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download file: %w", err)
 	}
@@ -242,7 +242,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	// Copy response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		_ = os.Remove(tempFile.Name()) // Best effort cleanup after copy failure
+		_ = os.Remove(tempFile.Name()) // #nosec G703 - Path from os.CreateTemp, not user input
 		return "", "", fmt.Errorf("failed to save downloaded file: %w", err)
 	}
 

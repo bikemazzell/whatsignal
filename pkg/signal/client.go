@@ -74,13 +74,13 @@ func NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir string
 
 func (c *SignalClient) doRequestWithCB(ctx context.Context, req *http.Request, cb *circuitbreaker.CircuitBreaker) (*http.Response, error) {
 	if cb == nil {
-		return c.client.Do(req)
+		return c.client.Do(req) // #nosec G704 - URL from trusted application config
 	}
 
 	var resp *http.Response
 	err := cb.Execute(ctx, func(ctx context.Context) error {
 		var httpErr error
-		resp, httpErr = c.client.Do(req)
+		resp, httpErr = c.client.Do(req) // #nosec G704 - URL from trusted application config
 		return httpErr
 	})
 	return resp, err

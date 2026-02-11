@@ -45,9 +45,9 @@ func NewGroupService(db GroupDatabaseService, waClient types.WAClient) *GroupSer
 	return &GroupService{
 		db:              db,
 		waClient:        waClient,
-		cacheValidHours: 24, // Default to 24 hours
+		cacheValidHours: constants.DefaultGroupCacheHours,
 		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-groups-api", 5, 30*time.Second),
+		circuitBreaker:  NewCircuitBreaker("whatsapp-groups-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
 		degradedMode:    false,
 	}
 }
@@ -55,14 +55,14 @@ func NewGroupService(db GroupDatabaseService, waClient types.WAClient) *GroupSer
 // NewGroupServiceWithConfig creates a new group service instance with custom cache duration
 func NewGroupServiceWithConfig(db GroupDatabaseService, waClient types.WAClient, cacheValidHours int) *GroupService {
 	if cacheValidHours <= 0 {
-		cacheValidHours = 24 // Default fallback
+		cacheValidHours = constants.DefaultGroupCacheHours
 	}
 	return &GroupService{
 		db:              db,
 		waClient:        waClient,
 		cacheValidHours: cacheValidHours,
 		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-groups-api", 5, 30*time.Second),
+		circuitBreaker:  NewCircuitBreaker("whatsapp-groups-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
 		degradedMode:    false,
 	}
 }

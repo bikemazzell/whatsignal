@@ -520,7 +520,7 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 }
 
 func (s *messageService) ProcessPendingMessages(ctx context.Context) error {
-	pending, err := s.db.GetPendingMessages(ctx, 100)
+	pending, err := s.db.GetPendingMessages(ctx, constants.DefaultPendingMessageBatchSize)
 	if err != nil {
 		return fmt.Errorf("failed to get pending messages: %w", err)
 	}

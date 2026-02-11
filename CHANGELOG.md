@@ -5,6 +5,24 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.19]
+
+### Fixed
+- **Signal receive timeout too short for native mode**: The per-request receive timeout was hardcoded to `pollTimeout + 15s` (30s), which is insufficient in `MODE=native` where signal-cli must connect to Signal servers (10-30s) before the poll timeout starts counting. Changed to use the HTTP client's configured timeout (`httpTimeoutSec`, default 60s), giving native mode enough headroom for the connect-then-poll cycle.
+
+### Changed
+- **Replaced all hardcoded magic numbers with named constants**: Audited the entire codebase and moved 60+ hardcoded values to `internal/constants/defaults.go` for centralized configuration and maintainability. Affected files: `internal/config/config.go`, `internal/service/contact_service.go`, `internal/service/group_service.go`, `internal/service/circuit_breaker.go`, `internal/service/signal_poller.go`, `internal/service/bridge.go`, `internal/service/message_service.go`, `pkg/whatsapp/client.go`, `pkg/signal/client.go`, `cmd/whatsignal/main.go`.
+  - WhatsApp/Signal/Contact circuit breaker thresholds and reset timeouts
+  - Circuit breaker half-open max calls
+  - Delivery monitor check interval and stale threshold
+  - Pending message batch size
+  - Log truncation length, file size warning threshold
+  - Signal poller failure alert thresholds
+  - Group message mapping lookback limit
+  - Default tracing configuration (service name, version, environment, endpoint, sample rate)
+  - Default media size limits, retention days, group/contact cache hours
+  - Webhook secret minimum length
+
 ## [1.2.18]
 
 ### Fixed

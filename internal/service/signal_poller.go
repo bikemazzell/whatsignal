@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
@@ -433,12 +434,15 @@ func (sp *SignalPoller) pollWithRetry() {
 	sp.mu.Unlock()
 
 	// Alert on failure thresholds
-	if failures == 10 || failures == 50 || failures == 100 {
-		sp.logger.WithFields(logrus.Fields{
-			"consecutive_failures": failures,
-			"last_success":         lastSuccess,
-			"duration_since":       time.Since(lastSuccess),
-		}).Error("Signal polling experiencing persistent failures")
+	for _, threshold := range constants.PollFailureAlertThresholds {
+		if failures == threshold {
+			sp.logger.WithFields(logrus.Fields{
+				"consecutive_failures": failures,
+				"last_success":         lastSuccess,
+				"duration_since":       time.Since(lastSuccess),
+			}).Error("Signal polling experiencing persistent failures")
+			break
+		}
 	}
 
 	sp.logger.WithFields(sp.logFields()).Error("Signal polling failed after all retry attempts — messages may have been lost (Signal CLI /v1/receive is destructive)")

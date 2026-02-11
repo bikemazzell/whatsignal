@@ -226,7 +226,7 @@ func run(ctx context.Context) error {
 	go scheduler.Start(ctx)
 	defer scheduler.Stop()
 
-	deliveryMonitor := service.NewDeliveryMonitor(db, 5*time.Minute, 5*time.Minute, logger)
+	deliveryMonitor := service.NewDeliveryMonitor(db, time.Duration(constants.DefaultDeliveryMonitorIntervalMin)*time.Minute, time.Duration(constants.DefaultDeliveryMonitorStaleThresholdMin)*time.Minute, logger)
 	go deliveryMonitor.Start(ctx)
 	defer deliveryMonitor.Stop()
 

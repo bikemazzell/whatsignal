@@ -1132,7 +1132,7 @@ func (b *bridge) resolveGroupMessageMapping(ctx context.Context, msg *signaltype
 	// Fallback: use latest group message mapping for the session
 	// WARNING: This can route to wrong group under concurrent load
 	b.logger.WithField("sessionName", sessionName).Debug("No quoted message - using fallback to latest group mapping")
-	mapping, err = b.db.GetLatestGroupMessageMappingBySession(ctx, sessionName, 25)
+	mapping, err = b.db.GetLatestGroupMessageMappingBySession(ctx, sessionName, constants.DefaultGroupMappingLookbackLimit)
 	if err != nil {
 		return nil, true, fmt.Errorf("failed to get latest group message mapping for session: %w", err)
 	}

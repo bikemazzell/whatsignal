@@ -97,6 +97,79 @@ const (
 	RateLimiterCleanupMinutes    = 5  // Interval for rate limiter cleanup
 )
 
+// Signal circuit breaker configuration
+const (
+	SignalSendCBMaxFailures    = 10 // Max consecutive failures before send circuit breaker trips
+	SignalPollCBMaxFailures    = 20 // Max consecutive failures before poll circuit breaker trips
+	SignalCBResetTimeoutSec    = 15 // Seconds before circuit breaker attempts reset after tripping
+	SignalReceiveTimeoutBuffer = 15 // Seconds added to poll timeout as fallback receive deadline
+)
+
+// WhatsApp circuit breaker configuration
+const (
+	WhatsAppCBMaxFailures     = 15 // Max consecutive failures before WhatsApp API circuit breaker trips
+	WhatsAppCBResetTimeoutSec = 15 // Seconds before WhatsApp API circuit breaker attempts reset
+)
+
+// Contact/Group API circuit breaker configuration
+const (
+	ContactCBMaxFailures     = 5  // Max consecutive failures before contact/group API circuit breaker trips
+	ContactCBResetTimeoutSec = 30 // Seconds before contact/group API circuit breaker attempts reset
+)
+
+// Circuit breaker half-open state configuration
+const (
+	CBHalfOpenMaxCalls = 3 // Number of test calls allowed in half-open state
+)
+
+// Delivery monitor configuration
+const (
+	DefaultDeliveryMonitorIntervalMin       = 5 // Minutes between delivery monitor checks
+	DefaultDeliveryMonitorStaleThresholdMin = 5 // Minutes before a message is considered stale
+)
+
+// Message processing configuration
+const (
+	DefaultPendingMessageBatchSize = 100 // Max pending messages to process per batch
+)
+
+// Logging configuration
+const (
+	LogBase64TruncateLength = 100 // Max characters of base64 data to include in logs
+)
+
+// Media file size configuration
+const (
+	MaxRecommendedFileSizeBytes = 50 * BytesPerMegabyte // Max file size before logging a performance warning
+)
+
+// Signal poller failure alert thresholds
+var PollFailureAlertThresholds = []int{10, 50, 100}
+
+// Group message mapping configuration
+const (
+	DefaultGroupMappingLookbackLimit = 25 // Max recent group message mappings to search through
+)
+
+// Default tracing configuration
+const (
+	DefaultTracingServiceName    = "whatsignal"
+	DefaultTracingServiceVersion = "dev"
+	DefaultTracingEnvironment    = "development"
+	DefaultTracingOTLPEndpoint   = "http://localhost:4318/v1/traces"
+	DefaultTracingSampleRate     = 0.1 // 10% sampling
+)
+
+// Default group cache configuration
+const (
+	DefaultGroupCacheHours = 24 // Default group cache validity in hours
+)
+
+// Security validation constants
+const (
+	MinWebhookSecretLength = 32 // Minimum webhook secret length for production
+)
+
 // Channel and buffer sizes
 const (
 	ServerErrorChannelSize    = 1

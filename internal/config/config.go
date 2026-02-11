@@ -96,16 +96,16 @@ func validate(c *models.Config) error {
 
 	// Set default media configuration if not provided
 	if c.Media.MaxSizeMB.Image == 0 {
-		c.Media.MaxSizeMB.Image = 5
+		c.Media.MaxSizeMB.Image = constants.DefaultMaxImageSizeMB
 	}
 	if c.Media.MaxSizeMB.Video == 0 {
-		c.Media.MaxSizeMB.Video = 100
+		c.Media.MaxSizeMB.Video = constants.DefaultMaxVideoSizeMB
 	}
 	if c.Media.MaxSizeMB.Document == 0 {
-		c.Media.MaxSizeMB.Document = 100
+		c.Media.MaxSizeMB.Document = constants.DefaultMaxDocumentSizeMB
 	}
 	if c.Media.MaxSizeMB.Voice == 0 {
-		c.Media.MaxSizeMB.Voice = 16
+		c.Media.MaxSizeMB.Voice = constants.DefaultMaxVoiceSizeMB
 	}
 
 	// Set default allowed types if not provided
@@ -123,7 +123,7 @@ func validate(c *models.Config) error {
 	}
 
 	if c.RetentionDays <= 0 {
-		c.RetentionDays = 30
+		c.RetentionDays = constants.DefaultRetentionDays
 	}
 	if c.WhatsApp.PollIntervalSec <= 0 {
 		c.WhatsApp.PollIntervalSec = constants.DefaultWhatsAppPollIntervalSec
@@ -131,19 +131,19 @@ func validate(c *models.Config) error {
 
 	// Set default tracing configuration if not provided
 	if c.Tracing.ServiceName == "" {
-		c.Tracing.ServiceName = "whatsignal"
+		c.Tracing.ServiceName = constants.DefaultTracingServiceName
 	}
 	if c.Tracing.ServiceVersion == "" {
-		c.Tracing.ServiceVersion = "dev"
+		c.Tracing.ServiceVersion = constants.DefaultTracingServiceVersion
 	}
 	if c.Tracing.Environment == "" {
-		c.Tracing.Environment = "development"
+		c.Tracing.Environment = constants.DefaultTracingEnvironment
 	}
 	if c.Tracing.OTLPEndpoint == "" {
-		c.Tracing.OTLPEndpoint = "http://localhost:4318/v1/traces"
+		c.Tracing.OTLPEndpoint = constants.DefaultTracingOTLPEndpoint
 	}
 	if c.Tracing.SampleRate == 0 {
-		c.Tracing.SampleRate = 0.1 // 10% sampling
+		c.Tracing.SampleRate = constants.DefaultTracingSampleRate
 	}
 	// UseStdout defaults to true if Jaeger endpoint is default and tracing is enabled
 	if !c.Tracing.Enabled {
@@ -164,7 +164,7 @@ func validate(c *models.Config) error {
 
 	// Set default groups configuration if not provided
 	if c.WhatsApp.Groups.CacheHours <= 0 {
-		c.WhatsApp.Groups.CacheHours = 24
+		c.WhatsApp.Groups.CacheHours = constants.DefaultGroupCacheHours
 	}
 
 	return nil
@@ -206,8 +206,8 @@ func validateSecurity(c *models.Config) error {
 		}
 
 		// Validate webhook secret strength
-		if len(c.WhatsApp.WebhookSecret) < 32 {
-			return models.ConfigError{Message: "WhatsApp webhook secret must be at least 32 characters long"}
+		if len(c.WhatsApp.WebhookSecret) < constants.MinWebhookSecretLength {
+			return models.ConfigError{Message: fmt.Sprintf("WhatsApp webhook secret must be at least %d characters long", constants.MinWebhookSecretLength)}
 		}
 
 		// Signal CLI REST API typically doesn't require auth tokens in standard deployments

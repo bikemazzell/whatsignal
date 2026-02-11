@@ -53,7 +53,7 @@ func (sm *sessionManager) Create(ctx context.Context, name string) (*types.Sessi
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req)
+	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
@@ -85,7 +85,7 @@ func (sm *sessionManager) Get(ctx context.Context, name string) (*types.Session,
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req)
+	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
@@ -124,7 +124,7 @@ func (sm *sessionManager) Start(ctx context.Context, name string) error {
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req)
+	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
@@ -157,7 +157,7 @@ func (sm *sessionManager) Stop(ctx context.Context, name string) error {
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req)
+	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return fmt.Errorf("failed to stop session: %w", err)
 	}
@@ -189,7 +189,7 @@ func (sm *sessionManager) Delete(ctx context.Context, name string) error {
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req)
+	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}

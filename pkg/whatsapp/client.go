@@ -61,7 +61,7 @@ func (c *WhatsAppClient) doRequestWithCircuitBreaker(ctx context.Context, req *h
 	var resp *http.Response
 	err := c.circuitBreaker.Execute(ctx, func(ctx context.Context) error {
 		var httpErr error
-		resp, httpErr = c.client.Do(req)
+		resp, httpErr = c.client.Do(req) // #nosec G704 - URL from trusted application config
 		return httpErr
 	})
 	return resp, err
@@ -123,7 +123,7 @@ func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, 
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
@@ -168,7 +168,7 @@ func (c *WhatsAppClient) GetSessionStatusByName(ctx context.Context, sessionName
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
@@ -275,7 +275,7 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 			req.Header.Set("X-Api-Key", c.apiKey)
 		}
 
-		resp, err := c.client.Do(req)
+		resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 		if err != nil {
 			return fmt.Errorf("failed to get sessions: %w", err)
 		}
@@ -716,7 +716,7 @@ func (c *WhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID st
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return fmt.Errorf("failed to send delete request: %w", err)
 	}
@@ -753,7 +753,7 @@ func (c *WhatsAppClient) sendReactionRequest(ctx context.Context, endpoint strin
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -927,7 +927,7 @@ func (c *WhatsAppClient) GetContact(ctx context.Context, contactID string) (*typ
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -965,7 +965,7 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1012,7 +1012,7 @@ func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.G
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1049,7 +1049,7 @@ func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1095,7 +1095,7 @@ func (c *WhatsAppClient) getServerVersion(ctx context.Context) (*types.ServerVer
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server version: %w", err)
 	}
@@ -1164,7 +1164,7 @@ func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
 	req.Header.Set("X-Api-Key", c.apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) // #nosec G704 - URL from trusted application config
 	if err != nil {
 		return fmt.Errorf("WhatsApp API health check failed: %w", err)
 	}

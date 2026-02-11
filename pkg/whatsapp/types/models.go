@@ -155,7 +155,7 @@ type ContactsResponse struct {
 // ClientConfig represents the configuration for WhatsApp client
 type ClientConfig struct {
 	BaseURL     string        `json:"base_url" validate:"required,url"`
-	APIKey      string        `json:"api_key" validate:"required"`
+	APIKey      string        `json:"api_key" validate:"required"` // #nosec G117 - Struct field definition, not hardcoded secret
 	SessionName string        `json:"session_name" validate:"required"`
 	Timeout     time.Duration `json:"timeout" validate:"required"`
 	RetryCount  int           `json:"retry_count" validate:"min=1,max=10"`

@@ -279,7 +279,7 @@ func (env *TestEnvironment) GetConfig() *models.Config {
 	return &models.Config{
 		WhatsApp: models.WhatsAppConfig{
 			APIBaseURL:            env.httpServer.URL,
-			WebhookSecret:         "test-webhook-secret",
+			WebhookSecret:         "test-webhook-secret", // #nosec G101 - Test webhook secret, not production credential
 			ContactSyncOnStartup:  true,
 			ContactCacheHours:     24,
 			SessionHealthCheckSec: 300,
@@ -467,7 +467,7 @@ func (env *TestEnvironment) MakeHTTPRequest(method, path string, body io.Reader)
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	return client.Do(req)
+	return client.Do(req) // #nosec G704 - Test code with controlled URLs
 }
 
 // VerifyHTTPEndpoint checks if an endpoint returns the expected status code

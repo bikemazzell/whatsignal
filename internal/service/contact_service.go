@@ -46,9 +46,9 @@ func NewContactService(db ContactDatabaseService, waClient types.WAClient) *Cont
 	return &ContactService{
 		db:              db,
 		waClient:        waClient,
-		cacheValidHours: 24, // Default to 24 hours
+		cacheValidHours: constants.DefaultContactCacheHours,
 		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", 5, 30*time.Second),
+		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
 		degradedMode:    false,
 	}
 }
@@ -56,14 +56,14 @@ func NewContactService(db ContactDatabaseService, waClient types.WAClient) *Cont
 // NewContactServiceWithConfig creates a new contact service instance with custom cache duration
 func NewContactServiceWithConfig(db ContactDatabaseService, waClient types.WAClient, cacheValidHours int) *ContactService {
 	if cacheValidHours <= 0 {
-		cacheValidHours = 24 // Default fallback
+		cacheValidHours = constants.DefaultContactCacheHours
 	}
 	return &ContactService{
 		db:              db,
 		waClient:        waClient,
 		cacheValidHours: cacheValidHours,
 		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", 5, 30*time.Second),
+		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
 		degradedMode:    false,
 	}
 }

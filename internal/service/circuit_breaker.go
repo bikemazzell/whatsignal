@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"whatsignal/internal/constants"
 	"whatsignal/internal/errors"
 )
 
@@ -43,7 +44,7 @@ func NewCircuitBreaker(name string, maxFailures uint32, timeout time.Duration) *
 		name:             name,
 		maxFailures:      maxFailures,
 		timeout:          timeout,
-		halfOpenMaxCalls: 3, // Allow 3 test calls in half-open state
+		halfOpenMaxCalls: constants.CBHalfOpenMaxCalls,
 		state:            StateClosed,
 		logger:           errors.NewLogger(),
 	}

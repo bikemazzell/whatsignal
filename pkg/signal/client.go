@@ -67,8 +67,8 @@ func NewClientWithLogger(baseURL, phoneNumber, deviceName, attachmentsDir string
 		attachmentsDir:     attachmentsDir,
 		client:             httpClient,
 		logger:             logger,
-		sendCircuitBreaker: circuitbreaker.NewWithLogger("signal-api-send", 10, 15*time.Second, logger),
-		pollCircuitBreaker: circuitbreaker.NewWithLogger("signal-api-poll", 20, 15*time.Second, logger),
+		sendCircuitBreaker: circuitbreaker.NewWithLogger("signal-api-send", constants.SignalSendCBMaxFailures, time.Duration(constants.SignalCBResetTimeoutSec)*time.Second, logger),
+		pollCircuitBreaker: circuitbreaker.NewWithLogger("signal-api-poll", constants.SignalPollCBMaxFailures, time.Duration(constants.SignalCBResetTimeoutSec)*time.Second, logger),
 	}
 }
 
@@ -176,11 +176,15 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		endpoint += fmt.Sprintf("?timeout=%d", timeoutSeconds)
 	}
 
-	// Use a per-request context with a timeout that accounts for the long-poll duration
-	// plus network overhead. Signal CLI's /v1/receive is destructive (messages are consumed
-	// on read), so we must ensure the HTTP response is fully received. If the client times
-	// out after Signal CLI has dequeued messages, those messages are permanently lost.
-	receiveTimeout := time.Duration(timeoutSeconds)*time.Second + 15*time.Second
+	// Use a per-request context with a timeout. Signal CLI's /v1/receive is destructive
+	// (messages are consumed on read), so we must ensure the HTTP response is fully received.
+	// In MODE=native, signal-cli must connect to Signal servers before the poll timeout starts,
+	// which can take 10-30s on top of the poll timeout itself. Use the HTTP client's configured
+	// timeout (httpTimeoutSec) to give enough headroom for both connection and polling.
+	receiveTimeout := c.client.Timeout
+	if receiveTimeout <= 0 {
+		receiveTimeout = time.Duration(timeoutSeconds)*time.Second + time.Duration(constants.SignalReceiveTimeoutBuffer)*time.Second
+	}
 	receiveCtx, receiveCancel := context.WithTimeout(ctx, receiveTimeout)
 	defer receiveCancel()
 
@@ -266,6 +270,10 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			"other":   otherCount,
 		}).Info("Signal API returned envelopes")
 		metrics.AddToCounter("signal_poll_raw_envelopes", float64(len(messages)), nil, "Raw envelopes from Signal API before filtering")
+
+		if c.logger.IsLevelEnabled(logrus.DebugLevel) {
+			c.logger.WithField("raw_body", string(bodyBytes)).Debug("Raw Signal API response body")
+		}
 	}
 
 	result := make([]types.SignalMessage, 0, len(messages))

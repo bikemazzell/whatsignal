@@ -47,7 +47,7 @@ func NewClient(config types.ClientConfig) types.WAClient {
 		client:         &http.Client{Timeout: config.Timeout},
 		sessionMgr:     NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
 		logger:         logrus.New(),
-		circuitBreaker: circuitbreaker.New("whatsapp-api", 15, 15*time.Second),
+		circuitBreaker: circuitbreaker.New("whatsapp-api", constants.WhatsAppCBMaxFailures, time.Duration(constants.WhatsAppCBResetTimeoutSec)*time.Second),
 	}
 	return client
 }
@@ -480,10 +480,9 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	const maxRecommendedSize = 50 * 1024 * 1024 // 50MB
-	if fileInfo.Size() > maxRecommendedSize {
+	if fileInfo.Size() > constants.MaxRecommendedFileSizeBytes {
 		if c.logger != nil {
-			c.logger.WithField("size_mb", fileInfo.Size()/(1024*1024)).Warn("Large file detected; may cause performance issues")
+			c.logger.WithField("size_mb", fileInfo.Size()/constants.BytesPerMegabyte).Warn("Large file detected; may cause performance issues")
 		}
 	}
 
@@ -567,10 +566,9 @@ func (c *WhatsAppClient) SendMediaWithSessionReply(ctx context.Context, chatID, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
-	const maxRecommendedSize = 50 * 1024 * 1024 // 50MB
-	if fileInfo.Size() > maxRecommendedSize {
+	if fileInfo.Size() > constants.MaxRecommendedFileSizeBytes {
 		if c.logger != nil {
-			c.logger.WithField("size_mb", fileInfo.Size()/(1024*1024)).Warn("Large file detected; may cause performance issues")
+			c.logger.WithField("size_mb", fileInfo.Size()/constants.BytesPerMegabyte).Warn("Large file detected; may cause performance issues")
 		}
 	}
 
@@ -827,8 +825,8 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 			var sanitizedPayload interface{}
 			if mediaReq, ok := payload.(types.MediaMessageRequest); ok {
 				sanitizedMediaReq := mediaReq
-				if len(sanitizedMediaReq.File.Data) > 100 {
-					sanitizedMediaReq.File.Data = sanitizedMediaReq.File.Data[:100] + "...[truncated]"
+				if len(sanitizedMediaReq.File.Data) > constants.LogBase64TruncateLength {
+					sanitizedMediaReq.File.Data = sanitizedMediaReq.File.Data[:constants.LogBase64TruncateLength] + "...[truncated]"
 				}
 				sanitizedPayload = sanitizedMediaReq
 			} else {

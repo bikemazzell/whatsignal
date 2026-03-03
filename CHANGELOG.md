@@ -5,6 +5,16 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.20]
+
+### Changed
+- **Simplified WAClient interface from 44 to 21 methods** (-646 lines net): Five-phase refactoring to reduce interface complexity and eliminate code duplication.
+  - Collapsed `GetSessionStatus` into a one-line delegation to `GetSessionStatusByName`
+  - Extracted `testMode` as a struct field instead of 6 scattered `os.Getenv` checks
+  - Merged `Send*WithSessionReply` variants into `Send*WithSession` by adding a `replyTo` parameter (empty string = no reply via JSON `omitempty`), reducing bridge dispatch from 10 branches to 5
+  - Removed 7 bare send methods (`SendText`, `SendImage`, etc.) from the `WAClient` interface while keeping them on the concrete struct
+  - Extracted `doGetJSON` HTTP GET helper, refactoring 4 methods to use it
+
 ## [1.2.19]
 
 ### Fixed

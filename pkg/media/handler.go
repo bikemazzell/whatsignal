@@ -53,15 +53,26 @@ func NewHandlerWithServices(cacheDir string, config models.MediaConfig, wahaBase
 		downloadTimeout = constants.DefaultMediaDownloadTimeoutSec
 	}
 
-	return &handler{
+	h := &handler{
 		cacheDir:     cacheDir,
 		config:       config,
 		mediaRouter:  media.NewRouter(config),
-		httpClient:   &http.Client{Timeout: time.Duration(downloadTimeout) * time.Second},
 		wahaBaseURL:  wahaBaseURL,
 		wahaAPIKey:   wahaAPIKey,
 		signalRPCURL: signalRPCURL,
-	}, nil
+	}
+
+	h.httpClient = &http.Client{
+		Timeout: time.Duration(downloadTimeout) * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if err := h.validateDownloadURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect blocked: %w", err)
+			}
+			return nil
+		},
+	}
+
+	return h, nil
 }
 
 func (h *handler) ProcessMedia(pathOrURL string) (string, error) {

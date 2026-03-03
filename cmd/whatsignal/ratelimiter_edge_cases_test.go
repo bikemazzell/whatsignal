@@ -300,3 +300,43 @@ func TestRateLimiter_RaceCondition(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestRateLimiter_MaxTrackedIPsEviction(t *testing.T) {
+	rl := NewRateLimiter(100, time.Hour, 5*time.Minute)
+	defer rl.Stop()
+
+	// Override the default cap for testing
+	rl.maxTrackedIPs = 5
+
+	// Add requests from 10 different IPs with varying counts
+	for i := 0; i < 10; i++ {
+		ip := fmt.Sprintf("10.0.0.%d", i)
+		// Give higher-numbered IPs more requests so they're "more active"
+		for j := 0; j <= i; j++ {
+			rl.Allow(ip)
+		}
+	}
+
+	// Verify we have 10 tracked IPs before cleanup
+	rl.mu.RLock()
+	beforeCount := len(rl.requests)
+	rl.mu.RUnlock()
+	assert.Equal(t, 10, beforeCount)
+
+	// Trigger cleanup
+	rl.cleanup()
+
+	// Should be capped at maxTrackedIPs
+	rl.mu.RLock()
+	afterCount := len(rl.requests)
+	rl.mu.RUnlock()
+	assert.Equal(t, 5, afterCount)
+
+	// The most active IPs should be preserved (those with the most requests)
+	rl.mu.RLock()
+	_, hasLeastActive := rl.requests["10.0.0.0"] // 1 request
+	_, hasMostActive := rl.requests["10.0.0.9"]  // 10 requests
+	rl.mu.RUnlock()
+	assert.False(t, hasLeastActive, "Least-active IP should be evicted")
+	assert.True(t, hasMostActive, "Most-active IP should be preserved")
+}

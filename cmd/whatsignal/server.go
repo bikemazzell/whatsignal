@@ -110,6 +110,9 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 }
 
 func (s *Server) setupRoutes() {
+	// Recovery middleware as outermost layer to catch panics
+	s.router.Use(middleware.RecoveryMiddleware(s.logger))
+
 	// Public endpoints with observability middleware
 	public := s.router.PathPrefix("").Subrouter()
 	public.Use(middleware.ObservabilityMiddleware(s.logger))
@@ -264,9 +267,9 @@ func (s *Server) handleHealth() http.HandlerFunc {
 		// Check database health
 		if s.db != nil {
 			if err := s.db.HealthCheck(ctx); err != nil {
+				s.logger.WithError(err).Error("Database health check failed")
 				dependencies["database"] = map[string]interface{}{
 					"status": "unhealthy",
-					"error":  err.Error(),
 				}
 				overallStatus = "unhealthy"
 			}
@@ -275,9 +278,9 @@ func (s *Server) handleHealth() http.HandlerFunc {
 		// Check WhatsApp API health
 		if s.waClient != nil {
 			if err := s.waClient.HealthCheck(ctx); err != nil {
+				s.logger.WithError(err).Warn("WhatsApp API health check failed")
 				dependencies["whatsapp_api"] = map[string]interface{}{
 					"status": "unhealthy",
-					"error":  err.Error(),
 				}
 				if overallStatus == "healthy" {
 					overallStatus = "degraded"
@@ -292,11 +295,11 @@ func (s *Server) handleHealth() http.HandlerFunc {
 				"initialized": s.sigClient.IsInitialized(),
 			}
 			if initErr := s.sigClient.InitializationError(); initErr != "" {
-				signalStatus["init_error"] = initErr
+				s.logger.WithField("init_error", initErr).Warn("Signal API initialization error")
 			}
 			if err := s.sigClient.HealthCheck(ctx); err != nil {
+				s.logger.WithError(err).Warn("Signal API health check failed")
 				signalStatus["status"] = "unhealthy"
-				signalStatus["error"] = err.Error()
 				if overallStatus == "healthy" {
 					overallStatus = "degraded"
 				}

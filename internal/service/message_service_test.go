@@ -1150,17 +1150,28 @@ func TestChatLockManager_ConcurrentGetLock(t *testing.T) {
 func TestChatLockManager_Cleanup(t *testing.T) {
 	clm := newChatLockManager()
 
-	// Add more locks than the threshold
+	// Add more locks than the threshold, with stale timestamps
+	staleTime := time.Now().Add(-10 * time.Minute)
 	for i := 0; i < 1001; i++ {
 		clm.getLock(fmt.Sprintf("chat%d", i))
+		clm.locks[fmt.Sprintf("chat%d", i)].lastUsed = staleTime
+	}
+
+	// Mark a few as recently used
+	recentCount := 5
+	for i := 0; i < recentCount; i++ {
+		clm.locks[fmt.Sprintf("chat%d", i)].lastUsed = time.Now()
 	}
 
 	assert.Equal(t, 1001, len(clm.locks), "Should have 1001 locks before cleanup")
 
-	// Trigger cleanup
+	// Trigger cleanup — should evict stale entries, preserve recent ones
 	clm.cleanup()
 
-	assert.Equal(t, 0, len(clm.locks), "Cleanup should reset locks map when over threshold")
+	assert.Equal(t, recentCount, len(clm.locks), "Cleanup should evict stale locks and preserve recent ones")
+	for i := 0; i < recentCount; i++ {
+		assert.NotNil(t, clm.locks[fmt.Sprintf("chat%d", i)], "Recent lock should be preserved")
+	}
 }
 
 func TestChatLockManager_CleanupBelowThreshold(t *testing.T) {

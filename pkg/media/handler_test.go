@@ -1585,3 +1585,33 @@ func TestProcessMediaFromURL_DockerInternalIP_VoiceMessage(t *testing.T) {
 	assert.Error(t, err, "Docker internal IP with different port should be blocked")
 	assert.Contains(t, err.Error(), "download host not allowed")
 }
+
+func TestProcessMediaFromURL_RedirectSSRFBlocked(t *testing.T) {
+	// A malicious server redirects media downloads to an internal metadata endpoint.
+	// The CheckRedirect policy must block this.
+
+	internalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("internal server should never be reached via redirect")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer internalServer.Close()
+
+	wahaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Redirect to an unrelated internal server (simulates SSRF)
+		http.Redirect(w, r, internalServer.URL+"/latest/meta-data/", http.StatusFound)
+	}))
+	defer wahaServer.Close()
+
+	tmpDir, err := os.MkdirTemp("", "whatsignal-ssrf-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	cacheDir := filepath.Join(tmpDir, "cache")
+
+	handlerInterface, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), wahaServer.URL, "test-api-key")
+	require.NoError(t, err)
+
+	_, err = handlerInterface.ProcessMedia(wahaServer.URL + "/api/files/default/image.jpg")
+	require.Error(t, err, "Should fail because redirect target is not in allowlist")
+	assert.Contains(t, err.Error(), "redirect blocked")
+}

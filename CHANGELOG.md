@@ -5,6 +5,16 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.22]
+
+### Security
+- **Fixed SSRF via HTTP redirect following**: WhatsApp API client now rejects all redirects; media handler validates redirect targets against the URL allowlist, preventing bypass of SSRF protection
+- **Added panic recovery middleware**: Catches unhandled panics in HTTP handlers, logs stack traces, and returns HTTP 500 instead of crashing the server
+- **Capped rate limiter memory growth**: Added 10,000 IP tracking limit with least-active eviction to prevent memory exhaustion from distributed attacks
+- **Fixed chat lock map race condition**: Replaced full map reset with LRU-style eviction (5-minute stale threshold) to preserve locks for in-flight messages
+- **Redacted health check error details**: Error messages no longer exposed in `/health` JSON responses; logged server-side instead
+- **Bounded Signal client error reads**: Limited `io.ReadAll` to 4KB on all error response paths in Signal client
+
 ## [1.2.20]
 
 ### Changed

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,6 +93,7 @@ type RateLimiter struct {
 	mu            sync.RWMutex
 	limit         int
 	window        time.Duration
+	maxTrackedIPs int
 	lastCleanup   time.Time
 	cleanupTicker *time.Ticker
 	cleanupStop   chan struct{}
@@ -106,6 +108,7 @@ func NewRateLimiter(limit int, window time.Duration, cleanupPeriod time.Duration
 		requests:      make(map[string][]time.Time),
 		limit:         limit,
 		window:        window,
+		maxTrackedIPs: constants.DefaultMaxTrackedIPs,
 		lastCleanup:   time.Now(),
 		cleanupPeriod: cleanupPeriod,
 		cleanupStop:   make(chan struct{}),
@@ -151,7 +154,7 @@ func (rl *RateLimiter) Stop() {
 	})
 }
 
-// cleanup removes old entries from the request map
+// cleanup removes old entries from the request map and evicts least-active IPs if the cap is exceeded
 func (rl *RateLimiter) cleanup() {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -159,7 +162,7 @@ func (rl *RateLimiter) cleanup() {
 	now := time.Now()
 	cutoff := now.Add(-rl.window)
 
-	// Clean up all IPs
+	// Clean up expired timestamps for all IPs
 	for ip, requests := range rl.requests {
 		var validRequests []time.Time
 		for _, reqTime := range requests {
@@ -171,6 +174,25 @@ func (rl *RateLimiter) cleanup() {
 			delete(rl.requests, ip)
 		} else {
 			rl.requests[ip] = validRequests
+		}
+	}
+
+	// Evict least-active IPs if map exceeds the cap
+	if rl.maxTrackedIPs > 0 && len(rl.requests) > rl.maxTrackedIPs {
+		type ipCount struct {
+			ip    string
+			count int
+		}
+		entries := make([]ipCount, 0, len(rl.requests))
+		for ip, reqs := range rl.requests {
+			entries = append(entries, ipCount{ip, len(reqs)})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].count < entries[j].count
+		})
+		toEvict := len(rl.requests) - rl.maxTrackedIPs
+		for i := 0; i < toEvict; i++ {
+			delete(rl.requests, entries[i].ip)
 		}
 	}
 

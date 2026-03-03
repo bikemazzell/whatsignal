@@ -1534,3 +1534,26 @@ func TestClient_GetAllGroups(t *testing.T) {
 	assert.Equal(t, "group2@g.us", groups[1].ID.String())
 	assert.Equal(t, "Group 2", groups[1].Subject)
 }
+
+func TestClient_RedirectBlocked(t *testing.T) {
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("redirect target should never be reached")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer redirectTarget.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL+"/secret", http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-key",
+		SessionName: "default",
+	})
+
+	ctx := context.Background()
+	_, err := client.SendTextWithSession(ctx, "123456789@c.us", "test", "", "default")
+	require.Error(t, err, "Should fail because redirects are disabled for API calls")
+}

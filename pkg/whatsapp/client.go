@@ -46,10 +46,15 @@ type WhatsAppClient struct {
 
 func NewClient(config types.ClientConfig) types.WAClient {
 	client := &WhatsAppClient{
-		baseURL:        config.BaseURL,
-		apiKey:         config.APIKey,
-		sessionName:    config.SessionName,
-		client:         &http.Client{Timeout: config.Timeout},
+		baseURL:     config.BaseURL,
+		apiKey:      config.APIKey,
+		sessionName: config.SessionName,
+		client: &http.Client{
+			Timeout: config.Timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		sessionMgr:     NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
 		logger:         logrus.New(),
 		circuitBreaker: circuitbreaker.New("whatsapp-api", constants.WhatsAppCBMaxFailures, time.Duration(constants.WhatsAppCBResetTimeoutSec)*time.Second),

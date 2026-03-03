@@ -55,15 +55,21 @@ type MessageService interface {
 	ProcessPendingMessages(ctx context.Context) error
 }
 
+// chatLock wraps a mutex with a last-used timestamp for LRU eviction
+type chatLock struct {
+	mu       sync.Mutex
+	lastUsed time.Time
+}
+
 // chatLockManager provides per-chat locking to ensure message ordering within a chat
 type chatLockManager struct {
 	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	locks map[string]*chatLock
 }
 
 func newChatLockManager() *chatLockManager {
 	return &chatLockManager{
-		locks: make(map[string]*sync.Mutex),
+		locks: make(map[string]*chatLock),
 	}
 }
 
@@ -71,20 +77,27 @@ func newChatLockManager() *chatLockManager {
 func (m *chatLockManager) getLock(chatID string) *sync.Mutex {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.locks[chatID] == nil {
-		m.locks[chatID] = &sync.Mutex{}
+	cl := m.locks[chatID]
+	if cl == nil {
+		cl = &chatLock{}
+		m.locks[chatID] = cl
 	}
-	return m.locks[chatID]
+	cl.lastUsed = time.Now()
+	return &cl.mu
 }
 
-// cleanup removes locks that are no longer held (should be called periodically)
+// cleanup evicts locks not used within the eviction window when the map exceeds MaxChatLocks
 func (m *chatLockManager) cleanup() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// In a more sophisticated implementation, we could track usage counts
-	// and remove unused locks. For now, we just reset if the map gets too large.
-	if len(m.locks) > constants.MaxChatLocks {
-		m.locks = make(map[string]*sync.Mutex)
+	if len(m.locks) <= constants.MaxChatLocks {
+		return
+	}
+	cutoff := time.Now().Add(-constants.ChatLockEvictionMinutes * time.Minute)
+	for chatID, cl := range m.locks {
+		if cl.lastUsed.Before(cutoff) {
+			delete(m.locks, chatID)
+		}
 	}
 }
 

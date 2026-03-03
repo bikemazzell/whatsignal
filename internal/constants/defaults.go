@@ -92,9 +92,10 @@ const (
 
 // Timeout constants (in seconds)
 const (
-	SignalHTTPTimeoutSec         = 60 // Timeout for Signal API HTTP requests
-	AttachmentDownloadTimeoutSec = 15 // Timeout for downloading Signal attachments
-	RateLimiterCleanupMinutes    = 5  // Interval for rate limiter cleanup
+	SignalHTTPTimeoutSec         = 60    // Timeout for Signal API HTTP requests
+	AttachmentDownloadTimeoutSec = 15    // Timeout for downloading Signal attachments
+	RateLimiterCleanupMinutes    = 5     // Interval for rate limiter cleanup
+	DefaultMaxTrackedIPs         = 10000 // Maximum number of IPs tracked by rate limiter
 )
 
 // Signal circuit breaker configuration
@@ -211,7 +212,8 @@ const (
 
 // Concurrency control
 const (
-	MaxChatLocks = 1000 // Maximum number of per-chat locks to track before cleanup
+	MaxChatLocks            = 1000 // Maximum number of per-chat locks to track before cleanup
+	ChatLockEvictionMinutes = 5    // Evict locks not used within this many minutes
 )
 
 // Message processing retry configuration

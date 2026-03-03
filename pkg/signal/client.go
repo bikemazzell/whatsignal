@@ -141,7 +141,7 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
 			return nil, fmt.Errorf("signal API error: status %d (failed to read body: %v)", resp.StatusCode, readErr)
 		}
@@ -207,7 +207,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
 			c.logger.WithError(readErr).WithField("status", resp.StatusCode).Error("Failed to read Signal API error response body")
 			return nil, fmt.Errorf("signal API error: status %d (failed to read body: %v)", resp.StatusCode, readErr)
@@ -601,7 +601,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
 			c.initError = fmt.Sprintf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 			return fmt.Errorf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
@@ -655,7 +655,7 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
 			return nil, fmt.Errorf("attachment download failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 		}
@@ -690,7 +690,7 @@ func (c *SignalClient) DownloadAttachmentToFile(ctx context.Context, attachmentI
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
 			return fmt.Errorf("attachment download failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 		}
@@ -774,7 +774,7 @@ func (c *SignalClient) ListAttachments(ctx context.Context) ([]string, error) {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
 			return nil, fmt.Errorf("list attachments failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 		}
@@ -810,7 +810,7 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 		return nil
 	}
 
-	body, readErr := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if readErr != nil {
 		return fmt.Errorf("signal API health check returned status %d (failed to read body: %v)", resp.StatusCode, readErr)
 	}

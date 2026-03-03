@@ -67,7 +67,7 @@ func TestSendTextWithSession_OptionalEndpointsErrors(t *testing.T) {
 
 	client := NewClient(types.ClientConfig{BaseURL: server.URL, APIKey: "test-api-key", SessionName: "sess", Timeout: 5 * time.Second}).(*WhatsAppClient)
 	ctx := context.Background()
-	resp, err := client.SendTextWithSession(ctx, "123@c.us", "hello", "sess")
+	resp, err := client.SendTextWithSession(ctx, "123@c.us", "hello", "", "sess")
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.True(t, sendTextCalled)

@@ -283,7 +283,7 @@ func TestClient_SendText(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful send
-	resp, err := client.SendText(ctx, "123456", "Hello, World!")
+	resp, err := client.SendTextWithSession(ctx, "123456", "Hello, World!", "", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "msg123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
@@ -318,7 +318,7 @@ func TestClient_SendText_EmptyResponse(t *testing.T) {
 	ctx := context.Background()
 
 	// Test that empty response is handled gracefully
-	resp, err := client.SendText(ctx, "123456", "Hello, World!")
+	resp, err := client.SendTextWithSession(ctx, "123456", "Hello, World!", "", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "sent", resp.Status)
 	assert.Equal(t, "", resp.MessageID) // Empty message ID is acceptable
@@ -389,13 +389,13 @@ func TestClient_SendImage(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful send
-	resp, err := client.SendImage(ctx, "123456", tmpFile.Name(), "Test image")
+	resp, err := client.SendImageWithSession(ctx, "123456", tmpFile.Name(), "Test image", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 
 	// Test file not found
-	_, err = client.SendImage(ctx, "123456", "/nonexistent/path.jpg", "Test image")
+	_, err = client.SendImageWithSession(ctx, "123456", "/nonexistent/path.jpg", "Test image", "", "test-session")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to get file info")
 }
@@ -465,7 +465,7 @@ func TestClient_SendFile(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful send
-	resp, err := client.SendFile(ctx, "123456", tmpFile.Name(), "Test file")
+	resp, err := client.SendDocumentWithSession(ctx, "123456", tmpFile.Name(), "Test file", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
@@ -535,7 +535,7 @@ func TestClient_SendVoice(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful send
-	resp, err := client.SendVoice(ctx, "123456", tmpFile.Name())
+	resp, err := client.SendVoiceWithSession(ctx, "123456", tmpFile.Name(), "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
@@ -624,7 +624,7 @@ func TestClient_SendVideo(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful send (will be sent as document due to no video support)
-	resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
+	resp, err := client.SendVideoWithSession(ctx, "123456", tmpFile.Name(), "Test video", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, "test-msg-id", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
@@ -667,7 +667,7 @@ func TestClient_Authentication(t *testing.T) {
 		Timeout:     5 * time.Second,
 	}
 	validClient := NewClient(validConfig)
-	resp, err := validClient.SendText(ctx, "123456", "test")
+	resp, err := validClient.SendTextWithSession(ctx, "123456", "test", "", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "msg123", resp.MessageID)
 
@@ -679,7 +679,7 @@ func TestClient_Authentication(t *testing.T) {
 		Timeout:     5 * time.Second,
 	}
 	invalidClient := NewClient(invalidConfig)
-	_, err = invalidClient.SendText(ctx, "123456", "test")
+	_, err = invalidClient.SendTextWithSession(ctx, "123456", "test", "", "test-session")
 	assert.Error(t, err)
 }
 
@@ -743,13 +743,13 @@ func TestSendDocument(t *testing.T) {
 	})
 
 	// Test successful send
-	resp, err := client.SendDocument(context.Background(), "chat123", tmpFile.Name(), "Check this document")
+	resp, err := client.SendDocumentWithSession(context.Background(), "chat123", tmpFile.Name(), "Check this document", "", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "msg123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
 
 	// Test error case
-	resp, err = client.SendDocument(context.Background(), "chat123", "", "Check this document")
+	resp, err = client.SendDocumentWithSession(context.Background(), "chat123", "", "Check this document", "", "test-session")
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 }
@@ -790,7 +790,7 @@ func TestSendReaction(t *testing.T) {
 	})
 
 	// Test successful reaction
-	resp, err := client.SendReaction(context.Background(), "chat123@c.us", "msg456", "👍")
+	resp, err := client.SendReactionWithSession(context.Background(), "chat123@c.us", "msg456", "👍", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "reaction123", resp.MessageID)
 	assert.Equal(t, "sent", resp.Status)
@@ -823,7 +823,7 @@ func TestSendReaction(t *testing.T) {
 		Timeout:     10 * time.Second,
 	})
 
-	resp, err = client2.SendReaction(context.Background(), "chat123@c.us", "msg456", "")
+	resp, err = client2.SendReactionWithSession(context.Background(), "chat123@c.us", "msg456", "", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "reaction124", resp.MessageID)
 }
@@ -1286,7 +1286,7 @@ func TestClient_VideoWithVersionDetection(t *testing.T) {
 			})
 
 			ctx := context.Background()
-			resp, err := client.SendVideo(ctx, "123456", tmpFile.Name(), "Test video")
+			resp, err := client.SendVideoWithSession(ctx, "123456", tmpFile.Name(), "Test video", "", "test-session")
 
 			assert.NoError(t, err)
 			assert.Equal(t, "msg123", resp.MessageID)
@@ -1479,7 +1479,7 @@ func TestWAHAResponseParsing(t *testing.T) {
 			})
 
 			ctx := context.Background()
-			resp, err := client.SendText(ctx, "test@c.us", "test message")
+			resp, err := client.SendTextWithSession(ctx, "test@c.us", "test message", "", "test-session")
 
 			if tt.expectedParseError {
 				assert.Error(t, err)

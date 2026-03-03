@@ -38,13 +38,12 @@ func TestClient_SendTextWithSessionReply(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(types.ClientConfig{BaseURL: server.URL, SessionName: "test-session", Timeout: 5 * time.Second})
-	resp, err := client.SendTextWithSessionReply(context.Background(), "chat123@c.us", "hello", "true_chat123@c.us_ABCD", "test-session")
+	resp, err := client.SendTextWithSession(context.Background(), "chat123@c.us", "hello", "true_chat123@c.us_ABCD", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "m1", resp.MessageID)
 }
 
 func TestClient_SendImageWithSessionReply(t *testing.T) {
-	// Create a temp image file
 	f, err := os.CreateTemp("", "img-*.jpg")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(f.Name()) }()
@@ -59,10 +58,10 @@ func TestClient_SendImageWithSessionReply(t *testing.T) {
 			assert.Equal(t, "g1@g.us", payload["chatId"])
 			assert.Equal(t, "test-session", payload["session"])
 			assert.Equal(t, "caption", payload["caption"])
-			assert.Equal(t, "wa_msg_42", payload["reply_to"]) // reply threading
+			assert.Equal(t, "wa_msg_42", payload["reply_to"])
 			file := payload["file"].(map[string]interface{})
 			assert.Equal(t, "image/jpeg", file["mimetype"])
-			assert.NotEmpty(t, file["data"]) // base64
+			assert.NotEmpty(t, file["data"])
 
 			_ = json.NewEncoder(w).Encode(types.WAHAMessageResponse{ID: &struct {
 				FromMe     bool   `json:"fromMe"`
@@ -77,20 +76,18 @@ func TestClient_SendImageWithSessionReply(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(types.ClientConfig{BaseURL: server.URL, SessionName: "test-session", Timeout: 5 * time.Second})
-	resp, err := client.SendImageWithSessionReply(context.Background(), "g1@g.us", f.Name(), "caption", "wa_msg_42", "test-session")
+	resp, err := client.SendImageWithSession(context.Background(), "g1@g.us", f.Name(), "caption", "wa_msg_42", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "m2", resp.MessageID)
 }
 
 func TestClient_SendVoiceAndDocumentWithSessionReply(t *testing.T) {
-	// voice
 	vf, err := os.CreateTemp("", "voice-*.ogg")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(vf.Name()) }()
 	_, _ = vf.Write([]byte("OggS..."))
 	_ = vf.Close()
 
-	// document
 	df, err := os.CreateTemp("", "doc-*.pdf")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(df.Name()) }()
@@ -103,7 +100,7 @@ func TestClient_SendVoiceAndDocumentWithSessionReply(t *testing.T) {
 			var payload map[string]interface{}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 			assert.Equal(t, "test-session", payload["session"])
-			assert.Equal(t, "reply123", payload["reply_to"]) // present for both
+			assert.Equal(t, "reply123", payload["reply_to"])
 			_ = json.NewEncoder(w).Encode(types.WAHAMessageResponse{ID: &struct {
 				FromMe     bool   `json:"fromMe"`
 				Remote     string `json:"remote"`
@@ -119,17 +116,16 @@ func TestClient_SendVoiceAndDocumentWithSessionReply(t *testing.T) {
 	client := NewClient(types.ClientConfig{BaseURL: server.URL, SessionName: "test-session", Timeout: 5 * time.Second})
 	ctx := context.Background()
 
-	vr, err := client.SendVoiceWithSessionReply(ctx, "chat@c.us", vf.Name(), "reply123", "test-session")
+	vr, err := client.SendVoiceWithSession(ctx, "chat@c.us", vf.Name(), "reply123", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", vr.MessageID)
 
-	dr, err := client.SendDocumentWithSessionReply(ctx, "chat@c.us", df.Name(), "read", "reply123", "test-session")
+	dr, err := client.SendDocumentWithSession(ctx, "chat@c.us", df.Name(), "read", "reply123", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", dr.MessageID)
 }
 
 func TestClient_SendVideoWithSessionReply_VideoSupported(t *testing.T) {
-	// create tmp video
 	vf, err := os.CreateTemp("", "v-*.mp4")
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(vf.Name()) }()
@@ -143,7 +139,7 @@ func TestClient_SendVideoWithSessionReply_VideoSupported(t *testing.T) {
 		case "/api/sendVideo":
 			var payload map[string]interface{}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
-			assert.Equal(t, "reply777", payload["reply_to"]) // reply threading present
+			assert.Equal(t, "reply777", payload["reply_to"])
 			_ = json.NewEncoder(w).Encode(types.WAHAMessageResponse{ID: &struct {
 				FromMe     bool   `json:"fromMe"`
 				Remote     string `json:"remote"`
@@ -157,7 +153,7 @@ func TestClient_SendVideoWithSessionReply_VideoSupported(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(types.ClientConfig{BaseURL: server.URL, SessionName: "test-session", Timeout: 5 * time.Second})
-	resp, err := client.SendVideoWithSessionReply(context.Background(), "g@g.us", vf.Name(), "v", "reply777", "test-session")
+	resp, err := client.SendVideoWithSession(context.Background(), "g@g.us", vf.Name(), "v", "reply777", "test-session")
 	require.NoError(t, err)
 	assert.Equal(t, "vid1", resp.MessageID)
 }

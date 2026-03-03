@@ -29,6 +29,11 @@ func NewSessionManager(baseURL, apiKey string, timeout time.Duration) types.Sess
 	}
 }
 
+// doRequest executes an HTTP request directly.
+func (sm *sessionManager) doRequest(req *http.Request) (*http.Response, error) {
+	return sm.client.Do(req) // #nosec G704 - URL from trusted application config
+}
+
 func (sm *sessionManager) Create(ctx context.Context, name string) (*types.Session, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -53,7 +58,7 @@ func (sm *sessionManager) Create(ctx context.Context, name string) (*types.Sessi
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
+	resp, err := sm.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
@@ -85,7 +90,7 @@ func (sm *sessionManager) Get(ctx context.Context, name string) (*types.Session,
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
+	resp, err := sm.doRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
@@ -124,7 +129,7 @@ func (sm *sessionManager) Start(ctx context.Context, name string) error {
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
+	resp, err := sm.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to start session: %w", err)
 	}
@@ -157,7 +162,7 @@ func (sm *sessionManager) Stop(ctx context.Context, name string) error {
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
+	resp, err := sm.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to stop session: %w", err)
 	}
@@ -189,7 +194,7 @@ func (sm *sessionManager) Delete(ctx context.Context, name string) error {
 		req.Header.Set("X-Api-Key", sm.apiKey)
 	}
 
-	resp, err := sm.client.Do(req) // #nosec G704 - URL from trusted application config
+	resp, err := sm.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}

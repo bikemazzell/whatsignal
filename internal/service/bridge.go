@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"whatsignal/internal/constants"
@@ -174,6 +175,8 @@ type bridge struct {
 	groupService         GroupServiceInterface
 	channelManager       *ChannelManager
 	signalAttachmentsDir string
+	lastFallbackChat     map[string]string
+	lastFallbackChatMu   sync.RWMutex
 }
 
 // NewBridge creates a new bridge with channel manager (channels are required)
@@ -191,6 +194,7 @@ func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseServ
 		groupService:         groupService,
 		channelManager:       channelManager,
 		signalAttachmentsDir: signalAttachmentsDir,
+		lastFallbackChat:     make(map[string]string),
 	}
 }
 
@@ -469,12 +473,26 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		return b.handleNewSignalThread(ctx, msg)
 	}
 
-	// Send warning if fallback routing was used (no quoted message)
+	// Send warning if fallback routing was used, but suppress if destination is unchanged
 	if usedFallback {
-		notice := fmt.Sprintf("⚠️ Message routed to last active chat: %s\nTip: Quote a message to reply to a specific chat.", mapping.WhatsAppChatID)
-		if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
-			b.logger.WithError(notifyErr).Warn("Failed to send fallback routing notification")
+		b.lastFallbackChatMu.RLock()
+		lastChat := b.lastFallbackChat[sessionName]
+		b.lastFallbackChatMu.RUnlock()
+
+		if lastChat != mapping.WhatsAppChatID {
+			notice := fmt.Sprintf("Message routed to last active chat: %s\nTip: Quote a message to reply to a specific chat.", mapping.WhatsAppChatID)
+			if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
+				b.logger.WithError(notifyErr).Warn("Failed to send fallback routing notification")
+			}
 		}
+
+		b.lastFallbackChatMu.Lock()
+		b.lastFallbackChat[sessionName] = mapping.WhatsAppChatID
+		b.lastFallbackChatMu.Unlock()
+	} else {
+		b.lastFallbackChatMu.Lock()
+		delete(b.lastFallbackChat, sessionName)
+		b.lastFallbackChatMu.Unlock()
 	}
 
 	// Process attachments
@@ -1025,19 +1043,33 @@ func (b *bridge) handleSignalGroupMessage(ctx context.Context, msg *signaltypes.
 		return fmt.Errorf("resolved chat is not a group: %s", mapping.WhatsAppChatID)
 	}
 
-	// Send warning if fallback routing was used (no quoted message)
+	// Send warning if fallback routing was used, but suppress if destination is unchanged
+	groupKey := "group:" + sessionName
 	if usedFallback {
-		// Extract group name for clearer notification
-		groupName := mapping.WhatsAppChatID
-		if b.groupService != nil {
-			if name := b.groupService.GetGroupName(ctx, mapping.WhatsAppChatID, sessionName); name != "" {
-				groupName = name
+		b.lastFallbackChatMu.RLock()
+		lastChat := b.lastFallbackChat[groupKey]
+		b.lastFallbackChatMu.RUnlock()
+
+		if lastChat != mapping.WhatsAppChatID {
+			groupName := mapping.WhatsAppChatID
+			if b.groupService != nil {
+				if name := b.groupService.GetGroupName(ctx, mapping.WhatsAppChatID, sessionName); name != "" {
+					groupName = name
+				}
+			}
+			notice := fmt.Sprintf("Group message routed to: %s\nTip: Quote a message to reply to a specific group.", groupName)
+			if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
+				b.logger.WithError(notifyErr).Warn("Failed to send group fallback routing notification")
 			}
 		}
-		notice := fmt.Sprintf("Group message routed to: %s\nTip: Quote a message to reply to a specific group.", groupName)
-		if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
-			b.logger.WithError(notifyErr).Warn("Failed to send group fallback routing notification")
-		}
+
+		b.lastFallbackChatMu.Lock()
+		b.lastFallbackChat[groupKey] = mapping.WhatsAppChatID
+		b.lastFallbackChatMu.Unlock()
+	} else {
+		b.lastFallbackChatMu.Lock()
+		delete(b.lastFallbackChat, groupKey)
+		b.lastFallbackChatMu.Unlock()
 	}
 
 	// Process attachments

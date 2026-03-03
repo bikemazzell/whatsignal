@@ -1947,3 +1947,86 @@ func TestResolveGroupMessageMapping_QuotedMessageNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "no mapping found for quoted message")
 	assert.Contains(t, err.Error(), "try quoting a more recent message")
 }
+
+func TestFallbackWarningSuppression(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	sessionName := "default"
+	chatID := "+1234567890@c.us"
+
+	// First fallback to a chat should record and NOT suppress (different from empty)
+	b.lastFallbackChatMu.RLock()
+	lastChat := b.lastFallbackChat[sessionName]
+	b.lastFallbackChatMu.RUnlock()
+	assert.Empty(t, lastChat)
+	assert.NotEqual(t, chatID, lastChat, "First fallback should differ from empty state")
+
+	// Simulate first fallback: set the tracking
+	b.lastFallbackChatMu.Lock()
+	b.lastFallbackChat[sessionName] = chatID
+	b.lastFallbackChatMu.Unlock()
+
+	// Second fallback to same chat should match
+	b.lastFallbackChatMu.RLock()
+	lastChat = b.lastFallbackChat[sessionName]
+	b.lastFallbackChatMu.RUnlock()
+	assert.Equal(t, chatID, lastChat, "Repeated fallback to same chat should be suppressed")
+
+	// Fallback to a different chat should differ
+	newChatID := "+9876543210@c.us"
+	b.lastFallbackChatMu.RLock()
+	lastChat = b.lastFallbackChat[sessionName]
+	b.lastFallbackChatMu.RUnlock()
+	assert.NotEqual(t, newChatID, lastChat, "Fallback to different chat should trigger warning")
+
+	// Simulate explicit quote routing: reset tracking
+	b.lastFallbackChatMu.Lock()
+	delete(b.lastFallbackChat, sessionName)
+	b.lastFallbackChatMu.Unlock()
+
+	b.lastFallbackChatMu.RLock()
+	_, exists := b.lastFallbackChat[sessionName]
+	b.lastFallbackChatMu.RUnlock()
+	assert.False(t, exists, "Explicit routing should reset fallback tracking")
+}
+
+func TestFallbackWarningGroupSeparateFromDirect(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	sessionName := "default"
+	directChatID := "+1234567890@c.us"
+	groupChatID := "120363111111@g.us"
+
+	// Set direct fallback
+	b.lastFallbackChatMu.Lock()
+	b.lastFallbackChat[sessionName] = directChatID
+	b.lastFallbackChatMu.Unlock()
+
+	// Set group fallback (uses "group:" prefix key)
+	groupKey := "group:" + sessionName
+	b.lastFallbackChatMu.Lock()
+	b.lastFallbackChat[groupKey] = groupChatID
+	b.lastFallbackChatMu.Unlock()
+
+	// Verify they are tracked independently
+	b.lastFallbackChatMu.RLock()
+	assert.Equal(t, directChatID, b.lastFallbackChat[sessionName])
+	assert.Equal(t, groupChatID, b.lastFallbackChat[groupKey])
+	b.lastFallbackChatMu.RUnlock()
+
+	// Resetting direct should not affect group
+	b.lastFallbackChatMu.Lock()
+	delete(b.lastFallbackChat, sessionName)
+	b.lastFallbackChatMu.Unlock()
+
+	b.lastFallbackChatMu.RLock()
+	_, directExists := b.lastFallbackChat[sessionName]
+	groupVal, groupExists := b.lastFallbackChat[groupKey]
+	b.lastFallbackChatMu.RUnlock()
+
+	assert.False(t, directExists, "Direct tracking should be cleared")
+	assert.True(t, groupExists, "Group tracking should remain")
+	assert.Equal(t, groupChatID, groupVal)
+}

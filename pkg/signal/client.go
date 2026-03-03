@@ -276,6 +276,25 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		}
 	}
 
+	// Diagnostic: log raw envelope for DataMessages that have text but no detected quote.
+	// This helps diagnose whether signal-cli is dropping the quote field or using an
+	// unexpected field name in MODE=native.
+	if c.logger.IsLevelEnabled(logrus.WarnLevel) {
+		var rawEnvelopes []json.RawMessage
+		_ = json.Unmarshal(bodyBytes, &rawEnvelopes)
+		for i, msg := range messages {
+			if msg.Envelope.DataMessage != nil &&
+				msg.Envelope.DataMessage.GetQuote() == nil &&
+				msg.Envelope.DataMessage.Message != "" &&
+				i < len(rawEnvelopes) {
+				c.logger.WithFields(logrus.Fields{
+					"sender":   msg.Envelope.Source,
+					"envelope": string(rawEnvelopes[i]),
+				}).Warn("DataMessage has text but no quote detected - raw envelope logged for diagnosis")
+			}
+		}
+	}
+
 	result := make([]types.SignalMessage, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Envelope.DataMessage != nil {
@@ -314,17 +333,17 @@ func (c *SignalClient) convertDataMessageToSignalMessage(ctx context.Context, ms
 		}
 	}
 
-	if msg.Envelope.DataMessage.Quote != nil {
+	if quote := msg.Envelope.DataMessage.GetQuote(); quote != nil {
 		sigMsg.QuotedMessage = &struct {
 			ID        string `json:"id"`
 			Author    string `json:"author"`
 			Text      string `json:"text"`
 			Timestamp int64  `json:"timestamp"`
 		}{
-			ID:        fmt.Sprintf("%d", msg.Envelope.DataMessage.Quote.ID),
-			Author:    msg.Envelope.DataMessage.Quote.Author,
-			Text:      msg.Envelope.DataMessage.Quote.Text,
-			Timestamp: msg.Envelope.DataMessage.Quote.ID,
+			ID:        fmt.Sprintf("%d", quote.ID),
+			Author:    quote.Author,
+			Text:      quote.Text,
+			Timestamp: quote.ID,
 		}
 	}
 
@@ -384,17 +403,17 @@ func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, ms
 		sigMsg.Sender = "group." + sent.GroupInfo.GroupID
 	}
 
-	if sent.Quote != nil {
+	if quote := sent.GetQuote(); quote != nil {
 		sigMsg.QuotedMessage = &struct {
 			ID        string `json:"id"`
 			Author    string `json:"author"`
 			Text      string `json:"text"`
 			Timestamp int64  `json:"timestamp"`
 		}{
-			ID:        fmt.Sprintf("%d", sent.Quote.ID),
-			Author:    sent.Quote.Author,
-			Text:      sent.Quote.Text,
-			Timestamp: sent.Quote.ID,
+			ID:        fmt.Sprintf("%d", quote.ID),
+			Author:    quote.Author,
+			Text:      quote.Text,
+			Timestamp: quote.ID,
 		}
 	}
 

@@ -105,10 +105,20 @@ type RestDataMessage struct {
 	Message      string                  `json:"message"`
 	Attachments  []RestMessageAttachment `json:"attachments"`
 	Quote        *RestMessageQuote       `json:"quote,omitempty"`
+	QuoteMsg     *RestMessageQuote       `json:"quoteMessage,omitempty"`
 	Reaction     *RestMessageReaction    `json:"reaction,omitempty"`
 	RemoteDelete *struct {
 		Timestamp int64 `json:"timestamp"`
 	} `json:"remoteDelete,omitempty"`
+}
+
+// GetQuote returns the quote from whichever field signal-cli populated.
+// signal-cli uses "quote" in some modes and "quoteMessage" in others.
+func (d *RestDataMessage) GetQuote() *RestMessageQuote {
+	if d.Quote != nil {
+		return d.Quote
+	}
+	return d.QuoteMsg
 }
 
 // RestSentMessage represents a message sent by the user (received via sync)
@@ -121,7 +131,16 @@ type RestSentMessage struct {
 	ExpiresInSeconds  int                     `json:"expiresInSeconds,omitempty"`
 	Attachments       []RestMessageAttachment `json:"attachments,omitempty"`
 	Quote             *RestMessageQuote       `json:"quote,omitempty"`
+	QuoteMsg          *RestMessageQuote       `json:"quoteMessage,omitempty"`
 	GroupInfo         *RestGroupInfo          `json:"groupInfo,omitempty"`
+}
+
+// GetQuote returns the quote from whichever field signal-cli populated.
+func (s *RestSentMessage) GetQuote() *RestMessageQuote {
+	if s.Quote != nil {
+		return s.Quote
+	}
+	return s.QuoteMsg
 }
 
 // RestGroupInfo represents group information in a message

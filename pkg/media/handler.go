@@ -242,7 +242,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	// Copy response body to temp file
 	_, err = io.Copy(tempFile, resp.Body)
 	if err != nil {
-		_ = os.Remove(tempFile.Name()) // #nosec G703 - Path from os.CreateTemp, not user input
+		_ = os.Remove(tempFile.Name()) // #nosec G703 - Best effort cleanup after copy failure; path from os.CreateTemp
 		return "", "", fmt.Errorf("failed to save downloaded file: %w", err)
 	}
 

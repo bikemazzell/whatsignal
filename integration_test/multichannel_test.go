@@ -336,57 +336,19 @@ func (m *mockMultiSessionWAClient) WaitForSessionReady(ctx context.Context, maxW
 }
 
 // Implement other required methods with minimal implementation
-func (m *mockMultiSessionWAClient) SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error) {
+func (m *mockMultiSessionWAClient) SendTextWithSession(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }
-func (m *mockMultiSessionWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockMultiSessionWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }
-func (m *mockMultiSessionWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
+func (m *mockMultiSessionWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }
-func (m *mockMultiSessionWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockMultiSessionWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }
-func (m *mockMultiSessionWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-
-func (m *mockMultiSessionWAClient) SendTextWithSessionReply(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-func (m *mockMultiSessionWAClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return nil, nil
-}
-
-func (m *mockMultiSessionWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
+func (m *mockMultiSessionWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
 }
 func (m *mockMultiSessionWAClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {

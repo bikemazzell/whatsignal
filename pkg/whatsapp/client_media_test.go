@@ -185,7 +185,7 @@ func TestSendImageWithSession(t *testing.T) {
 		imagePath := createTestFile(t, "fake-image-content", ".jpg")
 		caption := "Test image caption"
 
-		resp, err := client.SendImageWithSession(ctx, chatID, imagePath, caption, sessionName)
+		resp, err := client.SendImageWithSession(ctx, chatID, imagePath, caption, "", sessionName)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -203,7 +203,7 @@ func TestSendImageWithSession(t *testing.T) {
 	t.Run("invalid file path", func(t *testing.T) {
 		invalidPath := "/nonexistent/path/image.jpg"
 
-		resp, err := client.SendImageWithSession(ctx, chatID, invalidPath, "", sessionName)
+		resp, err := client.SendImageWithSession(ctx, chatID, invalidPath, "", "", sessionName)
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
@@ -213,7 +213,7 @@ func TestSendImageWithSession(t *testing.T) {
 	t.Run("malicious file path", func(t *testing.T) {
 		maliciousPath := "../../../etc/passwd"
 
-		resp, err := client.SendImageWithSession(ctx, chatID, maliciousPath, "", sessionName)
+		resp, err := client.SendImageWithSession(ctx, chatID, maliciousPath, "", "", sessionName)
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
@@ -223,7 +223,7 @@ func TestSendImageWithSession(t *testing.T) {
 	t.Run("large file warning", func(t *testing.T) {
 		largePath := createLargeTestFile(t)
 
-		resp, err := client.SendImageWithSession(ctx, chatID, largePath, "", sessionName)
+		resp, err := client.SendImageWithSession(ctx, chatID, largePath, "", "", sessionName)
 
 		// Should succeed but trigger warning (test passes if no error)
 		assert.NoError(t, err)
@@ -235,7 +235,7 @@ func TestSendImageWithSession(t *testing.T) {
 		timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Nanosecond)
 		defer cancel()
 
-		resp, err := client.SendImageWithSession(timeoutCtx, chatID, imagePath, "", sessionName)
+		resp, err := client.SendImageWithSession(timeoutCtx, chatID, imagePath, "", "", sessionName)
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
@@ -261,7 +261,7 @@ func TestSendVoiceWithSession(t *testing.T) {
 	t.Run("successful voice send", func(t *testing.T) {
 		voicePath := createTestFile(t, "fake-voice-content", ".ogg")
 
-		resp, err := client.SendVoiceWithSession(ctx, chatID, voicePath, sessionName)
+		resp, err := client.SendVoiceWithSession(ctx, chatID, voicePath, "", sessionName)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -277,7 +277,7 @@ func TestSendVoiceWithSession(t *testing.T) {
 	t.Run("invalid voice file", func(t *testing.T) {
 		invalidPath := "/tmp/nonexistent.ogg"
 
-		resp, err := client.SendVoiceWithSession(ctx, chatID, invalidPath, sessionName)
+		resp, err := client.SendVoiceWithSession(ctx, chatID, invalidPath, "", sessionName)
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
@@ -290,7 +290,7 @@ func TestSendVoiceWithSession(t *testing.T) {
 			t.Run("voice_format_"+ext, func(t *testing.T) {
 				voicePath := createTestFile(t, "voice-content", ext)
 
-				resp, err := client.SendVoiceWithSession(ctx, chatID, voicePath, sessionName)
+				resp, err := client.SendVoiceWithSession(ctx, chatID, voicePath, "", sessionName)
 
 				assert.NoError(t, err)
 				assert.NotNil(t, resp)
@@ -318,7 +318,7 @@ func TestSendVideoWithSession(t *testing.T) {
 		videoPath := createTestFile(t, "fake-video-content", ".mp4")
 		caption := "Video caption"
 
-		resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, caption, sessionName)
+		resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, caption, "", sessionName)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -337,7 +337,7 @@ func TestSendVideoWithSession(t *testing.T) {
 	t.Run("empty caption", func(t *testing.T) {
 		videoPath := createTestFile(t, "video-content", ".mp4")
 
-		resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, "", sessionName)
+		resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, "", "", sessionName)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -350,7 +350,7 @@ func TestSendVideoWithSession(t *testing.T) {
 			t.Run("video_format_"+ext, func(t *testing.T) {
 				videoPath := createTestFile(t, "video-content", ext)
 
-				resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, "Test", sessionName)
+				resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, "Test", "", sessionName)
 
 				assert.NoError(t, err)
 				assert.NotNil(t, resp)
@@ -362,7 +362,7 @@ func TestSendVideoWithSession(t *testing.T) {
 		// This test assumes the client has a way to simulate video support check failure
 		videoPath := createTestFile(t, "video-content", ".mp4")
 
-		resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, "Caption", sessionName)
+		resp, err := client.SendVideoWithSession(ctx, chatID, videoPath, "Caption", "", sessionName)
 
 		// Should succeed even if video support is unavailable (fallback to document)
 		assert.NoError(t, err)
@@ -389,7 +389,7 @@ func TestSendDocumentWithSession(t *testing.T) {
 		docPath := createTestFile(t, "fake-pdf-content", ".pdf")
 		caption := "Document caption"
 
-		resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, caption, sessionName)
+		resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, caption, "", sessionName)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -410,7 +410,7 @@ func TestSendDocumentWithSession(t *testing.T) {
 			t.Run("document_type_"+ext, func(t *testing.T) {
 				docPath := createTestFile(t, "document-content", ext)
 
-				resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, "Test doc", sessionName)
+				resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, "Test doc", "", sessionName)
 
 				assert.NoError(t, err)
 				assert.NotNil(t, resp)
@@ -421,7 +421,7 @@ func TestSendDocumentWithSession(t *testing.T) {
 	t.Run("document without extension", func(t *testing.T) {
 		docPath := createTestFile(t, "content", "")
 
-		resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, "No extension", sessionName)
+		resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, "No extension", "", sessionName)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -430,7 +430,7 @@ func TestSendDocumentWithSession(t *testing.T) {
 	t.Run("empty session name", func(t *testing.T) {
 		docPath := createTestFile(t, "content", ".txt")
 
-		resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, "Caption", "")
+		resp, err := client.SendDocumentWithSession(ctx, chatID, docPath, "Caption", "", "")
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
@@ -465,25 +465,25 @@ func TestMediaSessionFunctions_ErrorHandling(t *testing.T) {
 			{
 				name: "SendImageWithSession",
 				fn: func() (*types.SendMessageResponse, error) {
-					return client.SendImageWithSession(ctx, "123@c.us", testFile, "", "session")
+					return client.SendImageWithSession(ctx, "123@c.us", testFile, "", "", "session")
 				},
 			},
 			{
 				name: "SendVoiceWithSession",
 				fn: func() (*types.SendMessageResponse, error) {
-					return client.SendVoiceWithSession(ctx, "123@c.us", testFile, "session")
+					return client.SendVoiceWithSession(ctx, "123@c.us", testFile, "", "session")
 				},
 			},
 			{
 				name: "SendVideoWithSession",
 				fn: func() (*types.SendMessageResponse, error) {
-					return client.SendVideoWithSession(ctx, "123@c.us", testFile, "", "session")
+					return client.SendVideoWithSession(ctx, "123@c.us", testFile, "", "", "session")
 				},
 			},
 			{
 				name: "SendDocumentWithSession",
 				fn: func() (*types.SendMessageResponse, error) {
-					return client.SendDocumentWithSession(ctx, "123@c.us", testFile, "", "session")
+					return client.SendDocumentWithSession(ctx, "123@c.us", testFile, "", "", "session")
 				},
 			},
 		}
@@ -520,16 +520,16 @@ func TestMediaSessionFunctions_AuthenticationError(t *testing.T) {
 
 	functions := map[string]func() (*types.SendMessageResponse, error){
 		"SendImageWithSession": func() (*types.SendMessageResponse, error) {
-			return client.SendImageWithSession(ctx, "123@c.us", testFile, "", "session")
+			return client.SendImageWithSession(ctx, "123@c.us", testFile, "", "", "session")
 		},
 		"SendVoiceWithSession": func() (*types.SendMessageResponse, error) {
-			return client.SendVoiceWithSession(ctx, "123@c.us", testFile, "session")
+			return client.SendVoiceWithSession(ctx, "123@c.us", testFile, "", "session")
 		},
 		"SendVideoWithSession": func() (*types.SendMessageResponse, error) {
-			return client.SendVideoWithSession(ctx, "123@c.us", testFile, "", "session")
+			return client.SendVideoWithSession(ctx, "123@c.us", testFile, "", "", "session")
 		},
 		"SendDocumentWithSession": func() (*types.SendMessageResponse, error) {
-			return client.SendDocumentWithSession(ctx, "123@c.us", testFile, "", "session")
+			return client.SendDocumentWithSession(ctx, "123@c.us", testFile, "", "", "session")
 		},
 	}
 

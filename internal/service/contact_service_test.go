@@ -77,99 +77,28 @@ func (m *mockWAClient) GetAllGroups(ctx context.Context, limit, offset int) ([]t
 	return args.Get(0).([]types.Group), args.Error(1)
 }
 
-// Implement other required methods for WAClient interface
-func (m *mockWAClient) SendText(ctx context.Context, chatID, message string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, message)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, message, sessionName)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, imagePath, caption)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, imagePath, caption, sessionName)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, videoPath, caption)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, videoPath, caption, sessionName)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, docPath, caption)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, docPath, caption, sessionName)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, filePath, caption)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, voicePath)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, voicePath, sessionName)
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
-}
-
-func (m *mockWAClient) SendTextWithSessionReply(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWAClient) SendTextWithSession(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, message, replyTo, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
-func (m *mockWAClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, imagePath, caption, replyTo, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
-func (m *mockWAClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, videoPath, caption, replyTo, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
-func (m *mockWAClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, docPath, caption, replyTo, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
-func (m *mockWAClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, voicePath, replyTo, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
 	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
@@ -209,14 +138,6 @@ func (m *mockWAClient) RestartSession(ctx context.Context) error {
 func (m *mockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
 	args := m.Called(ctx, maxWaitTime)
 	return args.Error(0)
-}
-
-func (m *mockWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, messageID, reaction)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
 func (m *mockWAClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {

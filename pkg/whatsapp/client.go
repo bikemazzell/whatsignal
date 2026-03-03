@@ -18,8 +18,12 @@ import (
 	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/whatsapp/types"
 
+	"errors"
+
 	"github.com/sirupsen/logrus"
 )
+
+var errNotFound = errors.New("not found")
 
 const (
 	// TypingDurationPerChar is the typing duration per character in milliseconds
@@ -37,6 +41,7 @@ type WhatsAppClient struct {
 	supportsVideo  *bool // Cached video support status
 	logger         *logrus.Logger
 	circuitBreaker *circuitbreaker.CircuitBreaker
+	testMode       bool
 }
 
 func NewClient(config types.ClientConfig) types.WAClient {
@@ -48,6 +53,7 @@ func NewClient(config types.ClientConfig) types.WAClient {
 		sessionMgr:     NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
 		logger:         logrus.New(),
 		circuitBreaker: circuitbreaker.New("whatsapp-api", constants.WhatsAppCBMaxFailures, time.Duration(constants.WhatsAppCBResetTimeoutSec)*time.Second),
+		testMode:       os.Getenv("WHATSIGNAL_TEST_MODE") == "true",
 	}
 	return client
 }
@@ -70,6 +76,39 @@ func (c *WhatsAppClient) doRequestWithCircuitBreaker(ctx context.Context, req *h
 		return httpErr
 	})
 	return resp, err
+}
+
+// doGetJSON performs a GET request to the given URL, checks for 200 OK, and decodes the JSON response into target.
+// Returns errNotFound for 404 responses so callers can handle it specifically.
+func (c *WhatsAppClient) doGetJSON(ctx context.Context, url string, target interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if c.apiKey != "" {
+		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return errNotFound
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return nil
 }
 
 func (c *WhatsAppClient) CreateSession(ctx context.Context) error {
@@ -117,75 +156,15 @@ func (c *WhatsAppClient) RestartSession(ctx context.Context) error {
 }
 
 func (c *WhatsAppClient) GetSessionStatus(ctx context.Context) (*types.Session, error) {
-	// Get the real-time status from WAHA API instead of cached value
-	url := fmt.Sprintf("%s/api/sessions", c.baseURL)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if c.apiKey != "" {
-		req.Header.Set("X-Api-Key", c.apiKey)
-	}
-
-	resp, err := c.doRequest(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sessions: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get sessions, status: %d", resp.StatusCode)
-	}
-
-	var sessions []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		return nil, fmt.Errorf("failed to decode sessions: %w", err)
-	}
-
-	// Find our session
-	for _, session := range sessions {
-		if name, ok := session["name"].(string); ok && name == c.sessionName {
-			status := "unknown"
-			if s, ok := session["status"].(string); ok {
-				status = s
-			}
-			return &types.Session{
-				Name:      c.sessionName,
-				Status:    types.SessionStatus(status),
-				UpdatedAt: time.Now(),
-			}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("session %s not found", c.sessionName)
+	return c.GetSessionStatusByName(ctx, c.sessionName)
 }
 
 // GetSessionStatusByName gets the status of a specific session by name
 func (c *WhatsAppClient) GetSessionStatusByName(ctx context.Context, sessionName string) (*types.Session, error) {
 	url := fmt.Sprintf("%s/api/sessions", c.baseURL)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if c.apiKey != "" {
-		req.Header.Set("X-Api-Key", c.apiKey)
-	}
-
-	resp, err := c.doRequest(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sessions: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get sessions, status: %d", resp.StatusCode)
-	}
-
 	var sessions []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		return nil, fmt.Errorf("failed to decode sessions: %w", err)
+	if err := c.doGetJSON(ctx, url, &sessions); err != nil {
+		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
 
 	// Find the requested session
@@ -365,75 +344,16 @@ func (c *WhatsAppClient) stopTypingWithSession(ctx context.Context, chatID, sess
 }
 
 func (c *WhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
-	return c.SendTextWithSession(ctx, chatID, text, c.sessionName)
+	return c.SendTextWithSession(ctx, chatID, text, "", c.sessionName)
 }
 
-func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, sessionName string) (*types.SendMessageResponse, error) {
-	// Validate session status before sending (skip in test mode)
-	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if !c.testMode {
 		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
 			return nil, err
 		}
 	}
 
-	// Try to send seen status and typing indicators (optional)
-	if err := c.sendSeenWithSession(ctx, chatID, sessionName); err != nil {
-		if c.logger != nil {
-			c.logger.WithError(err).Debug("optional: sendSeen failed")
-		}
-	}
-
-	if err := c.startTypingWithSession(ctx, chatID, sessionName); err != nil {
-		if c.logger != nil {
-			c.logger.WithError(err).Debug("optional: startTyping failed")
-		}
-	}
-
-	// Skip typing delay in test mode
-	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
-		typingDuration := time.Duration(len(text)) * TypingDurationPerChar
-		if typingDuration > MaxTypingDuration {
-			typingDuration = MaxTypingDuration
-		}
-
-		// Use context-aware sleep to avoid blocking indefinitely
-		select {
-		case <-time.After(typingDuration):
-			// Normal completion
-		case <-ctx.Done():
-			// Context cancelled, stop typing and return
-			// Best effort cleanup - ignore error as context is already cancelled
-			if err := c.stopTypingWithSession(ctx, chatID, sessionName); err != nil {
-				c.logger.WithError(err).Debug("optional: stopTyping failed")
-			}
-			return nil, ctx.Err()
-		}
-	}
-
-	if err := c.stopTypingWithSession(ctx, chatID, sessionName); err != nil {
-		if c.logger != nil {
-			c.logger.WithError(err).Debug("optional: stopTyping failed")
-		}
-	}
-
-	payload := types.SendMessageRequest{
-		ChatID:  chatID,
-		Text:    text,
-		Session: sessionName,
-	}
-
-	return c.sendRequest(ctx, types.APIBase+types.EndpointSendText, payload)
-}
-
-func (c *WhatsAppClient) SendTextWithSessionReply(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	// Validate session status before sending (skip in test mode)
-	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
-		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
-			return nil, err
-		}
-	}
-
-	// Optional UX signals
 	if err := c.sendSeenWithSession(ctx, chatID, sessionName); err != nil {
 		if c.logger != nil {
 			c.logger.WithError(err).Debug("optional: sendSeen failed")
@@ -463,23 +383,20 @@ func (c *WhatsAppClient) SendTextWithSessionReply(ctx context.Context, chatID, t
 }
 
 func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSession(ctx, chatID, mediaPath, caption, mediaType, c.sessionName)
+	return c.SendMediaWithSession(ctx, chatID, mediaPath, caption, mediaType, "", c.sessionName)
 }
 
-func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType, sessionName string) (*types.SendMessageResponse, error) {
-	// Validate session status before sending (skip in test mode)
-	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if !c.testMode {
 		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
 			return nil, err
 		}
 	}
 
-	// Validate file path to prevent directory traversal
 	if err := security.ValidateFilePath(mediaPath); err != nil {
 		return nil, fmt.Errorf("invalid media path: %w", err)
 	}
 
-	// Check file size and warn for large files
 	fileInfo, err := os.Stat(mediaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
@@ -491,7 +408,6 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 		}
 	}
 
-	// Check video support and downgrade to document if not supported
 	if mediaType == types.MediaTypeVideo && !c.checkVideoSupport(ctx) {
 		if c.logger != nil {
 			c.logger.Info("Video support not available; sending as document instead")
@@ -499,88 +415,11 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 		mediaType = types.MediaTypeFile
 	}
 
-	// Read and encode file as base64
 	fileData, err := os.ReadFile(mediaPath) // #nosec G304 - Path validated by security.ValidateFilePath above
 	if err != nil {
 		return nil, fmt.Errorf("failed to read media file: %w", err)
 	}
 
-	// Encode file data as base64
-	base64Data := base64.StdEncoding.EncodeToString(fileData)
-
-	// Determine MIME type from file extension
-	ext := strings.ToLower(filepath.Ext(mediaPath))
-	mimeType, ok := constants.MimeTypes[ext]
-	if !ok {
-		mimeType = constants.DefaultMimeType
-	}
-
-	// Extract filename from the full path
-	filename := filepath.Base(mediaPath)
-
-	// Create JSON payload according to WAHA API documentation
-	payload := types.MediaMessageRequest{
-		ChatID:  chatID,
-		Session: sessionName,
-		File: types.FileData{
-			Mimetype: mimeType,
-			Data:     base64Data,
-			Filename: filename,
-		},
-		Caption: caption,
-	}
-
-	// Add video-specific fields (from WAHA docs)
-	if mediaType == types.MediaTypeVideo {
-		convertFalse := false
-		asNoteFalse := false
-		payload.Convert = &convertFalse
-		payload.AsNote = &asNoteFalse // false = regular video, true = video note (rounded)
-	}
-
-	var apiActionPath string
-	switch mediaType {
-	case types.MediaTypeImage:
-		apiActionPath = types.EndpointSendImage
-	case types.MediaTypeFile:
-		apiActionPath = types.EndpointSendFile
-	case types.MediaTypeVoice:
-		apiActionPath = types.EndpointSendVoice
-	case types.MediaTypeVideo:
-		apiActionPath = types.EndpointSendVideo
-	default:
-		return nil, fmt.Errorf("unsupported media type: %s", mediaType)
-	}
-
-	endpoint := types.APIBase + apiActionPath
-	return c.sendRequest(ctx, endpoint, payload)
-}
-func (c *WhatsAppClient) SendMediaWithSessionReply(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	// Validate session status before sending (skip in test mode)
-	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
-		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := security.ValidateFilePath(mediaPath); err != nil {
-		return nil, fmt.Errorf("invalid media path: %w", err)
-	}
-
-	fileInfo, err := os.Stat(mediaPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file info: %w", err)
-	}
-	if fileInfo.Size() > constants.MaxRecommendedFileSizeBytes {
-		if c.logger != nil {
-			c.logger.WithField("size_mb", fileInfo.Size()/constants.BytesPerMegabyte).Warn("Large file detected; may cause performance issues")
-		}
-	}
-
-	fileData, err := os.ReadFile(mediaPath) // #nosec G304 - Path validated by security.ValidateFilePath above
-	if err != nil {
-		return nil, fmt.Errorf("failed to read media file: %w", err)
-	}
 	base64Data := base64.StdEncoding.EncodeToString(fileData)
 
 	ext := strings.ToLower(filepath.Ext(mediaPath))
@@ -588,6 +427,7 @@ func (c *WhatsAppClient) SendMediaWithSessionReply(ctx context.Context, chatID, 
 	if !ok {
 		mimeType = constants.DefaultMimeType
 	}
+
 	filename := filepath.Base(mediaPath)
 
 	payload := types.MediaMessageRequest{
@@ -622,32 +462,17 @@ func (c *WhatsAppClient) SendMediaWithSessionReply(ctx context.Context, chatID, 
 	default:
 		return nil, fmt.Errorf("unsupported media type: %s", mediaType)
 	}
+
 	endpoint := types.APIBase + apiActionPath
 	return c.sendRequest(ctx, endpoint, payload)
-}
-
-func (c *WhatsAppClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSessionReply(ctx, chatID, imagePath, caption, types.MediaTypeImage, replyTo, sessionName)
-}
-
-func (c *WhatsAppClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSessionReply(ctx, chatID, videoPath, caption, types.MediaTypeVideo, replyTo, sessionName)
-}
-
-func (c *WhatsAppClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSessionReply(ctx, chatID, docPath, caption, types.MediaTypeFile, replyTo, sessionName)
-}
-
-func (c *WhatsAppClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSessionReply(ctx, chatID, voicePath, "", types.MediaTypeVoice, replyTo, sessionName)
 }
 
 func (c *WhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
 	return c.SendMedia(ctx, chatID, imagePath, caption, types.MediaTypeImage)
 }
 
-func (c *WhatsAppClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSession(ctx, chatID, imagePath, caption, types.MediaTypeImage, sessionName)
+func (c *WhatsAppClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSession(ctx, chatID, imagePath, caption, types.MediaTypeImage, replyTo, sessionName)
 }
 
 func (c *WhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
@@ -658,24 +483,24 @@ func (c *WhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string
 	return c.SendMedia(ctx, chatID, voicePath, "", types.MediaTypeVoice)
 }
 
-func (c *WhatsAppClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSession(ctx, chatID, voicePath, "", types.MediaTypeVoice, sessionName)
+func (c *WhatsAppClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSession(ctx, chatID, voicePath, "", types.MediaTypeVoice, replyTo, sessionName)
 }
 
 func (c *WhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
 	return c.SendMedia(ctx, chatID, videoPath, caption, types.MediaTypeVideo)
 }
 
-func (c *WhatsAppClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSession(ctx, chatID, videoPath, caption, types.MediaTypeVideo, sessionName)
+func (c *WhatsAppClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSession(ctx, chatID, videoPath, caption, types.MediaTypeVideo, replyTo, sessionName)
 }
 
 func (c *WhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
 	return c.SendMedia(ctx, chatID, docPath, caption, types.MediaTypeFile)
 }
 
-func (c *WhatsAppClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSession(ctx, chatID, docPath, caption, types.MediaTypeFile, sessionName)
+func (c *WhatsAppClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	return c.SendMediaWithSession(ctx, chatID, docPath, caption, types.MediaTypeFile, replyTo, sessionName)
 }
 
 func (c *WhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
@@ -684,7 +509,7 @@ func (c *WhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, re
 
 func (c *WhatsAppClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {
 	// Validate session status before sending (skip in test mode)
-	if os.Getenv("WHATSIGNAL_TEST_MODE") != "true" {
+	if !c.testMode {
 		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
 			return nil, err
 		}
@@ -919,38 +744,15 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 
 // GetContact retrieves a specific contact by ID (phone number or chat ID)
 func (c *WhatsAppClient) GetContact(ctx context.Context, contactID string) (*types.Contact, error) {
-	// Build the URL with query parameters (session and contactId as query params)
 	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointContacts)
 	url := fmt.Sprintf("%s%s?contactId=%s&session=%s", c.baseURL, endpoint, contactID, c.sessionName)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if c.apiKey != "" {
-		req.Header.Set("X-Api-Key", c.apiKey)
-	}
-
-	resp, err := c.doRequest(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil // Contact not found
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
-	}
-
 	var contact types.Contact
-	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := c.doGetJSON(ctx, url, &contact); err != nil {
+		if errors.Is(err, errNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
-
 	return &contact, nil
 }
 
@@ -1005,37 +807,14 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 
 // GetGroup retrieves a specific group by group ID
 func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
-	// Build the URL: /api/{session}/groups/{groupId}
 	url := fmt.Sprintf("%s%s/%s%s/%s", c.baseURL, types.APIBase, c.sessionName, types.EndpointGroups, groupID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if c.apiKey != "" {
-		req.Header.Set("X-Api-Key", c.apiKey)
-	}
-
-	resp, err := c.doRequest(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil // Group not found
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
-	}
-
 	var group types.Group
-	if err := json.NewDecoder(resp.Body).Decode(&group); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := c.doGetJSON(ctx, url, &group); err != nil {
+		if errors.Is(err, errNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
-
 	return &group, nil
 }
 
@@ -1090,31 +869,10 @@ func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([
 // getServerVersion retrieves the WAHA server version info
 func (c *WhatsAppClient) getServerVersion(ctx context.Context) (*types.ServerVersion, error) {
 	url := fmt.Sprintf("%s/api/server/version", c.baseURL)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if c.apiKey != "" {
-		req.Header.Set("X-Api-Key", c.apiKey)
-	}
-
-	resp, err := c.doRequest(req)
-	if err != nil {
+	var version types.ServerVersion
+	if err := c.doGetJSON(ctx, url, &version); err != nil {
 		return nil, fmt.Errorf("failed to get server version: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get server version, status: %d", resp.StatusCode)
-	}
-
-	var version types.ServerVersion
-	if err := json.NewDecoder(resp.Body).Decode(&version); err != nil {
-		return nil, fmt.Errorf("failed to decode server version: %w", err)
-	}
-
 	return &version, nil
 }
 

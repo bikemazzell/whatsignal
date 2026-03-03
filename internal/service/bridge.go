@@ -201,7 +201,7 @@ func NewBridge(waClient types.WAClient, sigClient signal.Client, db DatabaseServ
 func (b *bridge) SendMessage(ctx context.Context, msg *models.Message) error {
 	switch msg.Platform {
 	case "whatsapp":
-		resp, err := b.waClient.SendText(ctx, msg.ChatID, msg.Content)
+		resp, err := b.waClient.SendTextWithSession(ctx, msg.ChatID, msg.Content, "", b.waClient.GetSessionName())
 		if err != nil {
 			return fmt.Errorf("failed to send WhatsApp message: %w", err)
 		}
@@ -662,11 +662,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"sessionName": sessionName,
 				"attempt":     attempt,
 			}).Debug("Sending image to WhatsApp")
-			if replyTo != "" {
-				resp, sendErr = b.waClient.SendImageWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
-			} else {
-				resp, sendErr = b.waClient.SendImageWithSession(ctx, chatID, attachments[0], message, sessionName)
-			}
+			resp, sendErr = b.waClient.SendImageWithSession(ctx, chatID, attachments[0], message, replyTo, sessionName)
 
 		case len(attachments) > 0 && b.mediaRouter.IsVideoAttachment(attachments[0]):
 			b.logger.WithFields(logrus.Fields{
@@ -674,11 +670,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"sessionName": sessionName,
 				"attempt":     attempt,
 			}).Debug("Sending video to WhatsApp")
-			if replyTo != "" {
-				resp, sendErr = b.waClient.SendVideoWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
-			} else {
-				resp, sendErr = b.waClient.SendVideoWithSession(ctx, chatID, attachments[0], message, sessionName)
-			}
+			resp, sendErr = b.waClient.SendVideoWithSession(ctx, chatID, attachments[0], message, replyTo, sessionName)
 
 		case len(attachments) > 0 && b.mediaRouter.IsVoiceAttachment(attachments[0]):
 			b.logger.WithFields(logrus.Fields{
@@ -686,11 +678,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"sessionName": sessionName,
 				"attempt":     attempt,
 			}).Debug("Sending voice to WhatsApp")
-			if replyTo != "" {
-				resp, sendErr = b.waClient.SendVoiceWithSessionReply(ctx, chatID, attachments[0], replyTo, sessionName)
-			} else {
-				resp, sendErr = b.waClient.SendVoiceWithSession(ctx, chatID, attachments[0], sessionName)
-			}
+			resp, sendErr = b.waClient.SendVoiceWithSession(ctx, chatID, attachments[0], replyTo, sessionName)
 
 		case len(attachments) > 0:
 			b.logger.WithFields(logrus.Fields{
@@ -699,11 +687,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"sessionName": sessionName,
 				"attempt":     attempt,
 			}).Debug("Sending attachment as document to WhatsApp")
-			if replyTo != "" {
-				resp, sendErr = b.waClient.SendDocumentWithSessionReply(ctx, chatID, attachments[0], message, replyTo, sessionName)
-			} else {
-				resp, sendErr = b.waClient.SendDocumentWithSession(ctx, chatID, attachments[0], message, sessionName)
-			}
+			resp, sendErr = b.waClient.SendDocumentWithSession(ctx, chatID, attachments[0], message, replyTo, sessionName)
 
 		default:
 			b.logger.WithFields(logrus.Fields{
@@ -712,11 +696,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"messageLength": len(trimmedMessage),
 				"attempt":       attempt,
 			}).Debug("Sending text to WhatsApp")
-			if replyTo != "" {
-				resp, sendErr = b.waClient.SendTextWithSessionReply(ctx, chatID, trimmedMessage, replyTo, sessionName)
-			} else {
-				resp, sendErr = b.waClient.SendTextWithSession(ctx, chatID, trimmedMessage, sessionName)
-			}
+			resp, sendErr = b.waClient.SendTextWithSession(ctx, chatID, trimmedMessage, replyTo, sessionName)
 		}
 
 		if sendErr != nil {

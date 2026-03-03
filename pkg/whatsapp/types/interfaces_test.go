@@ -14,95 +14,7 @@ type MockWAClient struct {
 	mock.Mock
 }
 
-func (m *MockWAClient) SendText(ctx context.Context, chatID, message string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, message)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, message, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, imagePath, caption)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, imagePath, caption, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, videoPath, caption)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, videoPath, caption, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, docPath, caption)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, docPath, caption, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, filePath, caption)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendVoice(ctx context.Context, chatID, voicePath string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, voicePath)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, voicePath, sessionName)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
-}
-
-func (m *MockWAClient) SendTextWithSessionReply(ctx context.Context, chatID, message, replyTo, sessionName string) (*SendMessageResponse, error) {
+func (m *MockWAClient) SendTextWithSession(ctx context.Context, chatID, message, replyTo, sessionName string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, message, replyTo, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -110,7 +22,7 @@ func (m *MockWAClient) SendTextWithSessionReply(ctx context.Context, chatID, mes
 	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
-func (m *MockWAClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*SendMessageResponse, error) {
+func (m *MockWAClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, imagePath, caption, replyTo, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -118,7 +30,7 @@ func (m *MockWAClient) SendImageWithSessionReply(ctx context.Context, chatID, im
 	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
-func (m *MockWAClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*SendMessageResponse, error) {
+func (m *MockWAClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, videoPath, caption, replyTo, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -126,7 +38,7 @@ func (m *MockWAClient) SendVideoWithSessionReply(ctx context.Context, chatID, vi
 	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
-func (m *MockWAClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*SendMessageResponse, error) {
+func (m *MockWAClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, docPath, caption, replyTo, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -134,7 +46,7 @@ func (m *MockWAClient) SendDocumentWithSessionReply(ctx context.Context, chatID,
 	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
-func (m *MockWAClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*SendMessageResponse, error) {
+func (m *MockWAClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*SendMessageResponse, error) {
 	args := m.Called(ctx, chatID, voicePath, replyTo, sessionName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -153,14 +65,6 @@ func (m *MockWAClient) SendReactionWithSession(ctx context.Context, chatID, mess
 func (m *MockWAClient) CreateSession(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
-}
-
-func (m *MockWAClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, messageID, reaction)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*SendMessageResponse), args.Error(1)
 }
 
 func (m *MockWAClient) StartSession(ctx context.Context) error {
@@ -327,9 +231,9 @@ func TestMockWAClientSendText(t *testing.T) {
 		Status:    "sent",
 	}
 
-	mockClient.On("SendText", ctx, "chat123", "Hello, World!").Return(expectedResponse, nil)
+	mockClient.On("SendTextWithSession", ctx, "chat123", "Hello, World!", "", "test-session").Return(expectedResponse, nil)
 
-	response, err := mockClient.SendText(ctx, "chat123", "Hello, World!")
+	response, err := mockClient.SendTextWithSession(ctx, "chat123", "Hello, World!", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 
@@ -345,9 +249,9 @@ func TestMockWAClientSendImage(t *testing.T) {
 		Status:    "sent",
 	}
 
-	mockClient.On("SendImage", ctx, "chat123", "/path/to/image.jpg", "Check this out!").Return(expectedResponse, nil)
+	mockClient.On("SendImageWithSession", ctx, "chat123", "/path/to/image.jpg", "Check this out!", "", "test-session").Return(expectedResponse, nil)
 
-	response, err := mockClient.SendImage(ctx, "chat123", "/path/to/image.jpg", "Check this out!")
+	response, err := mockClient.SendImageWithSession(ctx, "chat123", "/path/to/image.jpg", "Check this out!", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 
@@ -363,9 +267,9 @@ func TestMockWAClientSendVideo(t *testing.T) {
 		Status:    "sent",
 	}
 
-	mockClient.On("SendVideo", ctx, "chat123", "/path/to/video.mp4", "Watch this!").Return(expectedResponse, nil)
+	mockClient.On("SendVideoWithSession", ctx, "chat123", "/path/to/video.mp4", "Watch this!", "", "test-session").Return(expectedResponse, nil)
 
-	response, err := mockClient.SendVideo(ctx, "chat123", "/path/to/video.mp4", "Watch this!")
+	response, err := mockClient.SendVideoWithSession(ctx, "chat123", "/path/to/video.mp4", "Watch this!", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 
@@ -381,9 +285,9 @@ func TestMockWAClientSendDocument(t *testing.T) {
 		Status:    "sent",
 	}
 
-	mockClient.On("SendDocument", ctx, "chat123", "/path/to/document.pdf", "Important document").Return(expectedResponse, nil)
+	mockClient.On("SendDocumentWithSession", ctx, "chat123", "/path/to/document.pdf", "Important document", "", "test-session").Return(expectedResponse, nil)
 
-	response, err := mockClient.SendDocument(ctx, "chat123", "/path/to/document.pdf", "Important document")
+	response, err := mockClient.SendDocumentWithSession(ctx, "chat123", "/path/to/document.pdf", "Important document", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 
@@ -399,9 +303,9 @@ func TestMockWAClientSendFile(t *testing.T) {
 		Status:    "sent",
 	}
 
-	mockClient.On("SendFile", ctx, "chat123", "/path/to/file.zip", "Archive file").Return(expectedResponse, nil)
+	mockClient.On("SendDocumentWithSession", ctx, "chat123", "/path/to/file.zip", "Archive file", "", "test-session").Return(expectedResponse, nil)
 
-	response, err := mockClient.SendFile(ctx, "chat123", "/path/to/file.zip", "Archive file")
+	response, err := mockClient.SendDocumentWithSession(ctx, "chat123", "/path/to/file.zip", "Archive file", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 
@@ -417,9 +321,9 @@ func TestMockWAClientSendVoice(t *testing.T) {
 		Status:    "sent",
 	}
 
-	mockClient.On("SendVoice", ctx, "chat123", "/path/to/voice.mp3").Return(expectedResponse, nil)
+	mockClient.On("SendVoiceWithSession", ctx, "chat123", "/path/to/voice.mp3", "", "test-session").Return(expectedResponse, nil)
 
-	response, err := mockClient.SendVoice(ctx, "chat123", "/path/to/voice.mp3")
+	response, err := mockClient.SendVoiceWithSession(ctx, "chat123", "/path/to/voice.mp3", "", "test-session")
 	assert.NoError(t, err)
 	assert.Equal(t, expectedResponse, response)
 
@@ -537,8 +441,8 @@ func TestWAClientErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
 	// Test error responses
-	mockClient.On("SendText", ctx, "chat123", "Hello").Return(nil, assert.AnError)
-	response, err := mockClient.SendText(ctx, "chat123", "Hello")
+	mockClient.On("SendTextWithSession", ctx, "chat123", "Hello", "", "test-session").Return(nil, assert.AnError)
+	response, err := mockClient.SendTextWithSession(ctx, "chat123", "Hello", "", "test-session")
 	assert.Error(t, err)
 	assert.Nil(t, response)
 

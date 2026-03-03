@@ -48,10 +48,11 @@ func TestWhatsAppClient_WAHA_API_Format(t *testing.T) {
 			var receivedURL string
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				receivedURL = r.URL.Path
-
-				err := json.NewDecoder(r.Body).Decode(&receivedPayload)
-				require.NoError(t, err)
+				if r.URL.Path == "/api/sendText" {
+					receivedURL = r.URL.Path
+					err := json.NewDecoder(r.Body).Decode(&receivedPayload)
+					require.NoError(t, err)
+				}
 
 				response := types.SendMessageResponse{
 					MessageID: "msg123",
@@ -76,7 +77,7 @@ func TestWhatsAppClient_WAHA_API_Format(t *testing.T) {
 			chatID := tt.expectedPayload["chatId"].(string)
 			text := tt.expectedPayload["text"].(string)
 
-			_, err := client.SendText(ctx, chatID, text)
+			_, err := client.SendTextWithSession(ctx, chatID, text, "", tt.sessionName)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedURL, receivedURL)
@@ -149,7 +150,7 @@ func TestWhatsAppClient_StatusCodeHandling(t *testing.T) {
 			})
 
 			ctx := context.Background()
-			_, err := client.SendText(ctx, "123456789@c.us", "test message")
+			_, err := client.SendTextWithSession(ctx, "123456789@c.us", "test message", "", "default")
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -190,7 +191,7 @@ func TestWhatsAppClient_SessionInPayload(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	_, err := client.SendText(ctx, "123456789@c.us", "test message")
+	_, err := client.SendTextWithSession(ctx, "123456789@c.us", "test message", "", "custom-session")
 	require.NoError(t, err)
 
 	assert.Equal(t, "custom-session", receivedPayload["session"])
@@ -244,9 +245,9 @@ func TestWhatsAppClient_OptionalEndpoints(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	resp, err := client.SendText(ctx, "123456789@c.us", "test message")
+	resp, err := client.SendTextWithSession(ctx, "123456789@c.us", "test message", "", "default")
 
-	require.NoError(t, err, "SendText should succeed even if optional endpoints fail")
+	require.NoError(t, err, "SendTextWithSession should succeed even if optional endpoints fail")
 	assert.NotNil(t, resp)
 	assert.Equal(t, "msg123", resp.MessageID)
 

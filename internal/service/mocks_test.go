@@ -26,85 +26,27 @@ type mockWhatsAppClient struct {
 	sendDocumentErr  error
 }
 
-func (m *mockWhatsAppClient) SendText(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+func (m *mockWhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	if m.sendTextFunc != nil {
 		return m.sendTextFunc(ctx, chatID, text)
 	}
 	return m.sendTextResp, m.sendTextErr
 }
 
-func (m *mockWhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, sessionName string) (*types.SendMessageResponse, error) {
-	if m.sendTextFunc != nil {
-		return m.sendTextFunc(ctx, chatID, text)
-	}
-	return m.sendTextResp, m.sendTextErr
-}
-
-func (m *mockWhatsAppClient) SendTextWithSessionReply(ctx context.Context, chatID, text, replyTo, sessionName string) (*types.SendMessageResponse, error) {
-	if m.sendTextFunc != nil {
-		return m.sendTextFunc(ctx, chatID, text)
-	}
-	return m.sendTextResp, m.sendTextErr
-}
-
-func (m *mockWhatsAppClient) SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWhatsAppClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return m.sendImageResp, m.sendImageErr
 }
 
-func (m *mockWhatsAppClient) SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWhatsAppClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return m.sendVideoResp, m.sendVideoErr
 }
 
-func (m *mockWhatsAppClient) SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWhatsAppClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return m.sendDocumentResp, m.sendDocumentErr
 }
 
-func (m *mockWhatsAppClient) SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+func (m *mockWhatsAppClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return m.sendVoiceResp, m.sendVoiceErr
-}
-
-func (m *mockWhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return m.sendImageResp, m.sendImageErr
-}
-
-func (m *mockWhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendVideoResp, m.sendVideoErr
-}
-
-func (m *mockWhatsAppClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return m.sendVideoResp, m.sendVideoErr
-}
-
-func (m *mockWhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendDocumentResp, m.sendDocumentErr
-}
-
-func (m *mockWhatsAppClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*types.SendMessageResponse, error) {
-	return m.sendDocumentResp, m.sendDocumentErr
-}
-
-func (m *mockWhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	return m.sendDocumentResp, m.sendDocumentErr
-}
-
-func (m *mockWhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	return m.sendVoiceResp, m.sendVoiceErr
-}
-
-func (m *mockWhatsAppClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*types.SendMessageResponse, error) {
-	return m.sendVoiceResp, m.sendVoiceErr
-}
-
-func (m *mockWhatsAppClient) SendReaction(ctx context.Context, chatID, messageID, reaction string) (*types.SendMessageResponse, error) {
-	args := m.Called(ctx, chatID, messageID, reaction)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.SendMessageResponse), args.Error(1)
 }
 
 func (m *mockWhatsAppClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {

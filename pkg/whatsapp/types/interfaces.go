@@ -6,25 +6,11 @@ import (
 )
 
 type WAClient interface {
-	SendText(ctx context.Context, chatID, message string) (*SendMessageResponse, error)
-	SendTextWithSession(ctx context.Context, chatID, message, sessionName string) (*SendMessageResponse, error)
-	SendImage(ctx context.Context, chatID, imagePath, caption string) (*SendMessageResponse, error)
-	SendImageWithSession(ctx context.Context, chatID, imagePath, caption, sessionName string) (*SendMessageResponse, error)
-	SendVideo(ctx context.Context, chatID, videoPath, caption string) (*SendMessageResponse, error)
-	SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, sessionName string) (*SendMessageResponse, error)
-	SendDocument(ctx context.Context, chatID, docPath, caption string) (*SendMessageResponse, error)
-	SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, sessionName string) (*SendMessageResponse, error)
-	SendFile(ctx context.Context, chatID, filePath, caption string) (*SendMessageResponse, error)
-	SendVoice(ctx context.Context, chatID, voicePath string) (*SendMessageResponse, error)
-	SendVoiceWithSession(ctx context.Context, chatID, voicePath, sessionName string) (*SendMessageResponse, error)
-	// Reply-threading variants (WAHA reply_to)
-	SendTextWithSessionReply(ctx context.Context, chatID, message, replyTo, sessionName string) (*SendMessageResponse, error)
-	SendImageWithSessionReply(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*SendMessageResponse, error)
-	SendVideoWithSessionReply(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*SendMessageResponse, error)
-	SendDocumentWithSessionReply(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*SendMessageResponse, error)
-	SendVoiceWithSessionReply(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*SendMessageResponse, error)
-
-	SendReaction(ctx context.Context, chatID, messageID, reaction string) (*SendMessageResponse, error)
+	SendTextWithSession(ctx context.Context, chatID, message, replyTo, sessionName string) (*SendMessageResponse, error)
+	SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*SendMessageResponse, error)
+	SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*SendMessageResponse, error)
+	SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*SendMessageResponse, error)
+	SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*SendMessageResponse, error)
 	SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*SendMessageResponse, error)
 	DeleteMessage(ctx context.Context, chatID, messageID string) error
 	CreateSession(ctx context.Context) error

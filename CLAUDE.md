@@ -9,3 +9,4 @@
 - Run `go mod tidy` with the new toolchain after updating.
 - After bumping Go, rebuild any locally installed Go tools (staticcheck, golangci-lint, etc.) with the new toolchain so local CI matches GitHub Actions.
 - The `scripts/bump-version.sh` script creates and pushes a git tag (`vX.Y.Z`) along with the commit. Both the branch and the tag must be pushed to origin for a complete release.
+- `scripts/bump-version.sh` requires git push auth (HTTPS credentials or SSH). If it cannot push, do all local steps manually (bump VERSION, commit, tag), then hand off to the user with: `git push origin main && git push origin vX.Y.Z`

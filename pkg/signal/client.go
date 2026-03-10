@@ -276,21 +276,32 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		}
 	}
 
-	// Diagnostic: log raw envelope for DataMessages that have text but no detected quote.
+	// Diagnostic: log raw envelopes for messages that have text but no detected quote.
 	// This helps diagnose whether signal-cli is dropping the quote field or using an
 	// unexpected field name in MODE=native.
 	if c.logger.IsLevelEnabled(logrus.WarnLevel) {
 		var rawEnvelopes []json.RawMessage
 		_ = json.Unmarshal(bodyBytes, &rawEnvelopes)
 		for i, msg := range messages {
+			if i >= len(rawEnvelopes) {
+				break
+			}
 			if msg.Envelope.DataMessage != nil &&
 				msg.Envelope.DataMessage.GetQuote() == nil &&
-				msg.Envelope.DataMessage.Message != "" &&
-				i < len(rawEnvelopes) {
+				msg.Envelope.DataMessage.Message != "" {
 				c.logger.WithFields(logrus.Fields{
 					"sender":   msg.Envelope.Source,
 					"envelope": string(rawEnvelopes[i]),
 				}).Warn("DataMessage has text but no quote detected - raw envelope logged for diagnosis")
+			}
+			if msg.Envelope.SyncMessage != nil &&
+				msg.Envelope.SyncMessage.SentMessage != nil &&
+				msg.Envelope.SyncMessage.SentMessage.GetQuote() == nil &&
+				msg.Envelope.SyncMessage.SentMessage.Message != "" {
+				c.logger.WithFields(logrus.Fields{
+					"sender":   msg.Envelope.Source,
+					"envelope": string(rawEnvelopes[i]),
+				}).Warn("SyncMessage has text but no quote detected - raw envelope logged for diagnosis")
 			}
 		}
 	}

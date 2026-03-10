@@ -5,6 +5,11 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.24]
+
+### Fixed
+- **Quote-reply routing warning fires on valid quoted replies**: When quoting a WhatsApp message in Signal and sending a reply, the bridge incorrectly treated the message as unquoted, routing it to the last active chat and showing a spurious "Message routed to last active chat — Quote a message to reply to a specific chat" warning. Root cause: signal-cli in native mode serialises the quoted message under a third JSON field name `"quotedMessage"` (with a trailing 'd'), in addition to the two already handled (`"quote"` and `"quoteMessage"`). `GetQuote()` returned nil for this variant, causing `resolveMessageMapping` to fall back. Fixed by adding `QuotedMsg *RestMessageQuote \`json:"quotedMessage,omitempty"\`` to both `RestDataMessage` and `RestSentMessage` and updating `GetQuote()` to check all three fields. Extended the existing quote-field diagnostic logging to cover SyncMessages (user's own outgoing messages on linked devices), which previously had no coverage.
+
 ## [1.2.22]
 
 ### Security

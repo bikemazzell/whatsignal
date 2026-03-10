@@ -397,6 +397,18 @@ func TestRestDataMessage_GetQuote(t *testing.T) {
 			wantNil:  false,
 			wantText: "hello",
 		},
+		{
+			name:     "quotedMessage field",
+			msg:      RestDataMessage{QuotedMsg: quote},
+			wantNil:  false,
+			wantText: "hello",
+		},
+		{
+			name:     "quote preferred over quotedMessage",
+			msg:      RestDataMessage{Quote: quote, QuotedMsg: &RestMessageQuote{ID: 200, Author: "+5678", Text: "other"}},
+			wantNil:  false,
+			wantText: "hello",
+		},
 	}
 
 	for _, tt := range tests {
@@ -444,6 +456,18 @@ func TestRestSentMessage_GetQuote(t *testing.T) {
 			wantNil:  false,
 			wantText: "hello",
 		},
+		{
+			name:     "quotedMessage field",
+			msg:      RestSentMessage{QuotedMsg: quote},
+			wantNil:  false,
+			wantText: "hello",
+		},
+		{
+			name:     "quote preferred over quotedMessage",
+			msg:      RestSentMessage{Quote: quote, QuotedMsg: &RestMessageQuote{ID: 200, Author: "+5678", Text: "other"}},
+			wantNil:  false,
+			wantText: "hello",
+		},
 	}
 
 	for _, tt := range tests {
@@ -477,6 +501,12 @@ func TestRestDataMessage_GetQuote_JSONUnmarshal(t *testing.T) {
 			jsonData: `{"timestamp":1,"message":"hi","quoteMessage":{"id":100,"author":"+1","text":"alt-quoted"}}`,
 			wantNil:  false,
 			wantText: "alt-quoted",
+		},
+		{
+			name:     "quotedMessage field from JSON",
+			jsonData: `{"timestamp":1,"message":"hi","quotedMessage":{"id":100,"author":"+1","text":"qd-quoted"}}`,
+			wantNil:  false,
+			wantText: "qd-quoted",
 		},
 		{
 			name:     "no quote in JSON",

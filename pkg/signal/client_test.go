@@ -592,6 +592,60 @@ func TestReceiveMessages(t *testing.T) {
 	}
 }
 
+func TestReceiveMessages_PreservesQuotedMessageFromSyncEnvelope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Contains(t, r.URL.Path, "/v1/receive/")
+
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`[
+			{
+				"envelope": {
+					"source": "+1234567890",
+					"sourceNumber": "+1234567890",
+					"timestamp": 1234567890000,
+					"dataMessage": {
+						"timestamp": 1234567890000,
+						"message": "Reply from linked device",
+						"attachments": []
+					},
+					"syncMessage": {
+						"sentMessage": {
+							"timestamp": 1234567890000,
+							"message": "Reply from linked device",
+							"destination": "+1987654321",
+							"attachments": [],
+							"quote": {
+								"id": 1234567889000,
+								"author": "+1098765432",
+								"text": "Original WhatsApp message"
+							}
+						}
+					}
+				},
+				"account": "+1987654321",
+				"subscription": 0
+			}
+		]`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "+1987654321", "test-device", "", nil)
+
+	messages, err := client.ReceiveMessages(context.Background(), 5)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+
+	msg := messages[0]
+	assert.Equal(t, "Reply from linked device", msg.Message)
+	require.NotNil(t, msg.QuotedMessage)
+	assert.Equal(t, "1234567889000", msg.QuotedMessage.ID)
+	assert.Equal(t, "+1098765432", msg.QuotedMessage.Author)
+	assert.Equal(t, "Original WhatsApp message", msg.QuotedMessage.Text)
+	assert.Equal(t, int64(1234567889000), msg.QuotedMessage.Timestamp)
+}
+
 func TestReceiveMessagesPerRequestTimeout(t *testing.T) {
 	// Verify that ReceiveMessages creates a per-request context with timeout = pollTimeout + 15s
 	// This ensures the HTTP request timeout accounts for both the long-poll duration and network overhead.

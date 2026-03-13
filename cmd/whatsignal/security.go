@@ -158,8 +158,10 @@ func (rl *RateLimiter) Stop() {
 func (rl *RateLimiter) cleanup() {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
+	rl.cleanupLocked(time.Now())
+}
 
-	now := time.Now()
+func (rl *RateLimiter) cleanupLocked(now time.Time) {
 	cutoff := now.Add(-rl.window)
 
 	// Clean up expired timestamps for all IPs
@@ -219,6 +221,9 @@ func (rl *RateLimiter) AllowWithInfo(ip string) RateLimitInfo {
 	defer rl.mu.Unlock()
 
 	now := time.Now()
+	if rl.cleanupPeriod > 0 && now.Sub(rl.lastCleanup) >= rl.cleanupPeriod {
+		rl.cleanupLocked(now)
+	}
 	cutoff := now.Add(-rl.window)
 
 	// Clean old requests for this IP

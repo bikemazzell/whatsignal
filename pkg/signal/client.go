@@ -286,8 +286,12 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			if i >= len(rawEnvelopes) {
 				break
 			}
+			syncQuoteDetected := msg.Envelope.SyncMessage != nil &&
+				msg.Envelope.SyncMessage.SentMessage != nil &&
+				msg.Envelope.SyncMessage.SentMessage.GetQuote() != nil
 			if msg.Envelope.DataMessage != nil &&
 				msg.Envelope.DataMessage.GetQuote() == nil &&
+				!syncQuoteDetected &&
 				msg.Envelope.DataMessage.Message != "" {
 				c.logger.WithFields(logrus.Fields{
 					"sender":   msg.Envelope.Source,
@@ -310,6 +314,9 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	for _, msg := range messages {
 		if msg.Envelope.DataMessage != nil {
 			sigMsg := c.convertDataMessageToSignalMessage(ctx, msg)
+			if sigMsg.QuotedMessage == nil && msg.Envelope.SyncMessage != nil && msg.Envelope.SyncMessage.SentMessage != nil {
+				sigMsg.QuotedMessage = quotedMessageFromRestQuote(msg.Envelope.SyncMessage.SentMessage.GetQuote())
+			}
 			result = append(result, sigMsg)
 			continue
 		}
@@ -324,6 +331,29 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 	}
 
 	return result, nil
+}
+
+func quotedMessageFromRestQuote(quote *types.RestMessageQuote) *struct {
+	ID        string `json:"id"`
+	Author    string `json:"author"`
+	Text      string `json:"text"`
+	Timestamp int64  `json:"timestamp"`
+} {
+	if quote == nil {
+		return nil
+	}
+
+	return &struct {
+		ID        string `json:"id"`
+		Author    string `json:"author"`
+		Text      string `json:"text"`
+		Timestamp int64  `json:"timestamp"`
+	}{
+		ID:        fmt.Sprintf("%d", quote.ID),
+		Author:    quote.Author,
+		Text:      quote.Text,
+		Timestamp: quote.ID,
+	}
 }
 
 // convertDataMessageToSignalMessage converts an incoming DataMessage to a SignalMessage
@@ -344,19 +374,7 @@ func (c *SignalClient) convertDataMessageToSignalMessage(ctx context.Context, ms
 		}
 	}
 
-	if quote := msg.Envelope.DataMessage.GetQuote(); quote != nil {
-		sigMsg.QuotedMessage = &struct {
-			ID        string `json:"id"`
-			Author    string `json:"author"`
-			Text      string `json:"text"`
-			Timestamp int64  `json:"timestamp"`
-		}{
-			ID:        fmt.Sprintf("%d", quote.ID),
-			Author:    quote.Author,
-			Text:      quote.Text,
-			Timestamp: quote.ID,
-		}
-	}
+	sigMsg.QuotedMessage = quotedMessageFromRestQuote(msg.Envelope.DataMessage.GetQuote())
 
 	if msg.Envelope.DataMessage.Reaction != nil {
 		sigMsg.Reaction = &types.SignalReaction{
@@ -414,19 +432,7 @@ func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, ms
 		sigMsg.Sender = "group." + sent.GroupInfo.GroupID
 	}
 
-	if quote := sent.GetQuote(); quote != nil {
-		sigMsg.QuotedMessage = &struct {
-			ID        string `json:"id"`
-			Author    string `json:"author"`
-			Text      string `json:"text"`
-			Timestamp int64  `json:"timestamp"`
-		}{
-			ID:        fmt.Sprintf("%d", quote.ID),
-			Author:    quote.Author,
-			Text:      quote.Text,
-			Timestamp: quote.ID,
-		}
-	}
+	sigMsg.QuotedMessage = quotedMessageFromRestQuote(sent.GetQuote())
 
 	c.logger.WithFields(logrus.Fields{
 		"messageID":   sigMsg.MessageID,

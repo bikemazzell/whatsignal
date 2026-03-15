@@ -766,7 +766,18 @@ func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.Sig
 	var err error
 
 	if msg.QuotedMessage == nil {
-		// No quoted message - find the latest message for auto-reply (fallback)
+		// No quoted message - find the latest message for auto-reply (fallback).
+		// Log at Warn so we can diagnose why the quote was not populated.
+		b.logger.WithFields(logrus.Fields{
+			"messageID":   msg.MessageID,
+			"sender":      msg.Sender,
+			"message":     msg.Message,
+			"isSentByMe":  msg.IsSentByMe,
+			"destination": msg.Destination,
+			"hasReaction": msg.Reaction != nil,
+			"hasDeletion": msg.Deletion != nil,
+			"sessionName": sessionName,
+		}).Warn("Fallback routing triggered - SignalMessage has no quoted message")
 		mapping, err = b.db.GetLatestMessageMappingBySession(ctx, sessionName)
 		if err != nil {
 			b.logger.WithFields(logrus.Fields{

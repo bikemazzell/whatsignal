@@ -408,8 +408,8 @@ func (c *SignalClient) convertDataMessageToSignalMessage(ctx context.Context, ms
 func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, msg types.RestMessage) *types.SignalMessage {
 	sent := msg.Envelope.SyncMessage.SentMessage
 
-	// Skip empty messages
-	if sent.Message == "" && len(sent.Attachments) == 0 {
+	// Skip truly empty messages (no content of any kind)
+	if sent.Message == "" && len(sent.Attachments) == 0 && sent.Reaction == nil && sent.RemoteDelete == nil {
 		return nil
 	}
 
@@ -444,6 +444,25 @@ func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, ms
 	}
 
 	sigMsg.QuotedMessage = quotedMessageFromRestQuote(sent.GetQuote())
+
+	if sent.Reaction != nil {
+		sigMsg.Reaction = &types.SignalReaction{
+			Emoji:           sent.Reaction.Emoji,
+			TargetAuthor:    sent.Reaction.TargetAuthor,
+			TargetTimestamp: sent.Reaction.TargetTimestamp,
+			IsRemove:        sent.Reaction.IsRemove,
+		}
+		if sigMsg.Message == "" {
+			sigMsg.Message = sent.Reaction.Emoji
+		}
+	}
+
+	if sent.RemoteDelete != nil {
+		sigMsg.Deletion = &types.SignalDeletion{
+			TargetMessageID: fmt.Sprintf("%d", sent.RemoteDelete.Timestamp),
+			TargetTimestamp: sent.RemoteDelete.Timestamp,
+		}
+	}
 
 	c.logger.WithFields(logrus.Fields{
 		"messageID":   sigMsg.MessageID,

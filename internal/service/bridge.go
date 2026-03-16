@@ -473,28 +473,6 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		return b.handleNewSignalThread(ctx, msg)
 	}
 
-	// Send warning if fallback routing was used, but suppress if destination is unchanged
-	if usedFallback {
-		b.lastFallbackChatMu.RLock()
-		lastChat := b.lastFallbackChat[sessionName]
-		b.lastFallbackChatMu.RUnlock()
-
-		if lastChat != mapping.WhatsAppChatID {
-			notice := fmt.Sprintf("Message routed to last active chat: %s\nTip: Quote a message to reply to a specific chat.", mapping.WhatsAppChatID)
-			if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
-				b.logger.WithError(notifyErr).Warn("Failed to send fallback routing notification")
-			}
-		}
-
-		b.lastFallbackChatMu.Lock()
-		b.lastFallbackChat[sessionName] = mapping.WhatsAppChatID
-		b.lastFallbackChatMu.Unlock()
-	} else {
-		b.lastFallbackChatMu.Lock()
-		delete(b.lastFallbackChat, sessionName)
-		b.lastFallbackChatMu.Unlock()
-	}
-
 	// Process attachments
 	attachments, err := b.processSignalAttachments(msg.Attachments)
 	if err != nil {
@@ -525,7 +503,31 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		return err
 	}
 	if resp == nil {
+		// Nothing was sent (empty DataMessage); do not notify and do not update fallback state.
 		return nil
+	}
+
+	// Send warning if fallback routing was used, but suppress if destination is unchanged.
+	// Only warn when something was actually sent to avoid spurious notifications for empty messages.
+	if usedFallback {
+		b.lastFallbackChatMu.RLock()
+		lastChat := b.lastFallbackChat[sessionName]
+		b.lastFallbackChatMu.RUnlock()
+
+		if lastChat != mapping.WhatsAppChatID {
+			notice := fmt.Sprintf("Message routed to last active chat: %s\nTip: Quote a message to reply to a specific chat.", mapping.WhatsAppChatID)
+			if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
+				b.logger.WithError(notifyErr).Warn("Failed to send fallback routing notification")
+			}
+		}
+
+		b.lastFallbackChatMu.Lock()
+		b.lastFallbackChat[sessionName] = mapping.WhatsAppChatID
+		b.lastFallbackChatMu.Unlock()
+	} else {
+		b.lastFallbackChatMu.Lock()
+		delete(b.lastFallbackChat, sessionName)
+		b.lastFallbackChatMu.Unlock()
 	}
 
 	// Save message mapping

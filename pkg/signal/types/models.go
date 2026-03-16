@@ -126,6 +126,8 @@ func (d *RestDataMessage) GetQuote() *RestMessageQuote {
 }
 
 // RestSentMessage represents a message sent by the user (received via sync)
+// signal-cli uses @JsonUnwrapped on the inner JsonDataMessage, so all DataMessage
+// fields (reaction, remoteDelete, quote, etc.) appear directly at this level.
 type RestSentMessage struct {
 	Destination       string                  `json:"destination,omitempty"`
 	DestinationNumber string                  `json:"destinationNumber,omitempty"`
@@ -137,7 +139,11 @@ type RestSentMessage struct {
 	Quote             *RestMessageQuote       `json:"quote,omitempty"`
 	QuoteMsg          *RestMessageQuote       `json:"quoteMessage,omitempty"`
 	QuotedMsg         *RestMessageQuote       `json:"quotedMessage,omitempty"`
-	GroupInfo         *RestGroupInfo          `json:"groupInfo,omitempty"`
+	Reaction          *RestMessageReaction    `json:"reaction,omitempty"`
+	RemoteDelete      *struct {
+		Timestamp int64 `json:"timestamp"`
+	} `json:"remoteDelete,omitempty"`
+	GroupInfo *RestGroupInfo `json:"groupInfo,omitempty"`
 }
 
 // GetQuote returns the quote from whichever field signal-cli populated.

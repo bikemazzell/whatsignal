@@ -276,10 +276,9 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		}
 	}
 
-	// Diagnostic: detect quote-routing failures at the source.
-	// Two conditions are distinguished:
-	//   (a) raw JSON contains "quote" key but parsed struct has nil → field name mismatch bug
-	//   (b) raw JSON has no "quote" key but message has text → signal-cli may have dropped it
+	// Diagnostic: detect quote/reaction routing failures at the source.
+	// Sensitive data (phone numbers, message content, raw envelopes) is only
+	// emitted at Debug level. At Warn/Error we log only structural flags.
 	if c.logger.IsLevelEnabled(logrus.WarnLevel) {
 		var rawEnvelopes []json.RawMessage
 		_ = json.Unmarshal(bodyBytes, &rawEnvelopes)
@@ -295,30 +294,28 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 				msg.Envelope.DataMessage.GetQuote() == nil &&
 				!syncQuoteDetected {
 				if strings.Contains(rawEnvStr, `"quote"`) {
-					c.logger.WithFields(logrus.Fields{
-						"sender":   msg.Envelope.Source,
-						"envelope": rawEnvStr,
-					}).Error("DataMessage JSON has 'quote' key but parsing yielded nil - possible field name mismatch")
+					c.logger.Error("DataMessage JSON has 'quote' key but parsing yielded nil - possible field name mismatch")
+					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for quote parse failure")
 				} else if msg.Envelope.DataMessage.Message != "" {
-					c.logger.WithFields(logrus.Fields{
-						"sender":   msg.Envelope.Source,
-						"envelope": rawEnvStr,
-					}).Warn("DataMessage has text but no quote detected - raw envelope logged for diagnosis")
+					c.logger.Warn("DataMessage has text but no quote detected")
+					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for missing quote")
 				}
+			}
+			if msg.Envelope.DataMessage != nil &&
+				msg.Envelope.DataMessage.Reaction == nil &&
+				strings.Contains(rawEnvStr, `"reaction"`) {
+				c.logger.Error("DataMessage JSON has 'reaction' key but parsing yielded nil - possible field name mismatch")
+				c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for reaction parse failure")
 			}
 			if msg.Envelope.SyncMessage != nil &&
 				msg.Envelope.SyncMessage.SentMessage != nil &&
 				msg.Envelope.SyncMessage.SentMessage.GetQuote() == nil {
 				if strings.Contains(rawEnvStr, `"quote"`) {
-					c.logger.WithFields(logrus.Fields{
-						"sender":   msg.Envelope.Source,
-						"envelope": rawEnvStr,
-					}).Error("SyncMessage JSON has 'quote' key but parsing yielded nil - possible field name mismatch")
+					c.logger.Error("SyncMessage JSON has 'quote' key but parsing yielded nil - possible field name mismatch")
+					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for sync quote parse failure")
 				} else if msg.Envelope.SyncMessage.SentMessage.Message != "" {
-					c.logger.WithFields(logrus.Fields{
-						"sender":   msg.Envelope.Source,
-						"envelope": rawEnvStr,
-					}).Warn("SyncMessage has text but no quote detected - raw envelope logged for diagnosis")
+					c.logger.Warn("SyncMessage has text but no quote detected")
+					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for sync missing quote")
 				}
 			}
 		}

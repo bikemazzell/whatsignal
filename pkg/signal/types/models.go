@@ -143,11 +143,14 @@ type RestSentMessage struct {
 	RemoteDelete      *struct {
 		Timestamp int64 `json:"timestamp"`
 	} `json:"remoteDelete,omitempty"`
-	GroupInfo *RestGroupInfo `json:"groupInfo,omitempty"`
+	GroupInfo   *RestGroupInfo   `json:"groupInfo,omitempty"`
+	DataMessage *RestDataMessage `json:"dataMessage,omitempty"`
 }
 
 // GetQuote returns the quote from whichever field signal-cli populated.
 // signal-cli uses "quote", "quoteMessage", or "quotedMessage" depending on mode/version.
+// If none of those top-level fields are set, falls back to the nested DataMessage
+// (some signal-cli versions do not use @JsonUnwrapped and nest everything under dataMessage).
 func (s *RestSentMessage) GetQuote() *RestMessageQuote {
 	if s.Quote != nil {
 		return s.Quote
@@ -155,7 +158,13 @@ func (s *RestSentMessage) GetQuote() *RestMessageQuote {
 	if s.QuoteMsg != nil {
 		return s.QuoteMsg
 	}
-	return s.QuotedMsg
+	if s.QuotedMsg != nil {
+		return s.QuotedMsg
+	}
+	if s.DataMessage != nil {
+		return s.DataMessage.GetQuote()
+	}
+	return nil
 }
 
 // RestGroupInfo represents group information in a message

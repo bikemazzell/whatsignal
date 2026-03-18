@@ -310,10 +310,17 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			if msg.Envelope.SyncMessage != nil &&
 				msg.Envelope.SyncMessage.SentMessage != nil &&
 				msg.Envelope.SyncMessage.SentMessage.GetQuote() == nil {
+				sent := msg.Envelope.SyncMessage.SentMessage
 				if strings.Contains(rawEnvStr, `"quote"`) {
-					c.logger.Error("SyncMessage JSON has 'quote' key but parsing yielded nil - possible field name mismatch")
+					c.logger.WithFields(logrus.Fields{
+						"direct_quote":         sent.Quote != nil,
+						"direct_quoteMessage":  sent.QuoteMsg != nil,
+						"direct_quotedMessage": sent.QuotedMsg != nil,
+						"nested_dataMessage":   sent.DataMessage != nil,
+						"nested_dataMsg_quote": sent.DataMessage != nil && sent.DataMessage.GetQuote() != nil,
+					}).Error("SyncMessage JSON has 'quote' key but parsing yielded nil - possible unhandled field name or nesting")
 					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for sync quote parse failure")
-				} else if msg.Envelope.SyncMessage.SentMessage.Message != "" {
+				} else if sent.Message != "" {
 					c.logger.Warn("SyncMessage has text but no quote detected")
 					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for sync missing quote")
 				}
@@ -409,7 +416,7 @@ func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, ms
 	sent := msg.Envelope.SyncMessage.SentMessage
 
 	// Skip truly empty messages (no content of any kind)
-	if sent.Message == "" && len(sent.Attachments) == 0 && sent.Reaction == nil && sent.RemoteDelete == nil {
+	if sent.Message == "" && len(sent.Attachments) == 0 && sent.Reaction == nil && sent.RemoteDelete == nil && sent.GetQuote() == nil {
 		return nil
 	}
 

@@ -5,6 +5,33 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.29]
+
+### Fixed
+- **Quoted reply routing always resolves to last active chat**: Quoted replies in Signal were always forwarded to the most recently active WhatsApp chat, ignoring which message was quoted. Root cause: some signal-cli versions do not use `@JsonUnwrapped` on `sentMessage.dataMessage`, so the quote object appears nested under `sentMessage.dataMessage.quote` rather than at the top level. `GetQuote()` on `RestSentMessage` had no fallback for this nesting, returning nil on every SyncMessage quote, which caused `resolveMessageMapping` to fall back to the last active chat. Fixed by adding a `DataMessage *RestDataMessage` field to `RestSentMessage` and extending `GetQuote()` to check it when all top-level quote fields are nil. Additionally fixed a secondary bug where `convertSyncMessageToSignalMessage` would silently drop quoted replies that had no message body or attachments (the skip guard did not account for `GetQuote() != nil`). Improved the diagnostic Error log for the "quote key present but parsed nil" case to emit individual field-presence flags (`direct_quote`, `direct_quoteMessage`, `direct_quotedMessage`, `nested_dataMessage`, `nested_dataMsg_quote`) to pinpoint any remaining field-name mismatch.
+
+## [1.2.27]
+
+### Fixed
+- **Reactions not forwarded from user's own Signal device (sync path)**: `RestSentMessage` was missing `Reaction` and `RemoteDelete` fields. signal-cli uses `@JsonUnwrapped` on the inner `JsonDataMessage` when serialising `syncMessage.sentMessage`, so those fields appear directly at the `sentMessage` level. Without them the struct silently discarded reactions sent from the user's device, preventing forwarding to WhatsApp.
+- **Spurious "Message routed to last active chat" warning**: The fallback routing warning fired for empty DataMessages (e.g. signal-cli delivery notifications) even when nothing was actually sent to WhatsApp. The warning is now deferred until after the send call and only fires when a message was actually routed.
+
+## [1.2.26]
+
+### Fixed
+- **PII in Warn/Error log fields**: Phone numbers (sender, destination), raw message content, and raw JSON envelopes were emitted at Warn/Error log level in the fallback routing path (`bridge.go`) and the quote/reaction diagnostic block (`client.go`). Sensitive fields moved to Debug-level companion log entries; Warn/Error entries now contain only structural flags and sanitized identifiers.
+
+### Changed
+- **Improved quote/reaction diagnostics**: Extended diagnostic logging in Signal client and bridge to cover additional failure modes — `DataMessage` quote detection from raw JSON and reaction field-presence checking — to aid production diagnosis without requiring Debug log level.
+
+## [1.2.25]
+
+### Fixed
+- **Spurious reply warning fires on non-quote messages**: The "DataMessage has text but no quote detected" warning was emitted for ordinary outgoing messages from the user's Signal device that contain text but no quote, producing noise in production logs. Warning is now conditional on structural indicators that a quote was expected.
+
+### Changed
+- **CI: golangci-lint installed via `go install`**: The `golangci-lint-action@v6` pre-built binary was compiled with Go 1.24 and refuses to lint modules targeting Go 1.26. Replaced with a direct `go install` so golangci-lint is compiled by the same toolchain used in CI.
+
 ## [1.2.24]
 
 ### Fixed

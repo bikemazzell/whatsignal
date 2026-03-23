@@ -67,10 +67,10 @@ if [ ! -f .env ]; then
         API_KEY=$(head -c 16 /dev/urandom | base64 | tr -d '=')
     fi
     
-    # Update .env file with generated secrets
-    sed -i.bak "s/your-waha-api-key/$API_KEY/" .env
-    sed -i.bak "s/your-very-secure-whatsapp-webhook-secret/$WHATSAPP_WEBHOOK_SECRET/" .env
-    sed -i.bak "s/your-very-secure-encryption-secret-change-this/$WHATSIGNAL_ENCRYPTION_SECRET/" .env
+    # Update .env file with generated secrets (use | delimiter to avoid conflicts with base64 /)
+    sed -i.bak "s|your-waha-api-key|$API_KEY|" .env
+    sed -i.bak "s|your-very-secure-whatsapp-webhook-secret|$WHATSAPP_WEBHOOK_SECRET|" .env
+    sed -i.bak "s|your-very-secure-encryption-secret-change-this|$WHATSIGNAL_ENCRYPTION_SECRET|" .env
     
     # Remove backup file
     rm -f .env.bak

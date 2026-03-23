@@ -5,6 +5,18 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.31]
+
+### Fixed
+- **Group message quote fallback extracts wrong phone number**: `extractMappingFromQuotedText` concatenated digits from the sender phone number and the group name when processing group-formatted quoted text (e.g., `"15551234567 in Test Group 2024: hello"` extracted `155512345672024` instead of `15551234567`). Fixed by splitting on `" in "` to isolate the sender portion before digit extraction.
+- **Test lock ordering risk**: Removed `whatsappSendsMu` mutex from `TestEnvironment`; `whatsappSends` is now protected by the existing `mockAPILock` to prevent potential deadlocks from nested lock acquisition.
+- **Brittle test sleeps**: Replaced all `time.Sleep(200ms)` synchronization in routing tests with polling helpers (`waitForMockAPICount`, `waitForMapping`) that check for expected state. Tests are now 3x faster and not dependent on arbitrary timing.
+- **Weak reaction test assertion**: Reaction routing test now asserts that the reaction payload's `messageId` matches Alice's WhatsApp message ID, verifying correct message targeting.
+
+### Testing
+- Added `resolveMessageMapping` unit tests covering: quote lookup failure returns error (no silent fallback to wrong person), no-quote routes to latest sender, successful quote routes to correct chat.
+- Added group-message edge case to `extractMappingFromQuotedText` tests: phone sender with digits in group name.
+
 ## [1.2.30]
 
 ### Fixed
@@ -956,6 +968,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.31]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.31
 [1.2.30]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.30
 [1.2.16]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.16
 [1.2.15]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.15

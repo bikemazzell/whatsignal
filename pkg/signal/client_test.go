@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1422,6 +1423,201 @@ func TestReceiveMessages_RemoteDeleteHandling(t *testing.T) {
 			assert.Equal(t, tt.expectedDeletionCount, deletionCount)
 			if tt.expectedDeletionCount > 0 {
 				assert.Equal(t, tt.expectedTargetTimestamp, foundTargetTimestamp)
+			}
+		})
+	}
+}
+
+func TestQuotedMessageFromRestQuote(t *testing.T) {
+	tests := []struct {
+		name     string
+		quote    *types.RestMessageQuote
+		wantNil  bool
+		wantID   string
+		wantText string
+	}{
+		{
+			name:    "nil quote returns nil",
+			quote:   nil,
+			wantNil: true,
+		},
+		{
+			name:     "valid quote converts correctly",
+			quote:    &types.RestMessageQuote{ID: 1700000000001, Author: "+1234567890", Text: "hello"},
+			wantID:   "1700000000001",
+			wantText: "hello",
+		},
+		{
+			name:   "zero ID quote",
+			quote:  &types.RestMessageQuote{ID: 0, Author: "+1234567890", Text: ""},
+			wantID: "0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := quotedMessageFromRestQuote(tt.quote)
+			if tt.wantNil {
+				assert.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			assert.Equal(t, tt.wantID, result.ID)
+			assert.Equal(t, tt.wantText, result.Text)
+		})
+	}
+}
+
+func TestGetQuote_Priority(t *testing.T) {
+	q1 := &types.RestMessageQuote{ID: 1, Author: "a", Text: "quote"}
+	q2 := &types.RestMessageQuote{ID: 2, Author: "b", Text: "quoteMessage"}
+	q3 := &types.RestMessageQuote{ID: 3, Author: "c", Text: "quotedMessage"}
+	q4 := &types.RestMessageQuote{ID: 4, Author: "d", Text: "dataMessage.quote"}
+
+	tests := []struct {
+		name     string
+		sent     types.RestSentMessage
+		wantNil  bool
+		wantText string
+	}{
+		{
+			name:    "all nil returns nil",
+			sent:    types.RestSentMessage{},
+			wantNil: true,
+		},
+		{
+			name:     "Quote takes priority over all",
+			sent:     types.RestSentMessage{Quote: q1, QuoteMsg: q2, QuotedMsg: q3},
+			wantText: "quote",
+		},
+		{
+			name:     "QuoteMsg used when Quote is nil",
+			sent:     types.RestSentMessage{QuoteMsg: q2, QuotedMsg: q3},
+			wantText: "quoteMessage",
+		},
+		{
+			name:     "QuotedMsg used when Quote and QuoteMsg are nil",
+			sent:     types.RestSentMessage{QuotedMsg: q3},
+			wantText: "quotedMessage",
+		},
+		{
+			name: "DataMessage.GetQuote() used as last fallback",
+			sent: types.RestSentMessage{
+				DataMessage: &types.RestDataMessage{Quote: q4},
+			},
+			wantText: "dataMessage.quote",
+		},
+		{
+			name: "Top-level Quote wins over DataMessage quote",
+			sent: types.RestSentMessage{
+				Quote:       q1,
+				DataMessage: &types.RestDataMessage{Quote: q4},
+			},
+			wantText: "quote",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.sent.GetQuote()
+			if tt.wantNil {
+				assert.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			assert.Equal(t, tt.wantText, result.Text)
+		})
+	}
+}
+
+func TestConvertSyncMessageToSignalMessage_QuoteNesting(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	sigClient := NewClientWithLogger("http://localhost", "+1234567890", "test", "", nil, logger).(*SignalClient)
+
+	tests := []struct {
+		name          string
+		sentMessage   *types.RestSentMessage
+		wantQuote     bool
+		wantQuoteID   string
+		wantQuoteText string
+	}{
+		{
+			name: "top-level quote field",
+			sentMessage: &types.RestSentMessage{
+				Message:   "reply",
+				Timestamp: 1700000000001,
+				Quote:     &types.RestMessageQuote{ID: 999, Author: "+111", Text: "original"},
+			},
+			wantQuote:     true,
+			wantQuoteID:   "999",
+			wantQuoteText: "original",
+		},
+		{
+			name: "quoteMessage field",
+			sentMessage: &types.RestSentMessage{
+				Message:   "reply",
+				Timestamp: 1700000000002,
+				QuoteMsg:  &types.RestMessageQuote{ID: 888, Author: "+222", Text: "via quoteMessage"},
+			},
+			wantQuote:     true,
+			wantQuoteID:   "888",
+			wantQuoteText: "via quoteMessage",
+		},
+		{
+			name: "nested in dataMessage",
+			sentMessage: &types.RestSentMessage{
+				Message:   "reply",
+				Timestamp: 1700000000003,
+				DataMessage: &types.RestDataMessage{
+					Quote: &types.RestMessageQuote{ID: 777, Author: "+333", Text: "nested quote"},
+				},
+			},
+			wantQuote:     true,
+			wantQuoteID:   "777",
+			wantQuoteText: "nested quote",
+		},
+		{
+			name: "no quote at any level",
+			sentMessage: &types.RestSentMessage{
+				Message:   "no quote here",
+				Timestamp: 1700000000004,
+			},
+			wantQuote: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := types.RestMessage{
+				Envelope: struct {
+					Source         string                 `json:"source"`
+					SourceNumber   string                 `json:"sourceNumber"`
+					SourceUUID     string                 `json:"sourceUuid"`
+					SourceName     string                 `json:"sourceName"`
+					Timestamp      int64                  `json:"timestamp"`
+					DataMessage    *types.RestDataMessage `json:"dataMessage,omitempty"`
+					SyncMessage    *types.RestSyncMessage `json:"syncMessage,omitempty"`
+					ReceiptMessage interface{}            `json:"receiptMessage,omitempty"`
+					TypingMessage  interface{}            `json:"typingMessage,omitempty"`
+				}{
+					Source:    "+1234567890",
+					Timestamp: tt.sentMessage.Timestamp,
+					SyncMessage: &types.RestSyncMessage{
+						SentMessage: tt.sentMessage,
+					},
+				},
+				Account: "+1234567890",
+			}
+
+			ctx := context.Background()
+			result := sigClient.convertSyncMessageToSignalMessage(ctx, msg)
+
+			if tt.wantQuote {
+				require.NotNil(t, result, "Should produce a SignalMessage")
+				require.NotNil(t, result.QuotedMessage, "QuotedMessage should be populated")
+				assert.Equal(t, tt.wantQuoteID, result.QuotedMessage.ID)
+				assert.Equal(t, tt.wantQuoteText, result.QuotedMessage.Text)
+			} else if result != nil {
+				assert.Nil(t, result.QuotedMessage, "QuotedMessage should be nil when no quote")
 			}
 		})
 	}

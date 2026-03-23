@@ -514,13 +514,7 @@ func TestSignalToWhatsAppMessageFlowWithRetries(t *testing.T) {
 }
 
 func TestConcurrentWhatsAppMessages(t *testing.T) {
-	// Skip: Concurrent integration tests require shared in-memory SQLite database configuration
-	// with connection pooling. The unit tests for per-chat locking in message_service_test.go
-	// provide race condition coverage. This test can be enabled when using a file-based SQLite
-	// database or when the test environment supports shared memory mode.
-	t.Skip("Concurrent integration tests require special database configuration - see unit tests for concurrency coverage")
-
-	env := NewTestEnvironment(t, "concurrent_wa_messages", IsolationProcess)
+	env := NewTestEnvironment(t, "concurrent_wa_messages", IsolationStrict)
 	defer env.Cleanup()
 
 	env.StartMessageFlowServer()
@@ -621,10 +615,7 @@ func TestConcurrentWhatsAppMessages(t *testing.T) {
 }
 
 func TestConcurrentMessagesFromDifferentSenders(t *testing.T) {
-	// Skip: See TestConcurrentWhatsAppMessages for explanation
-	t.Skip("Concurrent integration tests require special database configuration - see unit tests for concurrency coverage")
-
-	env := NewTestEnvironment(t, "concurrent_diff_senders", IsolationProcess)
+	env := NewTestEnvironment(t, "concurrent_diff_senders", IsolationStrict)
 	defer env.Cleanup()
 
 	env.StartMessageFlowServer()

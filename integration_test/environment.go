@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,6 +101,14 @@ func (em *EnvironmentManager) AddGlobalCleanup(cleanup func()) {
 	em.globalCleanup = append(em.globalCleanup, cleanup)
 }
 
+// WhatsAppSendRecord captures the details of a WhatsApp send request made to the mock API.
+type WhatsAppSendRecord struct {
+	ChatID    string
+	Body      string
+	ReplyTo   string
+	MediaType string // "text", "image", "video", "voice", "document"
+}
+
 // Enhanced TestEnvironment with additional features
 type TestEnvironment struct {
 	t                *testing.T
@@ -119,6 +128,14 @@ type TestEnvironment struct {
 	whatsignalServer *http.Server
 	messageService   service.MessageService
 	waClient         types.WAClient
+
+	// Unique ID counters for mock responses
+	signalTimestampCounter atomic.Int64
+	waMsgIDCounter         atomic.Int64
+
+	// WhatsApp send tracking
+	whatsappSendsMu sync.Mutex
+	whatsappSends   []WhatsAppSendRecord
 }
 
 // IsolationMode defines how the test environment handles isolation
@@ -145,7 +162,9 @@ func NewTestEnvironment(t *testing.T, name string, isolation IsolationMode) *Tes
 		startTime:       time.Now(),
 		mockAPIRequests: make(map[string]int),
 		mockAPIFailures: make(map[string]int),
+		whatsappSends:   make([]WhatsAppSendRecord, 0),
 	}
+	env.signalTimestampCounter.Store(1700000000000)
 
 	// Set up components
 	env.setupDatabase()
@@ -562,7 +581,6 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			_, _ = w.Write([]byte(`{"contacts": []}`))
 
 		case strings.Contains(r.URL.Path, "/sendText"):
-			// Track all attempts (including failures) for retry testing
 			env.mockAPIRequests["whatsapp_send"]++
 			failures := env.mockAPIFailures["whatsapp_send"]
 			if failures > 0 {
@@ -571,25 +589,20 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
 				return
 			}
-			// Inspect payload for reply_to
 			body, _ := io.ReadAll(r.Body)
 			defer func() {
 				if err := r.Body.Close(); err != nil {
-					// Log the error but don't fail the test
 					env.t.Logf("Warning: failed to close request body: %v", err)
 				}
 			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
-				if v, ok := payload["reply_to"]; ok {
-					if s, ok2 := v.(string); ok2 && s != "" {
-						env.mockAPIRequests["whatsapp_reply_to"]++
-					}
-				}
+				env.recordWhatsAppSend(payload, "text")
 			}
+			waMsgID := fmt.Sprintf("wamid.test%d", env.waMsgIDCounter.Add(1))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"id": "wamid.test123", "status": "sent"}`))
+			_, _ = fmt.Fprintf(w, `{"id": %q, "status": "sent"}`, waMsgID)
 
 		case strings.Contains(r.URL.Path, "/sendImage"):
 			failures := env.mockAPIFailures["whatsapp_send_image"]
@@ -604,21 +617,17 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			body, _ := io.ReadAll(r.Body)
 			defer func() {
 				if err := r.Body.Close(); err != nil {
-					// Log the error but don't fail the test
 					env.t.Logf("Warning: failed to close request body: %v", err)
 				}
 			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
-				if v, ok := payload["reply_to"]; ok {
-					if s, ok2 := v.(string); ok2 && s != "" {
-						env.mockAPIRequests["whatsapp_reply_to"]++
-					}
-				}
+				env.recordWhatsAppSend(payload, "image")
 			}
+			waMsgID := fmt.Sprintf("wamid.test%d", env.waMsgIDCounter.Add(1))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"id": "wamid.testIMG", "status": "sent"}`))
+			_, _ = fmt.Fprintf(w, `{"id": %q, "status": "sent"}`, waMsgID)
 
 		case strings.Contains(r.URL.Path, "/sendVideo"):
 			failures := env.mockAPIFailures["whatsapp_send_video"]
@@ -633,21 +642,17 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			body, _ := io.ReadAll(r.Body)
 			defer func() {
 				if err := r.Body.Close(); err != nil {
-					// Log the error but don't fail the test
 					env.t.Logf("Warning: failed to close request body: %v", err)
 				}
 			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
-				if v, ok := payload["reply_to"]; ok {
-					if s, ok2 := v.(string); ok2 && s != "" {
-						env.mockAPIRequests["whatsapp_reply_to"]++
-					}
-				}
+				env.recordWhatsAppSend(payload, "video")
 			}
+			waMsgID := fmt.Sprintf("wamid.test%d", env.waMsgIDCounter.Add(1))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"id": "wamid.testVID", "status": "sent"}`))
+			_, _ = fmt.Fprintf(w, `{"id": %q, "status": "sent"}`, waMsgID)
 
 		case strings.Contains(r.URL.Path, "/sendVoice"):
 			failures := env.mockAPIFailures["whatsapp_send_voice"]
@@ -662,21 +667,17 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			body, _ := io.ReadAll(r.Body)
 			defer func() {
 				if err := r.Body.Close(); err != nil {
-					// Log the error but don't fail the test
 					env.t.Logf("Warning: failed to close request body: %v", err)
 				}
 			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
-				if v, ok := payload["reply_to"]; ok {
-					if s, ok2 := v.(string); ok2 && s != "" {
-						env.mockAPIRequests["whatsapp_reply_to"]++
-					}
-				}
+				env.recordWhatsAppSend(payload, "voice")
 			}
+			waMsgID := fmt.Sprintf("wamid.test%d", env.waMsgIDCounter.Add(1))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"id": "wamid.testVOC", "status": "sent"}`))
+			_, _ = fmt.Fprintf(w, `{"id": %q, "status": "sent"}`, waMsgID)
 
 		case strings.Contains(r.URL.Path, "/sendDocument"):
 			failures := env.mockAPIFailures["whatsapp_send_document"]
@@ -691,21 +692,29 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			body, _ := io.ReadAll(r.Body)
 			defer func() {
 				if err := r.Body.Close(); err != nil {
-					// Log the error but don't fail the test
 					env.t.Logf("Warning: failed to close request body: %v", err)
 				}
 			}()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
-				if v, ok := payload["reply_to"]; ok {
-					if s, ok2 := v.(string); ok2 && s != "" {
-						env.mockAPIRequests["whatsapp_reply_to"]++
-					}
-				}
+				env.recordWhatsAppSend(payload, "document")
+			}
+			waMsgID := fmt.Sprintf("wamid.test%d", env.waMsgIDCounter.Add(1))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprintf(w, `{"id": %q, "status": "sent"}`, waMsgID)
+
+		case strings.Contains(r.URL.Path, "/reaction"):
+			env.mockAPIRequests["whatsapp_reaction"]++
+			body, _ := io.ReadAll(r.Body)
+			defer func() { _ = r.Body.Close() }()
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err == nil {
+				env.recordWhatsAppSend(payload, "reaction")
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"id": "wamid.testDOC", "status": "sent"}`))
+			_, _ = w.Write([]byte(`{"status": "ok"}`))
 
 		case strings.Contains(r.URL.Path, "/sendSeen"):
 			env.mockAPIRequests["ack"]++
@@ -722,10 +731,10 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 				_, _ = w.Write([]byte(`{"error": "temporary failure"}`))
 				return
 			}
+			ts := env.signalTimestampCounter.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			// Return a simple Signal response matching SendMessageResponse struct
-			_, _ = w.Write([]byte(`{"timestamp": 1234567890123, "messageId": "signal_msg_123"}`))
+			_, _ = fmt.Fprintf(w, `{"timestamp": %d}`, ts)
 
 		case strings.Contains(r.URL.Path, "/about"):
 			w.Header().Set("Content-Type", "application/json")
@@ -747,13 +756,13 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 				}
 
 				// Return a generic success response
+				rpcTS := env.signalTimestampCounter.Add(1)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				response := map[string]interface{}{
 					"jsonrpc": "2.0",
 					"result": map[string]interface{}{
-						"timestamp": int64(1234567890123),
-						"messageId": "signal_msg_123",
+						"timestamp": rpcTS,
 					},
 					"id": id,
 				}
@@ -1098,12 +1107,16 @@ func (env *TestEnvironment) CountMockAPIRequests(endpoint string) int {
 	return env.mockAPIRequests[endpoint]
 }
 
-// ResetMockAPICounters resets all API request counters
+// ResetMockAPICounters resets all API request counters and send records
 func (env *TestEnvironment) ResetMockAPICounters() {
 	env.mockAPILock.Lock()
 	defer env.mockAPILock.Unlock()
 	env.mockAPIRequests = make(map[string]int)
 	env.mockAPIFailures = make(map[string]int)
+
+	env.whatsappSendsMu.Lock()
+	env.whatsappSends = env.whatsappSends[:0]
+	env.whatsappSendsMu.Unlock()
 }
 
 // SetMockAPIFailures sets the number of failures for a specific endpoint
@@ -1111,6 +1124,57 @@ func (env *TestEnvironment) SetMockAPIFailures(endpoint string, failures int) {
 	env.mockAPILock.Lock()
 	defer env.mockAPILock.Unlock()
 	env.mockAPIFailures[endpoint] = failures
+}
+
+// recordWhatsAppSend records a WhatsApp send request and tracks reply_to for legacy counter.
+func (env *TestEnvironment) recordWhatsAppSend(payload map[string]interface{}, mediaType string) {
+	rec := WhatsAppSendRecord{MediaType: mediaType}
+	if v, ok := payload["chatId"].(string); ok {
+		rec.ChatID = v
+	}
+	if v, ok := payload["text"].(string); ok {
+		rec.Body = v
+	}
+	if v, ok := payload["body"].(string); ok && rec.Body == "" {
+		rec.Body = v
+	}
+	if v, ok := payload["reply_to"].(string); ok && v != "" {
+		rec.ReplyTo = v
+		env.mockAPIRequests["whatsapp_reply_to"]++
+	}
+	env.whatsappSendsMu.Lock()
+	env.whatsappSends = append(env.whatsappSends, rec)
+	env.whatsappSendsMu.Unlock()
+}
+
+// GetWhatsAppSends returns a copy of all recorded WhatsApp send requests.
+func (env *TestEnvironment) GetWhatsAppSends() []WhatsAppSendRecord {
+	env.whatsappSendsMu.Lock()
+	defer env.whatsappSendsMu.Unlock()
+	result := make([]WhatsAppSendRecord, len(env.whatsappSends))
+	copy(result, env.whatsappSends)
+	return result
+}
+
+// CreateTestMessageMappingWithChatID creates a test message mapping with an explicit WhatsApp chat ID.
+func (env *TestEnvironment) CreateTestMessageMappingWithChatID(whatsappMsgID, signalMsgID, chatID, sessionName string) *models.MessageMapping {
+	mapping := &models.MessageMapping{
+		WhatsAppChatID:  chatID,
+		WhatsAppMsgID:   whatsappMsgID,
+		SignalMsgID:     signalMsgID,
+		SessionName:     sessionName,
+		DeliveryStatus:  models.DeliveryStatusPending,
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	ctx := context.Background()
+	err := env.db.SaveMessageMapping(ctx, mapping)
+	require.NoError(env.t, err)
+
+	return mapping
 }
 
 // GetMemoryUsage returns current memory usage statistics

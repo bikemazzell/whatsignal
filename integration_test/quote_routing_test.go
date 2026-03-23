@@ -115,19 +115,38 @@ func sendSignalWebhookWithQuote(t *testing.T, env *TestEnvironment, source, acco
 	return resp
 }
 
-// waitForProcessing waits for async message processing to complete.
-func waitForProcessing() {
-	time.Sleep(200 * time.Millisecond)
+// waitForMockAPICount polls until the named mock API counter reaches the expected value, or times out.
+func waitForMockAPICount(t *testing.T, env *TestEnvironment, endpoint string, expected int) {
+	t.Helper()
+	ok := env.WaitForCondition(func() bool {
+		return env.CountMockAPIRequests(endpoint) >= expected
+	}, 3*time.Second, 20*time.Millisecond)
+	if !ok {
+		t.Fatalf("Timed out waiting for %s count to reach %d (got %d)", endpoint, expected, env.CountMockAPIRequests(endpoint))
+	}
+}
+
+// waitForMapping polls until a message mapping exists in the database for the given ID.
+func waitForMapping(t *testing.T, env *TestEnvironment, msgID string) {
+	t.Helper()
+	ok := env.WaitForCondition(func() bool {
+		m, err := env.db.GetMessageMapping(context.Background(), msgID)
+		return err == nil && m != nil
+	}, 3*time.Second, 20*time.Millisecond)
+	if !ok {
+		t.Fatalf("Timed out waiting for mapping of message %s", msgID)
+	}
 }
 
 // getSignalMsgIDForWhatsAppMsg looks up the stored mapping for a WhatsApp message
 // and returns the SignalMsgID (the timestamp string assigned during WA→Signal bridging).
 func getSignalMsgIDForWhatsAppMsg(t *testing.T, env *TestEnvironment, whatsappMsgID string) string {
 	t.Helper()
+	waitForMapping(t, env, whatsappMsgID)
 	ctx := context.Background()
 	mapping, err := env.db.GetMessageMapping(ctx, whatsappMsgID)
-	require.NoError(t, err, "Should find mapping for WhatsApp message %s", whatsappMsgID)
-	require.NotNil(t, mapping, "Mapping should not be nil for WhatsApp message %s", whatsappMsgID)
+	require.NoError(t, err)
+	require.NotNil(t, mapping)
 	return mapping.SignalMsgID
 }
 
@@ -144,14 +163,12 @@ func TestQuoteRouting_ReplyGoesToQuotedSender(t *testing.T) {
 	// Step 1: Alice sends a WhatsApp message → bridged to Signal
 	aliceMsgID := fmt.Sprintf("wamid.alice_%d", time.Now().UnixNano())
 	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", aliceChatID, aliceMsgID, "Hi from Alice", "Alice"))
-	waitForProcessing()
 
 	// Step 2: Bob sends a WhatsApp message → bridged to Signal (now the "latest")
 	bobMsgID := fmt.Sprintf("wamid.bob_%d", time.Now().UnixNano())
 	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", bobChatID, bobMsgID, "Hi from Bob", "Bob"))
-	waitForProcessing()
 
-	// Step 3: Read back Alice's SignalMsgID from the database
+	// Step 3: Read back Alice's SignalMsgID from the database (waitForMapping polls internally)
 	aliceSignalMsgID := getSignalMsgIDForWhatsAppMsg(t, env, aliceMsgID)
 	t.Logf("Alice's SignalMsgID: %s", aliceSignalMsgID)
 
@@ -169,7 +186,7 @@ func TestQuoteRouting_ReplyGoesToQuotedSender(t *testing.T) {
 	resp := sendSignalWebhookWithQuote(t, env, "+1111111111", "+1111111111", "Replying to Alice", quoteID)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	waitForProcessing()
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	// Step 5: Assert the reply went to Alice, not Bob
 	sends := env.GetWhatsAppSends()
@@ -192,32 +209,30 @@ func TestFallbackRouting_NoQuote_RoutesToLatestWithWarning(t *testing.T) {
 	bobChatID := "15559876543@c.us"
 
 	// Alice sends first, then Bob sends (Bob is now latest)
-	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", aliceChatID,
-		fmt.Sprintf("wamid.alice_%d", time.Now().UnixNano()), "Hi from Alice", "Alice"))
-	waitForProcessing()
+	aliceMsgID := fmt.Sprintf("wamid.alice_%d", time.Now().UnixNano())
+	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", aliceChatID, aliceMsgID, "Hi from Alice", "Alice"))
+	waitForMockAPICount(t, env, "send", 1) // Wait for WA→Signal forward
 
-	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", bobChatID,
-		fmt.Sprintf("wamid.bob_%d", time.Now().UnixNano()), "Hi from Bob", "Bob"))
-	waitForProcessing()
+	bobMsgID := fmt.Sprintf("wamid.bob_%d", time.Now().UnixNano())
+	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", bobChatID, bobMsgID, "Hi from Bob", "Bob"))
+	waitForMockAPICount(t, env, "send", 2) // Wait for second WA→Signal forward
 
 	// Reset tracking, send unquoted reply from Signal
 	env.ResetMockAPICounters()
-	signalSendsBefore := env.CountMockAPIRequests("send")
 
 	resp := sendSignalWebhookWithQuote(t, env, "+1111111111", "+1111111111", "Unquoted reply", 0)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	waitForProcessing()
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	// Assert: message went to Bob (latest)
 	sends := env.GetWhatsAppSends()
 	require.NotEmpty(t, sends, "Should have at least one WhatsApp send")
 	assert.Equal(t, bobChatID, sends[len(sends)-1].ChatID, "Unquoted reply should go to latest sender (Bob)")
 
-	// Assert: a fallback warning notification was sent to Signal
-	// The WA→Signal forwards (2) + the fallback notification (1) = at least signalSendsBefore + 1
-	signalSendsAfter := env.CountMockAPIRequests("send")
-	assert.Greater(t, signalSendsAfter, signalSendsBefore,
+	// Assert: a fallback warning notification was sent to Signal (1 WA send + 1 notification = 2 Signal sends post-reset)
+	waitForMockAPICount(t, env, "send", 1) // At least the fallback notification
+	assert.GreaterOrEqual(t, env.CountMockAPIRequests("send"), 1,
 		"A fallback routing notification should have been sent to Signal")
 }
 
@@ -234,8 +249,7 @@ func TestQuoteRouting_ExpiredMapping_ReturnsError(t *testing.T) {
 	resp := sendSignalWebhookWithQuote(t, env, "+1111111111", "+1111111111", "Reply to ghost", nonExistentQuoteID)
 	defer func() { _ = resp.Body.Close() }()
 
-	waitForProcessing()
-
+	// The webhook is synchronous — the HTTP response already carries the error. No polling needed.
 	// The webhook should return an error (500) since no mapping exists
 	// and extractMappingFromQuotedText should also fail (quoted text = "quoted text" has no phone number)
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode,
@@ -261,13 +275,11 @@ func TestGroupQuoteRouting_CorrectGroup(t *testing.T) {
 	groupAMsgID := fmt.Sprintf("wamid.grpA_%d", time.Now().UnixNano())
 	sendWhatsAppWebhook(t, env, makeGroupWhatsAppWebhook(
 		"personal", groupAChatID, participantPhone, groupAMsgID, "Hello from Group A", "Alice"))
-	waitForProcessing()
 
 	// Forward a message from Group B to Signal (now latest)
 	groupBMsgID := fmt.Sprintf("wamid.grpB_%d", time.Now().UnixNano())
 	sendWhatsAppWebhook(t, env, makeGroupWhatsAppWebhook(
 		"personal", groupBChatID, participantPhone, groupBMsgID, "Hello from Group B", "Bob"))
-	waitForProcessing()
 
 	// Get Group A's SignalMsgID
 	groupASignalMsgID := getSignalMsgIDForWhatsAppMsg(t, env, groupAMsgID)
@@ -284,7 +296,7 @@ func TestGroupQuoteRouting_CorrectGroup(t *testing.T) {
 		"Reply to Group A", quoteID)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	waitForProcessing()
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	// Assert: reply went to Group A, not Group B
 	sends := env.GetWhatsAppSends()
@@ -317,7 +329,7 @@ func TestSyncMessage_NestedQuote_DetectedCorrectly(t *testing.T) {
 
 	// The webhook handler directly parses dataMessage.quote, so this should succeed
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	waitForProcessing()
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	// Assert: message was sent to the correct chat
 	sends := env.GetWhatsAppSends()
@@ -339,12 +351,10 @@ func TestReactionRouting_TargetsCorrectMessage(t *testing.T) {
 	// Alice sends a WhatsApp message → bridged to Signal
 	aliceMsgID := fmt.Sprintf("wamid.alice_react_%d", time.Now().UnixNano())
 	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", aliceChatID, aliceMsgID, "React to me!", "Alice"))
-	waitForProcessing()
 
 	// Bob sends a WhatsApp message → bridged to Signal
 	bobMsgID := fmt.Sprintf("wamid.bob_react_%d", time.Now().UnixNano())
 	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", bobChatID, bobMsgID, "Don't react to me", "Bob"))
-	waitForProcessing()
 
 	// Get Alice's SignalMsgID
 	aliceSignalMsgID := getSignalMsgIDForWhatsAppMsg(t, env, aliceMsgID)
@@ -372,11 +382,18 @@ func TestReactionRouting_TargetsCorrectMessage(t *testing.T) {
 
 	err = env.messageService.ProcessIncomingSignalMessageWithDestination(ctx, reactionMsg, "+1111111111")
 	require.NoError(t, err, "Reaction processing should succeed")
-	waitForProcessing()
+	waitForMockAPICount(t, env, "whatsapp_reaction", 1)
 
 	// Assert: a WhatsApp reaction was sent to the /reaction endpoint.
-	// The reaction API uses a different payload format (ReactionRequest) that doesn't include chatId,
-	// so we verify the count and that no error was returned (which means the correct mapping was found).
 	assert.Equal(t, 1, env.CountMockAPIRequests("whatsapp_reaction"),
 		"Exactly one WhatsApp reaction should have been sent")
+
+	// Assert: the reaction targeted Alice's message (ReactionRequest has messageId, not chatId).
+	// The messageId in the reaction payload should be Alice's WhatsApp message ID.
+	sends := env.GetWhatsAppSends()
+	require.NotEmpty(t, sends, "Should have recorded the reaction send")
+	reactionSend := sends[len(sends)-1]
+	assert.Equal(t, "reaction", reactionSend.MediaType)
+	assert.Equal(t, aliceMsgID, reactionSend.ReplyTo,
+		"Reaction should target Alice's WhatsApp message ID, not Bob's")
 }

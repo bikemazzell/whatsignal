@@ -845,6 +845,12 @@ func (b *bridge) extractMappingFromQuotedText(quotedText string) *models.Message
 
 	senderInfo = strings.TrimPrefix(senderInfo, "📱 ")
 
+	// For group messages formatted as "Sender in GroupName", extract only
+	// the sender part (before " in ") to avoid concatenating digits from the group name.
+	if idx := strings.Index(senderInfo, " in "); idx > 0 {
+		senderInfo = senderInfo[:idx]
+	}
+
 	if len(senderInfo) < constants.MinPhoneNumberLength || !strings.ContainsAny(senderInfo, "0123456789") {
 		return nil
 	}

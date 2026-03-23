@@ -133,9 +133,8 @@ type TestEnvironment struct {
 	signalTimestampCounter atomic.Int64
 	waMsgIDCounter         atomic.Int64
 
-	// WhatsApp send tracking
-	whatsappSendsMu sync.Mutex
-	whatsappSends   []WhatsAppSendRecord
+	// WhatsApp send tracking (protected by mockAPILock — no separate mutex to avoid lock ordering issues)
+	whatsappSends []WhatsAppSendRecord
 }
 
 // IsolationMode defines how the test environment handles isolation
@@ -710,7 +709,13 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			defer func() { _ = r.Body.Close() }()
 			var payload map[string]interface{}
 			if err := json.Unmarshal(body, &payload); err == nil {
-				env.recordWhatsAppSend(payload, "reaction")
+				// ReactionRequest has {session, messageId, reaction} but not chatId.
+				// Store messageId in ReplyTo so tests can verify which message was targeted.
+				rec := WhatsAppSendRecord{MediaType: "reaction"}
+				if v, ok := payload["messageId"].(string); ok {
+					rec.ReplyTo = v
+				}
+				env.whatsappSends = append(env.whatsappSends, rec)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -1113,10 +1118,7 @@ func (env *TestEnvironment) ResetMockAPICounters() {
 	defer env.mockAPILock.Unlock()
 	env.mockAPIRequests = make(map[string]int)
 	env.mockAPIFailures = make(map[string]int)
-
-	env.whatsappSendsMu.Lock()
 	env.whatsappSends = env.whatsappSends[:0]
-	env.whatsappSendsMu.Unlock()
 }
 
 // SetMockAPIFailures sets the number of failures for a specific endpoint
@@ -1142,15 +1144,14 @@ func (env *TestEnvironment) recordWhatsAppSend(payload map[string]interface{}, m
 		rec.ReplyTo = v
 		env.mockAPIRequests["whatsapp_reply_to"]++
 	}
-	env.whatsappSendsMu.Lock()
+	// Caller holds mockAPILock — no additional lock needed.
 	env.whatsappSends = append(env.whatsappSends, rec)
-	env.whatsappSendsMu.Unlock()
 }
 
 // GetWhatsAppSends returns a copy of all recorded WhatsApp send requests.
 func (env *TestEnvironment) GetWhatsAppSends() []WhatsAppSendRecord {
-	env.whatsappSendsMu.Lock()
-	defer env.whatsappSendsMu.Unlock()
+	env.mockAPILock.RLock()
+	defer env.mockAPILock.RUnlock()
 	result := make([]WhatsAppSendRecord, len(env.whatsappSends))
 	copy(result, env.whatsappSends)
 	return result

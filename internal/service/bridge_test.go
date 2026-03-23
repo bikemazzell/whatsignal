@@ -1636,6 +1636,18 @@ func TestExtractMappingFromQuotedText(t *testing.T) {
 			wantChatID: "",
 			wantNil:    true,
 		},
+		{
+			name:       "group message - display name without digits in group name",
+			quotedText: "Alice in Family Group: Hello there",
+			wantChatID: "",
+			wantNil:    true,
+		},
+		{
+			name:       "group message - phone sender with digits in group name extracts sender only",
+			quotedText: "15551234567 in Test Group 2024: Hello there",
+			wantChatID: "15551234567@c.us",
+			wantNil:    false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2029,4 +2041,115 @@ func TestFallbackWarningGroupSeparateFromDirect(t *testing.T) {
 	assert.False(t, directExists, "Direct tracking should be cleared")
 	assert.True(t, groupExists, "Group tracking should remain")
 	assert.Equal(t, groupChatID, groupVal)
+}
+
+func TestResolveMessageMapping_QuoteLookupFails_FallbackToWrongChat(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Simulate: Alice and Bob both have mappings. User quotes Alice's message
+	// but the quote ID doesn't match any stored mapping (e.g., timestamp precision mismatch).
+	// The system should NOT silently route to Bob.
+
+	// Set up mock: GetMessageMapping returns nil (quote lookup fails)
+	b.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "9999999").Return(nil, nil)
+	// GetLatestMessageMappingBySession returns Bob's mapping (the "latest")
+	bobMapping := &models.MessageMapping{
+		WhatsAppChatID: "bob@c.us",
+		WhatsAppMsgID:  "wamid.bob1",
+		SignalMsgID:    "8888888",
+		SessionName:    "default",
+	}
+	b.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(bobMapping, nil)
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "signal_test_1",
+		Sender:    "+1234567890",
+		Message:   "Reply to Alice",
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:     "9999999",
+			Author: "+1234567890",
+			Text:   "no phone number here",
+		},
+	}
+
+	// The quote lookup fails (returns nil), and extractMappingFromQuotedText
+	// also fails (quoted text has no phone number). This should return an error,
+	// NOT fall back to Bob's chat.
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, "default")
+	assert.Error(t, err, "Should error when quote lookup fails and text extraction fails")
+	assert.Nil(t, mapping, "Should not return a mapping")
+	assert.False(t, usedFallback, "Should not use fallback")
+}
+
+func TestResolveMessageMapping_NoQuote_FallbackToLatest(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	bobMapping := &models.MessageMapping{
+		WhatsAppChatID: "bob@c.us",
+		WhatsAppMsgID:  "wamid.bob1",
+		SignalMsgID:    "8888888",
+		SessionName:    "default",
+	}
+	b.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(bobMapping, nil)
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "signal_test_2",
+		Sender:    "+1234567890",
+		Message:   "Unquoted reply",
+	}
+
+	// No quote → should use fallback
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, "default")
+	require.NoError(t, err)
+	require.NotNil(t, mapping)
+	assert.True(t, usedFallback, "Should indicate fallback was used")
+	assert.Equal(t, "bob@c.us", mapping.WhatsAppChatID, "Should route to latest (Bob)")
+}
+
+func TestResolveMessageMapping_QuoteFound_RoutesToCorrectChat(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	aliceMapping := &models.MessageMapping{
+		WhatsAppChatID: "alice@c.us",
+		WhatsAppMsgID:  "wamid.alice1",
+		SignalMsgID:    "7777777",
+		SessionName:    "default",
+	}
+	b.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "7777777").Return(aliceMapping, nil)
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "signal_test_3",
+		Sender:    "+1234567890",
+		Message:   "Reply to Alice",
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:     "7777777",
+			Author: "+1234567890",
+			Text:   "Alice's message",
+		},
+	}
+
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, "default")
+	require.NoError(t, err)
+	require.NotNil(t, mapping)
+	assert.False(t, usedFallback, "Should not use fallback when quote is found")
+	assert.Equal(t, "alice@c.us", mapping.WhatsAppChatID, "Should route to Alice")
 }

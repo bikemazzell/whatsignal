@@ -397,3 +397,88 @@ func TestReactionRouting_TargetsCorrectMessage(t *testing.T) {
 	assert.Equal(t, aliceMsgID, reactionSend.ReplyTo,
 		"Reaction should target Alice's WhatsApp message ID, not Bob's")
 }
+
+// TestQuoteRouting_TimestampPrecisionMismatch_DoesNotMisroute verifies that if
+// signal-cli returns a different timestamp precision in the quote ID vs what was
+// stored (e.g., microseconds vs milliseconds), the system returns an error
+// instead of silently routing to the wrong person.
+//
+// This is the most likely root cause of the user's reported bug: "I quote Alice's
+// message and it goes to Bob." If the quote ID doesn't match the stored SignalMsgID,
+// resolveMessageMapping should fail, not fall back to the latest chat.
+func TestQuoteRouting_TimestampPrecisionMismatch_DoesNotMisroute(t *testing.T) {
+	env := NewTestEnvironment(t, "ts_precision_mismatch", IsolationProcess)
+	defer env.Cleanup()
+	env.StartMessageFlowServer()
+
+	aliceChatID := "15551234567@c.us"
+	bobChatID := "15559876543@c.us"
+
+	// Alice sends a message → bridged to Signal with timestamp T
+	aliceMsgID := fmt.Sprintf("wamid.alice_ts_%d", time.Now().UnixNano())
+	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", aliceChatID, aliceMsgID, "Hi from Alice", "Alice"))
+
+	// Bob sends a message → bridged to Signal (now latest)
+	bobMsgID := fmt.Sprintf("wamid.bob_ts_%d", time.Now().UnixNano())
+	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", bobChatID, bobMsgID, "Hi from Bob", "Bob"))
+
+	// Get Alice's stored SignalMsgID (e.g., "1700000000001")
+	aliceSignalMsgID := getSignalMsgIDForWhatsAppMsg(t, env, aliceMsgID)
+	aliceSignalTS, err := strconv.ParseInt(aliceSignalMsgID, 10, 64)
+	require.NoError(t, err)
+
+	env.ResetMockAPICounters()
+
+	// Simulate a precision mismatch: the quote ID is the stored timestamp * 1000
+	// (as if signal-cli returned microseconds while we stored milliseconds)
+	mismatchedQuoteID := aliceSignalTS * 1000
+	t.Logf("Stored SignalMsgID: %s, Mismatched quote ID: %d", aliceSignalMsgID, mismatchedQuoteID)
+
+	resp := sendSignalWebhookWithQuote(t, env, "+1111111111", "+1111111111",
+		"Reply with wrong precision", mismatchedQuoteID)
+	defer func() { _ = resp.Body.Close() }()
+
+	// The quote ID doesn't match any stored mapping. The system should return an error
+	// (500), NOT silently fall back to Bob's chat.
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode,
+		"Mismatched quote ID should fail, not silently route to Bob")
+	assert.Equal(t, 0, env.CountMockAPIRequests("whatsapp_send"),
+		"No WhatsApp message should be sent when quote ID doesn't match")
+}
+
+// TestQuoteRouting_QuoteMatchesStoredTimestamp_RoutesCorrectly verifies the
+// end-to-end happy path: the timestamp returned by signal-cli's /v2/send
+// is exactly the same as the quote.id when the message is later quoted.
+// This proves the system works when signal-cli behaves consistently.
+func TestQuoteRouting_QuoteMatchesStoredTimestamp_RoutesCorrectly(t *testing.T) {
+	env := NewTestEnvironment(t, "ts_match_e2e", IsolationProcess)
+	defer env.Cleanup()
+	env.StartMessageFlowServer()
+
+	aliceChatID := "15551234567@c.us"
+
+	// Alice sends a message → bridged to Signal
+	aliceMsgID := fmt.Sprintf("wamid.alice_e2e_%d", time.Now().UnixNano())
+	sendWhatsAppWebhook(t, env, makeWhatsAppWebhook("personal", aliceChatID, aliceMsgID, "Hi from Alice", "Alice"))
+
+	// Get the exact stored SignalMsgID
+	aliceSignalMsgID := getSignalMsgIDForWhatsAppMsg(t, env, aliceMsgID)
+	aliceSignalTS, err := strconv.ParseInt(aliceSignalMsgID, 10, 64)
+	require.NoError(t, err)
+
+	env.ResetMockAPICounters()
+
+	// Quote with the EXACT same timestamp — this is the expected signal-cli behavior
+	resp := sendSignalWebhookWithQuote(t, env, "+1111111111", "+1111111111",
+		"Reply to Alice (exact match)", aliceSignalTS)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
+
+	sends := env.GetWhatsAppSends()
+	require.NotEmpty(t, sends)
+	assert.Equal(t, aliceChatID, sends[len(sends)-1].ChatID,
+		"Exact timestamp match should route to Alice")
+	assert.Equal(t, aliceMsgID, sends[len(sends)-1].ReplyTo,
+		"Should set reply_to to Alice's WhatsApp message ID")
+}

@@ -2153,3 +2153,86 @@ func TestResolveMessageMapping_QuoteFound_RoutesToCorrectChat(t *testing.T) {
 	assert.False(t, usedFallback, "Should not use fallback when quote is found")
 	assert.Equal(t, "alice@c.us", mapping.WhatsAppChatID, "Should route to Alice")
 }
+
+func TestResolveMessageMapping_TimestampPrecisionMismatch_ReturnsError(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Stored mapping has SignalMsgID "1700000000001" (milliseconds)
+	// But quote.ID is "1700000000001000" (microseconds — different precision)
+	// GetMessageMapping should return nil for the mismatched ID
+	b.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "1700000000001000").Return(nil, nil)
+
+	// Bob's mapping is the latest — this is the one we do NOT want to route to
+	bobMapping := &models.MessageMapping{
+		WhatsAppChatID: "bob@c.us",
+		WhatsAppMsgID:  "wamid.bob1",
+		SignalMsgID:    "1700000000002",
+		SessionName:    "default",
+	}
+	b.db.(*mockDatabaseService).On("GetLatestMessageMappingBySession", ctx, "default").Return(bobMapping, nil)
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "signal_mismatch_1",
+		Sender:    "+1234567890",
+		Message:   "Reply to Alice",
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:     "1700000000001000", // Mismatched precision
+			Author: "+1234567890",
+			Text:   "Alice: Hi there", // Has phone number for text fallback
+		},
+	}
+
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, "default")
+
+	// The DB lookup fails (nil). The text extraction fallback tries to parse
+	// "Alice: Hi there" but "Alice" has no digits, so it also fails.
+	// The function should return an error — NOT fall back to Bob.
+	assert.Error(t, err, "Mismatched timestamp precision should return error")
+	assert.Nil(t, mapping, "Should not return any mapping")
+	assert.False(t, usedFallback, "Should not use fallback routing")
+}
+
+func TestResolveMessageMapping_TimestampMismatch_TextFallbackSucceeds(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Quote ID doesn't match stored mapping
+	b.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "9999999999999").Return(nil, nil)
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "signal_text_fallback_1",
+		Sender:    "+1234567890",
+		Message:   "Reply via text fallback",
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:     "9999999999999",
+			Author: "+1234567890",
+			// Quoted text contains the sender phone number in the bridge format
+			Text: "15551234567: Original message from Alice",
+		},
+	}
+
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, "default")
+
+	// DB lookup fails, but text extraction succeeds because the quoted text
+	// contains a phone number in the "Phone: message" format.
+	require.NoError(t, err, "Text fallback should succeed")
+	require.NotNil(t, mapping)
+	assert.False(t, usedFallback, "Text extraction is not fallback routing")
+	assert.Equal(t, "15551234567@c.us", mapping.WhatsAppChatID,
+		"Should extract phone number from quoted text")
+}

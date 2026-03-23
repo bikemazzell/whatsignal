@@ -845,8 +845,10 @@ func (b *bridge) extractMappingFromQuotedText(quotedText string) *models.Message
 
 	senderInfo = strings.TrimPrefix(senderInfo, "📱 ")
 
-	// For group messages formatted as "Sender in GroupName", extract only
-	// the sender part (before " in ") to avoid concatenating digits from the group name.
+	// Bridge formats group messages as "Sender in GroupName: text" (see HandleWhatsAppMessageWithSession).
+	// Direct messages are "Sender: text". When extracting digits for the phone number, we must
+	// isolate the sender portion to avoid concatenating digits from the group name
+	// (e.g., "15551234567 in Group 2024" would yield "155512345672024" without this split).
 	if idx := strings.Index(senderInfo, " in "); idx > 0 {
 		senderInfo = senderInfo[:idx]
 	}

@@ -14,8 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Weak reaction test assertion**: Reaction routing test now asserts that the reaction payload's `messageId` matches Alice's WhatsApp message ID, verifying correct message targeting.
 
 ### Testing
-- Added `resolveMessageMapping` unit tests covering: quote lookup failure returns error (no silent fallback to wrong person), no-quote routes to latest sender, successful quote routes to correct chat.
+- Added `resolveMessageMapping` unit tests covering: quote lookup failure returns error (no silent fallback to wrong person), no-quote routes to latest sender, successful quote routes to correct chat, timestamp precision mismatch returns error, and text fallback extraction succeeds when DB lookup fails.
 - Added group-message edge case to `extractMappingFromQuotedText` tests: phone sender with digits in group name.
+- Added `TestQuoteRouting_TimestampPrecisionMismatch_DoesNotMisroute`: integration test proving the system returns HTTP 500 (not silent misroute to Bob) when a quote ID differs from the stored SignalMsgID by a precision factor (e.g., microseconds vs milliseconds).
+- Added `TestQuoteRouting_QuoteMatchesStoredTimestamp_RoutesCorrectly`: end-to-end integration test proving exact timestamp match routes to the correct sender with `reply_to` set.
 
 ## [1.2.30]
 

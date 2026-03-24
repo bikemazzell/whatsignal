@@ -19,6 +19,9 @@
 ### Test assertions: Assert the thing you care about
 - A test named `TestReactionRouting_TargetsCorrectMessage` must assert that the correct message was targeted. Asserting only that "no error occurred" or "the count is 1" doesn't verify routing correctness. If the assertion can't be made due to API limitations, document why and mark it as a known gap.
 
+### Infrastructure: signal-cli-rest-api requires MODE=json-rpc
+- `MODE=native` strips quote fields from signal-cli's JSON output, causing all quoted replies to lose their quote and trigger fallback routing. `MODE=json-rpc` uses signal-cli's full JSON-RPC interface which preserves quotes, reactions, mentions, and all message metadata. This is a hard requirement — the bridge cannot detect quoted messages in native mode.
+
 ## Release checklist
 
 - Always check for the latest Go version and update ALL of the following before finishing a commit or release:

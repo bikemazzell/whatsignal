@@ -5,6 +5,11 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.33]
+
+### Fixed
+- **Root cause of "reply goes to wrong person" bug**: signal-cli-rest-api `MODE=native` strips quote fields from the JSON output, causing all quoted replies to lose their quote and trigger fallback routing to the wrong person. Changed docker-compose.yml to use `MODE=json-rpc` which preserves full message metadata including quotes.
+
 ## [1.2.32]
 
 ### Fixed
@@ -983,6 +988,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.33]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.33
 [1.2.32]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.32
 [1.2.31]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.31
 [1.2.30]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.30

@@ -54,7 +54,8 @@ func (w *WSReceiver) Connect(ctx context.Context) (*websocket.Conn, error) {
 // ReadMessage reads and parses one message from the WebSocket connection.
 // Returns the raw RestMessage for conversion by the caller.
 // Returns nil RestMessage for non-actionable frames (pings, empty messages).
-func ReadMessage(ctx context.Context, conn *websocket.Conn) (*types.RestMessage, error) {
+// The logger parameter is used for diagnostic logging of raw WebSocket frames.
+func ReadMessage(ctx context.Context, conn *websocket.Conn, logger *logrus.Logger) (*types.RestMessage, error) {
 	_, data, err := conn.Read(ctx)
 	if err != nil {
 		return nil, err
@@ -62,12 +63,29 @@ func ReadMessage(ctx context.Context, conn *websocket.Conn) (*types.RestMessage,
 
 	var msg types.RestMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
+		if logger != nil {
+			logger.WithField("raw_frame", string(data)).Error("Failed to unmarshal WebSocket message")
+		}
 		return nil, fmt.Errorf("failed to unmarshal WebSocket message: %w", err)
 	}
 
 	// Skip non-actionable messages (receipts, typing indicators)
 	if msg.Envelope.DataMessage == nil && msg.Envelope.SyncMessage == nil {
 		return nil, nil
+	}
+
+	// Diagnostic: log when a DataMessage has text but no quote
+	if logger != nil && msg.Envelope.DataMessage != nil &&
+		msg.Envelope.DataMessage.GetQuote() == nil &&
+		msg.Envelope.DataMessage.Message != "" {
+		hasQuoteKey := strings.Contains(string(data), `"quote"`) ||
+			strings.Contains(string(data), `"quoteMessage"`) ||
+			strings.Contains(string(data), `"quotedMessage"`)
+		if hasQuoteKey {
+			logger.WithField("raw_frame", string(data)).Error("WebSocket DataMessage has quote key in JSON but parsing yielded nil")
+		} else {
+			logger.WithField("raw_frame", string(data)).Warn("WebSocket DataMessage has text but no quote in JSON")
+		}
 	}
 
 	return &msg, nil

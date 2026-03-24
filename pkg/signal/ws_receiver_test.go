@@ -104,7 +104,7 @@ func TestReadMessage_DataMessageWithQuote(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.CloseNow() //nolint:errcheck
 
-	result, err := ReadMessage(ctx, conn)
+	result, err := ReadMessage(ctx, conn, testLogger())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "+15550000001", result.Envelope.Source)
@@ -155,7 +155,7 @@ func TestReadMessage_ReceiptMessageIgnored(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.CloseNow() //nolint:errcheck
 
-	result, err := ReadMessage(ctx, conn)
+	result, err := ReadMessage(ctx, conn, testLogger())
 	require.NoError(t, err)
 	assert.Nil(t, result, "Receipt messages should be skipped")
 }
@@ -177,7 +177,7 @@ func TestReadMessage_ConnectionClosed(t *testing.T) {
 	conn, err := receiver.Connect(ctx)
 	require.NoError(t, err)
 
-	_, err = ReadMessage(ctx, conn)
+	_, err = ReadMessage(ctx, conn, testLogger())
 	assert.Error(t, err, "Should return error on closed connection")
 }
 

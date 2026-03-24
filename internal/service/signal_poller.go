@@ -505,7 +505,7 @@ func (sp *SignalPoller) wsReadLoop(conn *websocket.Conn) {
 			return
 		}
 
-		msg, err := signal.ReadMessage(sp.ctx, conn)
+		msg, err := signal.ReadMessage(sp.ctx, conn, sp.logger)
 		if err != nil {
 			if sp.ctx.Err() != nil {
 				return
@@ -527,6 +527,14 @@ func (sp *SignalPoller) wsReadLoop(conn *websocket.Conn) {
 
 		converted := sigClient.ConvertRestMessages(sp.ctx, []signaltypes.RestMessage{*msg})
 		for _, m := range converted {
+			sp.logger.WithFields(logrus.Fields{
+				"messageID":  m.MessageID,
+				"sender":     SanitizePhoneNumber(m.Sender),
+				"hasQuote":   m.QuotedMessage != nil,
+				"isSentByMe": m.IsSentByMe,
+				"hasText":    m.Message != "",
+			}).Info("WebSocket message converted")
+
 			if err := sp.messageService.DispatchSingleSignalMessage(sp.ctx, m); err != nil {
 				sp.logger.WithError(err).WithField("messageID", m.MessageID).Error("Failed to dispatch WebSocket message")
 			}

@@ -5,6 +5,20 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.34]
+
+### Added
+- **WebSocket receive support for signal-cli json-rpc mode**: The bridge now auto-detects the signal-cli mode via `/v1/about` and uses WebSocket (`ws://{host}/v1/receive/{phone}`) for real-time message receiving in json-rpc mode. This preserves full message metadata including quotes, reactions, and mentions — fixing the root cause of the "reply goes to wrong person" bug. HTTP long-polling remains available and untouched for native mode.
+- **Auto-detection**: No manual mode configuration required. The poller reads the `mode` field from signal-cli's `/v1/about` response and selects WebSocket or HTTP polling automatically.
+- **WebSocket reconnection**: Exponential backoff with jitter on disconnect. Stable connections for days; automatic recovery on transient failures.
+- **Emergency rollback**: Set `"forceNativePolling": true` in config.json to force HTTP polling even when signal-cli reports json-rpc mode.
+- **`DispatchSingleSignalMessage`**: Lightweight single-message dispatch path for WebSocket-delivered messages, avoiding batch overhead.
+- **`ConvertRestMessages`**: Public method on `SignalClient` for shared message conversion between HTTP and WebSocket paths.
+
+### Changed
+- docker-compose.yml: `MODE=json-rpc` (removed `AUTO_RECEIVE_SCHEDULE` which is incompatible with json-rpc mode).
+- Added `coder/websocket` dependency (actively maintained WebSocket library with context-native API, replacing the archived `gorilla/websocket`).
+
 ## [1.2.33]
 
 ### Fixed
@@ -988,6 +1002,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.34]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.34
 [1.2.33]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.33
 [1.2.32]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.32
 [1.2.31]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.31

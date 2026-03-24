@@ -65,6 +65,10 @@ EXPOSE 8082
 # Security: Use non-root user (distroless nonroot user: uid=65532)
 USER nonroot:nonroot
 
+# Health check using the binary's built-in --healthcheck flag (distroless has no shell/curl)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/app/whatsignal", "--healthcheck"]
+
 # Default command with explicit path
 ENTRYPOINT ["/app/whatsignal"]
 

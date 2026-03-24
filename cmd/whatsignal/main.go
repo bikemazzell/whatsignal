@@ -34,9 +34,10 @@ var (
 	GitCommit = "unknown"
 
 	// CLI flags
-	verbose    = flag.Bool("verbose", false, "Enable verbose logging (includes sensitive information)")
-	configPath = flag.String("config", "config.json", "Path to configuration file")
-	version    = flag.Bool("version", false, "Show version information")
+	verbose     = flag.Bool("verbose", false, "Enable verbose logging (includes sensitive information)")
+	configPath  = flag.String("config", "config.json", "Path to configuration file")
+	version     = flag.Bool("version", false, "Show version information")
+	healthcheck = flag.Bool("healthcheck", false, "Run a health check against the local server and exit")
 )
 
 func main() {
@@ -47,12 +48,31 @@ func main() {
 		os.Exit(0)
 	}
 
+	if *healthcheck {
+		os.Exit(runHealthCheck())
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := run(ctx); err != nil {
 		logrus.Fatalf("Application error: %v", err)
 	}
+}
+
+func runHealthCheck() int {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://localhost:8082/health") // #nosec G107 - localhost-only health check
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Health check failed: %v\n", err)
+		return 1
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Health check returned status %d\n", resp.StatusCode)
+		return 1
+	}
+	return 0
 }
 
 func run(ctx context.Context) error {

@@ -296,14 +296,9 @@ security:
 		exit 1; \
 	fi
 	@echo "Running govulncheck..."
-	@if [ -x "$$(go env GOPATH)/bin/govulncheck" ]; then \
-		$$(go env GOPATH)/bin/govulncheck ./...; \
-	elif command -v govulncheck >/dev/null 2>&1; then \
-		govulncheck ./...; \
-	else \
-		echo "govulncheck not installed. Install with: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
-		exit 1; \
-	fi
+	@go build -o /tmp/whatsignal-vulncheck ./cmd/whatsignal && \
+		go run golang.org/x/vuln/cmd/govulncheck@latest -mode=binary /tmp/whatsignal-vulncheck && \
+		rm -f /tmp/whatsignal-vulncheck
 
 # Install CI/CD tools
 .PHONY: install-tools

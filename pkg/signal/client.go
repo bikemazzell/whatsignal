@@ -31,6 +31,14 @@ type Client interface {
 	ListAttachments(ctx context.Context) ([]string, error)
 }
 
+// maskPhone masks a phone number for logging, showing only the last 4 digits.
+func maskPhone(phone string) string {
+	if len(phone) <= 4 {
+		return "***"
+	}
+	return "***" + phone[len(phone)-4:]
+}
+
 type SignalClient struct {
 	baseURL            string
 	client             *http.Client
@@ -160,7 +168,7 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}
 
 	c.logger.WithFields(logrus.Fields{
-		"recipient":  recipient,
+		"recipient":  maskPhone(recipient),
 		"timestamp":  timestamp,
 		"messageId":  response.MessageID,
 		"statusCode": resp.StatusCode,
@@ -293,12 +301,15 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			if msg.Envelope.DataMessage != nil &&
 				msg.Envelope.DataMessage.GetQuote() == nil &&
 				!syncQuoteDetected {
-				if strings.Contains(rawEnvStr, `"quote"`) {
-					c.logger.Error("DataMessage JSON has 'quote' key but parsing yielded nil - possible field name mismatch")
+				// Check all three quote field name variants in raw JSON
+				hasQuoteKey := strings.Contains(rawEnvStr, `"quote"`) ||
+					strings.Contains(rawEnvStr, `"quoteMessage"`) ||
+					strings.Contains(rawEnvStr, `"quotedMessage"`)
+				if hasQuoteKey {
+					c.logger.Error("DataMessage JSON has quote key but parsing yielded nil - possible field name mismatch")
 					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for quote parse failure")
 				} else if msg.Envelope.DataMessage.Message != "" {
-					c.logger.Warn("DataMessage has text but no quote detected")
-					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for missing quote")
+					c.logger.WithField("raw_envelope", rawEnvStr).Warn("DataMessage has text but no quote in JSON - if user quoted a message, signal-cli did not include it")
 				}
 			}
 			if msg.Envelope.DataMessage != nil &&
@@ -473,8 +484,8 @@ func (c *SignalClient) convertSyncMessageToSignalMessage(ctx context.Context, ms
 
 	c.logger.WithFields(logrus.Fields{
 		"messageID":   sigMsg.MessageID,
-		"sender":      sigMsg.Sender,
-		"destination": sigMsg.Destination,
+		"sender":      maskPhone(sigMsg.Sender),
+		"destination": maskPhone(sigMsg.Destination),
 		"isSentByMe":  true,
 	}).Debug("Processed sync message (sent by user)")
 

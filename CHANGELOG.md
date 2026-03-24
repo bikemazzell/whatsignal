@@ -5,6 +5,19 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.32]
+
+### Fixed
+- **Phone number leak in Signal client logs**: The `recipient` field in "Signal message sent successfully" log messages exposed the full phone number. Now masked to show only last 4 digits (e.g., `***6791`). Also masked `sender` and `destination` in sync message debug logs.
+- **Dockerfile missing HEALTHCHECK (Trivy DS-0026)**: Added `--healthcheck` flag to the whatsignal binary that probes `localhost:8082/health` and exits 0/1. Added `HEALTHCHECK` instruction to Dockerfile using the binary's built-in flag. Required for distroless containers which have no shell, curl, or wget.
+- **govulncheck failing in Makefile**: govulncheck's package loader doesn't respect GOTOOLCHAIN, causing source-mode scans to fail when the system Go is older than the project's toolchain. Switched to binary-mode scan (`-mode=binary`) which is both compatible and more accurate (scans what actually ships).
+
+### Improved
+- **Quote detection diagnostics**: Enhanced raw envelope logging to check all three quote field name variants (`quote`, `quoteMessage`, `quotedMessage`) in JSON. Raw envelope now logged at Warn level (previously Debug only) when a DataMessage has text but no quote, enabling production diagnosis of signal-cli quote omission.
+
+### Security
+- **Dependabot CVE-2026-33186 (google.golang.org/grpc)**: Already patched — project uses grpc v1.79.3 which is the fixed version. Alert dismissed.
+
 ## [1.2.31]
 
 ### Fixed
@@ -970,6 +983,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.32]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.32
 [1.2.31]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.31
 [1.2.30]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.30
 [1.2.16]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.16

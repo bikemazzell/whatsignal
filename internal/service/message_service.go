@@ -50,6 +50,7 @@ type MessageService interface {
 	ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error
 	PollSignalMessages(ctx context.Context) error
+	DispatchSingleSignalMessage(ctx context.Context, msg signaltypes.SignalMessage) error
 	SendSignalNotification(ctx context.Context, sessionName, message string) error
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 	ProcessPendingMessages(ctx context.Context) error
@@ -570,6 +571,28 @@ func (s *messageService) ProcessPendingMessages(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *messageService) DispatchSingleSignalMessage(ctx context.Context, msg signaltypes.SignalMessage) error {
+	destinations := s.channelManager.GetAllSignalDestinations()
+	if len(destinations) == 0 {
+		return fmt.Errorf("no Signal destinations configured")
+	}
+
+	var destination string
+	if len(destinations) == 1 {
+		destination = destinations[0]
+	} else {
+		destination = s.determineDestinationForSender(ctx, msg.Sender, destinations)
+		if destination == "" {
+			s.logger.WithField("sender", SanitizePhoneNumber(msg.Sender)).Warn("Could not determine destination for Signal sender (WebSocket)")
+			return nil
+		}
+	}
+
+	LogMessageProcessing(ctx, s.logger, "Signal", "", msg.MessageID, msg.Sender, msg.Message)
+
+	return s.bridge.HandleSignalMessageWithDestination(ctx, &msg, destination)
 }
 
 func (s *messageService) determineDestinationForSender(ctx context.Context, sender string, availableDestinations []string) string {

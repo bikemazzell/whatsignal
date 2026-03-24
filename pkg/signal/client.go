@@ -29,6 +29,7 @@ type Client interface {
 	InitializeDevice(ctx context.Context) error
 	DownloadAttachment(ctx context.Context, attachmentID string) ([]byte, error)
 	ListAttachments(ctx context.Context) ([]string, error)
+	DetectedMode() string
 }
 
 // maskPhone masks a phone number for logging, showing only the last 4 digits.
@@ -50,6 +51,7 @@ type SignalClient struct {
 	pollCircuitBreaker *circuitbreaker.CircuitBreaker
 	initialized        bool   // Tracks whether InitializeDevice succeeded
 	initError          string // Stores initialization error message if any
+	detectedMode       string // Mode reported by signal-cli /v1/about ("native", "json-rpc", etc.)
 }
 
 func NewClient(baseURL, phoneNumber, deviceName, attachmentsDir string, httpClient *http.Client) Client {
@@ -700,7 +702,43 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	c.initialized = true
 	c.initError = ""
+	c.detectedMode = aboutResponse.Mode
+
+	if c.logger != nil {
+		c.logger.WithField("mode", c.detectedMode).Info("Signal CLI mode detected")
+	}
+
 	return nil
+}
+
+// DetectedMode returns the mode reported by signal-cli's /v1/about endpoint.
+// Returns "" if InitializeDevice has not been called yet.
+func (c *SignalClient) DetectedMode() string {
+	return c.detectedMode
+}
+
+// ConvertRestMessages converts raw signal-cli REST messages to domain SignalMessages.
+// Used by both the HTTP polling path and the WebSocket receive path.
+func (c *SignalClient) ConvertRestMessages(ctx context.Context, messages []types.RestMessage) []types.SignalMessage {
+	result := make([]types.SignalMessage, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Envelope.DataMessage != nil {
+			sigMsg := c.convertDataMessageToSignalMessage(ctx, msg)
+			if sigMsg.QuotedMessage == nil && msg.Envelope.SyncMessage != nil && msg.Envelope.SyncMessage.SentMessage != nil {
+				sigMsg.QuotedMessage = quotedMessageFromRestQuote(msg.Envelope.SyncMessage.SentMessage.GetQuote())
+			}
+			result = append(result, sigMsg)
+			continue
+		}
+		if msg.Envelope.SyncMessage != nil && msg.Envelope.SyncMessage.SentMessage != nil {
+			sigMsg := c.convertSyncMessageToSignalMessage(ctx, msg)
+			if sigMsg != nil {
+				result = append(result, *sigMsg)
+			}
+			continue
+		}
+	}
+	return result
 }
 
 func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID string) ([]byte, error) {

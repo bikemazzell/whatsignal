@@ -20,8 +20,7 @@ services:
     tmpfs:
       - /tmp:size=100M,mode=1777
     environment:
-      - MODE=native
-      - AUTO_RECEIVE_SCHEDULE=0 */6 * * *
+      - MODE=json-rpc
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/about"]
       interval: 30s

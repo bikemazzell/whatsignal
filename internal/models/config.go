@@ -47,8 +47,9 @@ type SignalConfig struct {
 	PollingEnabled          bool   `json:"pollingEnabled" mapstructure:"pollingEnabled"`
 	AttachmentsDir          string `json:"attachmentsDir" mapstructure:"attachmentsDir"`
 	HTTPTimeoutSec          int    `json:"httpTimeoutSec" mapstructure:"httpTimeoutSec"`
-	StrictInit              bool   `json:"strictInit" mapstructure:"strictInit"`   // If true, fail startup on Signal initialization failure
-	PollWorkers             int    `json:"pollWorkers" mapstructure:"pollWorkers"` // Number of parallel workers for processing polled messages (0 = sequential)
+	StrictInit              bool   `json:"strictInit" mapstructure:"strictInit"`                 // If true, fail startup on Signal initialization failure
+	PollWorkers             int    `json:"pollWorkers" mapstructure:"pollWorkers"`               // Number of parallel workers for processing polled messages (0 = sequential)
+	ForceNativePolling      bool   `json:"forceNativePolling" mapstructure:"forceNativePolling"` // Override auto-detection; always use HTTP polling even if signal-cli reports json-rpc mode
 }
 
 // DatabaseConfig holds database related configurations

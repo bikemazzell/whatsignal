@@ -106,6 +106,11 @@ const (
 	SignalReceiveTimeoutBuffer = 15 // Seconds added to poll timeout as fallback receive deadline
 )
 
+// WebSocket receive configuration (for signal-cli json-rpc mode)
+const (
+	WSReconnectMaxBackoffMs = 30000 // Max backoff between WebSocket reconnect attempts
+)
+
 // WhatsApp circuit breaker configuration
 const (
 	WhatsAppCBMaxFailures     = 15 // Max consecutive failures before WhatsApp API circuit breaker trips

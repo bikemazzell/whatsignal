@@ -234,6 +234,10 @@ func (m *mockSignalClient) ListAttachments(ctx context.Context) ([]string, error
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (m *mockSignalClient) DetectedMode() string {
+	return "native"
+}
+
 // Mock media handler
 type mockMediaHandler struct {
 	mock.Mock

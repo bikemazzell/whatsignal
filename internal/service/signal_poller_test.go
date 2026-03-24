@@ -29,6 +29,11 @@ func (m *mockMessageService) PollSignalMessages(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockMessageService) DispatchSingleSignalMessage(ctx context.Context, msg signaltypes.SignalMessage) error {
+	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
 func (m *mockMessageService) GetPollCalls() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

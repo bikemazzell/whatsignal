@@ -262,6 +262,11 @@ func (m *mockMessageService) PollSignalMessages(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockMessageService) DispatchSingleSignalMessage(ctx context.Context, msg signaltypes.SignalMessage) error {
+	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
 func (m *mockMessageService) ProcessIncomingSignalMessageWithDestination(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage, destination string) error {
 	args := m.Called(ctx, rawSignalMsg, destination)
 	return args.Error(0)

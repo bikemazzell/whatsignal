@@ -35,7 +35,9 @@ import (
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/pkg/signal"
+	signaltypes "whatsignal/pkg/signal/types"
 
+	"github.com/coder/websocket"
 	"github.com/sirupsen/logrus"
 )
 
@@ -64,6 +66,8 @@ type SignalPoller struct {
 	mu                  sync.RWMutex
 	consecutiveFailures int
 	lastSuccessTime     time.Time
+	wsReceiver          *signal.WSReceiver // non-nil when using WebSocket mode
+	useWebSocket        bool
 }
 
 // NewSignalPoller creates a new Signal polling service.
@@ -164,11 +168,19 @@ func (sp *SignalPoller) Start(ctx context.Context) error {
 		sp.logger.WithError(err).Warn("Failed to reprocess pending messages from previous session")
 	}
 
-	// Start polling goroutine
-	sp.wg.Add(1)
-	go sp.pollLoop()
+	// Determine receive mode: WebSocket (json-rpc) or HTTP polling (native)
+	detectedMode := sp.signalClient.DetectedMode()
+	sp.useWebSocket = detectedMode == "json-rpc" && !sp.config.ForceNativePolling
 
-	sp.logger.WithFields(sp.logFields()).Info("Signal poller started successfully")
+	sp.wg.Add(1)
+	if sp.useWebSocket {
+		sp.wsReceiver = signal.NewWSReceiver(sp.config.RPCURL, sp.config.IntermediaryPhoneNumber, sp.logger)
+		go sp.wsLoop()
+		sp.logger.WithFields(sp.logFields()).WithField("mode", "websocket").Info("Signal poller started in WebSocket mode")
+	} else {
+		go sp.pollLoop()
+		sp.logger.WithFields(sp.logFields()).WithField("mode", "http-polling").Info("Signal poller started in HTTP polling mode")
+	}
 
 	return nil
 }
@@ -446,4 +458,92 @@ func (sp *SignalPoller) pollWithRetry() {
 	}
 
 	sp.logger.WithFields(sp.logFields()).Error("Signal polling failed after all retry attempts — messages may have been lost (Signal CLI /v1/receive is destructive)")
+}
+
+// wsLoop manages the WebSocket connection lifecycle with reconnection.
+func (sp *SignalPoller) wsLoop() {
+	defer sp.wg.Done()
+
+	backoff := time.Duration(sp.retryConfig.InitialBackoffMs) * time.Millisecond
+	maxBackoff := time.Duration(constants.WSReconnectMaxBackoffMs) * time.Millisecond
+
+	for {
+		if sp.ctx.Err() != nil {
+			sp.logger.Debug("WebSocket loop context cancelled, exiting")
+			return
+		}
+
+		conn, err := sp.wsReceiver.Connect(sp.ctx)
+		if err != nil {
+			if sp.ctx.Err() != nil {
+				return
+			}
+			sp.logger.WithError(err).Warn("WebSocket connect failed, retrying")
+			metrics.IncrementCounter("signal_ws_connect_failures", nil, "WebSocket connection failures")
+			sleepWithContext(sp.ctx, jitter(backoff))
+			backoff = min(backoff*2, maxBackoff)
+			continue
+		}
+
+		backoff = time.Duration(sp.retryConfig.InitialBackoffMs) * time.Millisecond
+		metrics.IncrementCounter("signal_ws_connections", nil, "WebSocket connections established")
+
+		sp.wsReadLoop(conn)
+
+		_ = conn.CloseNow()
+		if sp.ctx.Err() != nil {
+			return
+		}
+		sp.logger.Warn("WebSocket disconnected, reconnecting")
+	}
+}
+
+// wsReadLoop reads messages from an established WebSocket connection until it closes.
+func (sp *SignalPoller) wsReadLoop(conn *websocket.Conn) {
+	for {
+		if sp.ctx.Err() != nil {
+			return
+		}
+
+		msg, err := signal.ReadMessage(sp.ctx, conn)
+		if err != nil {
+			if sp.ctx.Err() != nil {
+				return
+			}
+			sp.logger.WithError(err).Warn("WebSocket read error")
+			return
+		}
+
+		if msg == nil {
+			continue
+		}
+
+		// Convert and dispatch
+		sigClient, ok := sp.signalClient.(*signal.SignalClient)
+		if !ok {
+			sp.logger.Error("Signal client does not support ConvertRestMessages")
+			return
+		}
+
+		converted := sigClient.ConvertRestMessages(sp.ctx, []signaltypes.RestMessage{*msg})
+		for _, m := range converted {
+			if err := sp.messageService.DispatchSingleSignalMessage(sp.ctx, m); err != nil {
+				sp.logger.WithError(err).WithField("messageID", m.MessageID).Error("Failed to dispatch WebSocket message")
+			}
+		}
+	}
+}
+
+// sleepWithContext sleeps for the given duration or until context is cancelled.
+func sleepWithContext(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}
+
+// jitter adds ±25% randomization to a duration.
+func jitter(d time.Duration) time.Duration {
+	factor := 0.75 + rand.Float64()*0.5 // #nosec G404 - jitter doesn't need crypto rand
+	return time.Duration(float64(d) * factor)
 }

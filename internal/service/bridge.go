@@ -507,20 +507,11 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		return nil
 	}
 
-	// Send warning if fallback routing was used, but suppress if destination is unchanged.
-	// Only warn when something was actually sent to avoid spurious notifications for empty messages.
+	// Track the fallback destination for logging, but do NOT send a warning notification.
+	// signal-cli does not include quote fields in its JSON output (confirmed in both native
+	// and json-rpc modes), so fallback routing is the normal path even when the user quotes
+	// a message. Sending "Quote a message to reply to a specific chat" is misleading.
 	if usedFallback {
-		b.lastFallbackChatMu.RLock()
-		lastChat := b.lastFallbackChat[sessionName]
-		b.lastFallbackChatMu.RUnlock()
-
-		if lastChat != mapping.WhatsAppChatID {
-			notice := fmt.Sprintf("Message routed to last active chat: %s\nTip: Quote a message to reply to a specific chat.", mapping.WhatsAppChatID)
-			if notifyErr := b.SendSignalNotificationForSession(ctx, sessionName, notice); notifyErr != nil {
-				b.logger.WithError(notifyErr).Warn("Failed to send fallback routing notification")
-			}
-		}
-
 		b.lastFallbackChatMu.Lock()
 		b.lastFallbackChat[sessionName] = mapping.WhatsAppChatID
 		b.lastFallbackChatMu.Unlock()

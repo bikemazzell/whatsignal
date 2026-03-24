@@ -222,9 +222,9 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	if waAcks != 2 {
 		t.Errorf("Expected 2 WhatsApp ACKs (1 from WA→Signal processing + 1 from Signal→WA sending), got %d", waAcks)
 	}
-	// 2 Signal sends: 1 for WA->Signal forward + 1 for fallback routing notification (unquoted Signal message)
-	if signalSends != 2 {
-		t.Errorf("Expected 2 Signal sends (1 forward + 1 fallback routing notification), got %d", signalSends)
+	// 1 Signal send for WA->Signal forward (no fallback notification — removed because signal-cli doesn't provide quotes)
+	if signalSends != 1 {
+		t.Errorf("Expected 1 Signal send (1 forward, no fallback notification), got %d", signalSends)
 	}
 	if whatsappSends != 1 {
 		t.Errorf("Expected 1 WhatsApp send, got %d", whatsappSends)

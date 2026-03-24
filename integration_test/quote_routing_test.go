@@ -230,10 +230,8 @@ func TestFallbackRouting_NoQuote_RoutesToLatestWithWarning(t *testing.T) {
 	require.NotEmpty(t, sends, "Should have at least one WhatsApp send")
 	assert.Equal(t, bobChatID, sends[len(sends)-1].ChatID, "Unquoted reply should go to latest sender (Bob)")
 
-	// Assert: a fallback warning notification was sent to Signal (1 WA send + 1 notification = 2 Signal sends post-reset)
-	waitForMockAPICount(t, env, "send", 1) // At least the fallback notification
-	assert.GreaterOrEqual(t, env.CountMockAPIRequests("send"), 1,
-		"A fallback routing notification should have been sent to Signal")
+	// No fallback warning notification is sent (removed — signal-cli doesn't provide quotes,
+	// so the warning "Quote a message to reply" was misleading).
 }
 
 // TestQuoteRouting_ExpiredMapping_ReturnsError verifies that quoting a message whose

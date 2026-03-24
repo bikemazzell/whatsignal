@@ -22,6 +22,13 @@
 ### Ship diagnostics with every new code path
 - When adding a new code path (e.g., WebSocket receive alongside HTTP polling), always include the same diagnostic logging as the existing path. The HTTP polling path had raw envelope logging for missing quotes; the WebSocket path was shipped without it, making production debugging impossible. Every new path needs equal observability from day one.
 
+### Upstream bug: signal-cli-rest-api does not serialize quotes (issue #818)
+- Filed: https://github.com/bbernhard/signal-cli-rest-api/issues/818
+- signal-cli v0.97 does not include the `quote` field in received DataMessages, in both native and json-rpc modes, with disappearing messages on or off. The Signal protocol protobuf includes the quote but signal-cli does not serialize it to JSON.
+- This breaks `extractMappingFromQuotedText` which relies on `msg.QuotedMessage.Text` to extract the sender name and route replies correctly.
+- Until this is fixed upstream, fallback routing (last active chat) is the only routing mechanism. The "Quote a message to reply to a specific chat" warning was removed because it's misleading.
+- CHECK STATUS: periodically check https://github.com/bbernhard/signal-cli-rest-api/issues/818 for a fix. When fixed, the existing `resolveMessageMapping` → `extractMappingFromQuotedText` pipeline should work without code changes.
+
 ### Infrastructure: signal-cli-rest-api MODE is a critical decision with tradeoffs
 - `MODE=native` strips quote fields from signal-cli's JSON output, causing all quoted replies to lose their quote and trigger fallback routing. The bridge cannot detect quoted messages in native mode.
 - `MODE=json-rpc` preserves full message metadata (quotes, reactions, mentions) but has historically caused **complete message sending/receiving failures** in production. The switch from json-rpc to native was made deliberately in v1.1.3 because json-rpc was unreliable.

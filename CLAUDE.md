@@ -19,8 +19,12 @@
 ### Test assertions: Assert the thing you care about
 - A test named `TestReactionRouting_TargetsCorrectMessage` must assert that the correct message was targeted. Asserting only that "no error occurred" or "the count is 1" doesn't verify routing correctness. If the assertion can't be made due to API limitations, document why and mark it as a known gap.
 
-### Infrastructure: signal-cli-rest-api requires MODE=json-rpc
-- `MODE=native` strips quote fields from signal-cli's JSON output, causing all quoted replies to lose their quote and trigger fallback routing. `MODE=json-rpc` uses signal-cli's full JSON-RPC interface which preserves quotes, reactions, mentions, and all message metadata. This is a hard requirement — the bridge cannot detect quoted messages in native mode.
+### Infrastructure: signal-cli-rest-api MODE is a critical decision with tradeoffs
+- `MODE=native` strips quote fields from signal-cli's JSON output, causing all quoted replies to lose their quote and trigger fallback routing. The bridge cannot detect quoted messages in native mode.
+- `MODE=json-rpc` preserves full message metadata (quotes, reactions, mentions) but has historically caused **complete message sending/receiving failures** in production. The switch from json-rpc to native was made deliberately in v1.1.3 because json-rpc was unreliable.
+- `AUTO_RECEIVE_SCHEDULE` is incompatible with json-rpc mode (fatal error on startup). Must be removed when switching to json-rpc.
+- **Expect instability after switching to json-rpc.** Monitor closely. If messages stop flowing, this is the likely cause. The previous failure mode was total — not partial. Have a rollback plan ready (switch back to native + re-add AUTO_RECEIVE_SCHEDULE).
+- If json-rpc proves unreliable again, the alternative is to stay on native mode and implement quote detection via a different mechanism (e.g., tracking recent outbound messages and matching reply text patterns, or using signal-cli's dbus interface).
 
 ## Release checklist
 

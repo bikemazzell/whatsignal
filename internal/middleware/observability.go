@@ -53,16 +53,20 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 				responseSize:   0,
 			}
 
-			// Log request start with tracing fields
-			logger.WithFields(logrus.Fields{
-				service.LogFieldRequestID: requestInfo.RequestID,
-				service.LogFieldTraceID:   requestInfo.TraceID,
-				service.LogFieldMethod:    r.Method,
-				service.LogFieldURL:       r.URL.Path,
-				service.LogFieldRemoteIP:  httputil.GetClientIP(r),
-				service.LogFieldUserAgent: r.Header.Get("User-Agent"),
-				"content_length":          r.ContentLength,
-			}).Info("HTTP request started")
+			// Skip verbose logging for health checks (Docker HEALTHCHECK fires every 30s)
+			isHealthCheck := r.URL.Path == "/health"
+
+			if !isHealthCheck {
+				logger.WithFields(logrus.Fields{
+					service.LogFieldRequestID: requestInfo.RequestID,
+					service.LogFieldTraceID:   requestInfo.TraceID,
+					service.LogFieldMethod:    r.Method,
+					service.LogFieldURL:       r.URL.Path,
+					service.LogFieldRemoteIP:  httputil.GetClientIP(r),
+					service.LogFieldUserAgent: r.Header.Get("User-Agent"),
+					"content_length":          r.ContentLength,
+				}).Info("HTTP request started")
+			}
 
 			// Record request metrics
 			metrics.IncrementCounter("http_requests_total", map[string]string{
@@ -126,17 +130,19 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 				logLevel = logrus.ErrorLevel
 			}
 
-			// Log request completion with metrics
-			logger.WithFields(logrus.Fields{
-				service.LogFieldRequestID:  requestInfo.RequestID,
-				service.LogFieldTraceID:    requestInfo.TraceID,
-				service.LogFieldMethod:     r.Method,
-				service.LogFieldURL:        r.URL.Path,
-				service.LogFieldStatusCode: wrapper.statusCode,
-				service.LogFieldDuration:   duration.Milliseconds(),
-				service.LogFieldRemoteIP:   httputil.GetClientIP(r),
-				service.LogFieldSize:       wrapper.responseSize,
-			}).Log(logLevel, "HTTP request completed")
+			// Log request completion with metrics (skip health checks)
+			if !isHealthCheck {
+				logger.WithFields(logrus.Fields{
+					service.LogFieldRequestID:  requestInfo.RequestID,
+					service.LogFieldTraceID:    requestInfo.TraceID,
+					service.LogFieldMethod:     r.Method,
+					service.LogFieldURL:        r.URL.Path,
+					service.LogFieldStatusCode: wrapper.statusCode,
+					service.LogFieldDuration:   duration.Milliseconds(),
+					service.LogFieldRemoteIP:   httputil.GetClientIP(r),
+					service.LogFieldSize:       wrapper.responseSize,
+				}).Log(logLevel, "HTTP request completed")
+			}
 		})
 	}
 }

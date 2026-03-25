@@ -41,7 +41,7 @@ const (
 	DefaultServerWriteTimeoutSec         = 15
 	DefaultServerIdleTimeoutSec          = 60
 	DefaultSessionStatusTimeoutSec       = 5
-	DefaultWebhookMaxSkewSec             = 300
+	DefaultWebhookMaxSkewSec             = 600 // 10 minutes — must accommodate WAHA retry backoff + bridge processing timeout
 	DefaultWebhookMaxBytes               = 5 * 1024 * 1024
 	DefaultRateLimitPerMinute            = 100
 	DefaultRateLimitCleanupMinutes       = 5

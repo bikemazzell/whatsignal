@@ -857,7 +857,7 @@ func TestServer_WhatsAppWebhook(t *testing.T) {
 
 func TestWebhookProcessingDetachedContext(t *testing.T) {
 	// Test that webhook event processing continues even when the HTTP client disconnects
-	// Fix: webhook processing now uses context.WithTimeout(context.Background(), 60*time.Second)
+	// Fix: webhook processing now uses context.WithTimeout(context.Background(), 120*time.Second)
 	// instead of r.Context(), allowing processing to survive HTTP connection timeouts
 
 	msgService := &mockMessageService{}
@@ -909,9 +909,9 @@ func TestWebhookProcessingDetachedContext(t *testing.T) {
 			deadline, _ := ctx.Deadline()
 			now := time.Now()
 			timeUntilDeadline := deadline.Sub(now)
-			// Should be close to 60 seconds, allowing some variance for test execution
-			assert.Greater(t, timeUntilDeadline.Seconds(), float64(55), "deadline should be approximately 60 seconds from now")
-			assert.Less(t, timeUntilDeadline.Seconds(), float64(65), "deadline should be approximately 60 seconds from now")
+			// Should be close to 120 seconds, allowing some variance for test execution
+			assert.Greater(t, timeUntilDeadline.Seconds(), float64(115), "deadline should be approximately 120 seconds from now")
+			assert.Less(t, timeUntilDeadline.Seconds(), float64(125), "deadline should be approximately 120 seconds from now")
 		}).Return(nil).Once()
 
 		// Calculate webhook signature using SHA-512 (WAHA uses this)

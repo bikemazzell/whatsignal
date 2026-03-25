@@ -27,7 +27,7 @@
 - signal-cli v0.97 does not include the `quote` field in received DataMessages, in both native and json-rpc modes, with disappearing messages on or off. The Signal protocol protobuf includes the quote but signal-cli does not serialize it to JSON.
 - This breaks `extractMappingFromQuotedText` which relies on `msg.QuotedMessage.Text` to extract the sender name and route replies correctly.
 - Until this is fixed upstream, fallback routing (last active chat) is the only routing mechanism. The "Quote a message to reply to a specific chat" warning was removed because it's misleading.
-- CHECK STATUS: periodically check https://github.com/bbernhard/signal-cli-rest-api/issues/818 for a fix. When fixed, the existing `resolveMessageMapping` → `extractMappingFromQuotedText` pipeline should work without code changes.
+- FIXED in v0.98 (signal-cli v0.14.1). Quote field is now present in received DataMessages via WebSocket. The existing routing pipeline works correctly. Require signal-cli-rest-api >= 0.98.
 
 ### Infrastructure: signal-cli-rest-api MODE is a critical decision with tradeoffs
 - `MODE=native` strips quote fields from signal-cli's JSON output, causing all quoted replies to lose their quote and trigger fallback routing. The bridge cannot detect quoted messages in native mode.

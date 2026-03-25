@@ -419,7 +419,10 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 		// WAHA may close the webhook HTTP connection before processing completes (especially
 		// for WA→Signal forwards that involve retrying the Signal send). Using r.Context()
 		// would cancel the processing mid-flight, causing message loss.
-		processCtx, processCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		// 120s budget: signal-cli may need 10-30s to connect to Signal servers (especially
+		// after restart), plus retry backoff. 60s was insufficient — exhausted the context
+		// deadline before completing a single successful send.
+		processCtx, processCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer processCancel()
 
 		// Handle different event types

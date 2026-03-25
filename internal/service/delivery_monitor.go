@@ -19,6 +19,7 @@ type DeliveryMonitor struct {
 	staleThreshold time.Duration
 	logger         *logrus.Logger
 	stopCh         chan struct{}
+	lastStaleCount int // track previous count to avoid repeating the same warning
 }
 
 func NewDeliveryMonitor(db StaleMessageCounter, checkInterval, staleThreshold time.Duration, logger *logrus.Logger) *DeliveryMonitor {
@@ -63,10 +64,15 @@ func (m *DeliveryMonitor) checkStaleMessages(ctx context.Context) {
 		return
 	}
 	metrics.SetGauge("delivery_stale_messages", float64(count), nil, "Messages stuck in sent status")
-	if count > 0 {
+	if count > m.lastStaleCount {
+		// Count increased — new messages are getting stuck. Warn.
 		m.logger.WithFields(logrus.Fields{
 			"stale_count": count,
 			"threshold":   m.staleThreshold,
 		}).Warn("Messages stuck in 'sent' status without delivery confirmation")
+	} else if count > 0 && count != m.lastStaleCount {
+		// Count decreased (cleanup ran). Log at debug.
+		m.logger.WithField("stale_count", count).Debug("Stale message count changed")
 	}
+	m.lastStaleCount = count
 }

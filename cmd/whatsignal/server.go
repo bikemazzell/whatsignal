@@ -585,11 +585,23 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 	}
 
 	// Forward reaction to Signal as a text message (since Signal CLI doesn't support reactions yet)
+	senderName := payload.Payload.NotifyName
+	if senderName == "" && payload.Payload.Data != nil {
+		if payload.Payload.Data.NotifyName != "" {
+			senderName = payload.Payload.Data.NotifyName
+		} else if payload.Payload.Data.PushName != "" {
+			senderName = payload.Payload.Data.PushName
+		}
+	}
+	if senderName == "" {
+		senderName = payload.Payload.From
+	}
+
 	var reactionText string
 	if payload.Payload.Reaction.Text == "" {
-		reactionText = "❌ Removed reaction from message"
+		reactionText = fmt.Sprintf("%s removed reaction from message", senderName)
 	} else {
-		reactionText = fmt.Sprintf("%s Reacted with %s", payload.Payload.Reaction.Text, payload.Payload.Reaction.Text)
+		reactionText = fmt.Sprintf("%s reacted with %s", senderName, payload.Payload.Reaction.Text)
 	}
 
 	// Use the session from the mapping, falling back to the webhook session

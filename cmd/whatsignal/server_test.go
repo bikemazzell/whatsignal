@@ -1269,7 +1269,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 					}, nil).Once()
 
 				// Mock sending reaction notification to Signal
-				msgService.On("SendSignalNotification", mock.Anything, "default", "👍 Reacted with 👍").Return(nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "+0987654321 reacted with 👍").Return(nil).Once()
 			},
 		},
 		{
@@ -1421,7 +1421,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:    "",
 						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
-				msgService.On("SendSignalNotification", mock.Anything, "default", "❤️ Reacted with ❤️").Return(nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "+0987654321 reacted with ❤️").Return(nil).Once()
 			},
 		},
 		{
@@ -1477,7 +1477,7 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:    "default",
 						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
-				msgService.On("SendSignalNotification", mock.Anything, "default", "🔥 Reacted with 🔥").Return(nil).Once()
+				msgService.On("SendSignalNotification", mock.Anything, "default", "+0987654321 reacted with 🔥").Return(nil).Once()
 			},
 		},
 	}

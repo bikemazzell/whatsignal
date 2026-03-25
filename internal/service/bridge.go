@@ -599,8 +599,10 @@ func (b *bridge) HandleSignalMessageDeletion(ctx context.Context, targetMessageI
 	}
 
 	if mapping == nil {
-		b.logger.WithField("targetMessageID", SanitizeMessageID(targetMessageID)).Warn("No mapping found for deletion target message")
-		return fmt.Errorf("no mapping found for deletion target message: %s", targetMessageID)
+		// Target message mapping is missing. Deletions can't be forwarded without knowing
+		// which WA message to delete. Drop gracefully.
+		b.logger.WithField("targetMessageID", SanitizeMessageID(targetMessageID)).Debug("Skipping deletion — no mapping found for target message")
+		return nil
 	}
 
 	// Delete the message in WhatsApp
@@ -1244,14 +1246,11 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 	}
 
 	if mapping == nil {
-		metrics.IncrementCounter("message_processing_failures", map[string]string{
-			"direction":    "signal_to_whatsapp",
-			"session":      sessionName,
-			"message_type": "reaction",
-			"stage":        "resolve_mapping",
-		}, "Message processing failures by stage")
-		b.logger.WithField("targetID", targetID).Warn("No mapping found for reaction target message")
-		return fmt.Errorf("no mapping found for reaction target message: %s", targetID)
+		// Target message mapping is missing (e.g., the original forward timed out and no mapping
+		// was saved). Reactions can't be routed without knowing which WA message to target.
+		// Drop gracefully — this is not an actionable error.
+		b.logger.WithField("targetID", targetID).Debug("Skipping reaction — no mapping found for target message")
+		return nil
 	}
 
 	// Send reaction to WhatsApp

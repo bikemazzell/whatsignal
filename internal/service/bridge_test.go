@@ -996,7 +996,7 @@ func TestHandleSignalReaction(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "mapping not found",
+			name: "mapping not found - dropped gracefully",
 			msg: &signaltypes.SignalMessage{
 				MessageID: "msg125",
 				Sender:    "sender123",
@@ -1008,9 +1008,8 @@ func TestHandleSignalReaction(t *testing.T) {
 					IsRemove:        false,
 				},
 			},
-			mapping:       nil,
-			expectError:   true,
-			errorContains: "no mapping found",
+			mapping:     nil,
+			expectError: false,
 		},
 		{
 			name: "database error",
@@ -1324,17 +1323,16 @@ func TestHandleSignalMessageDeletionNoMapping(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test: Signal message deletion with no mapping should return error
+	// Test: Signal message deletion with no mapping should be dropped gracefully (not error)
 	targetMessageID := "nonexistent_msg_123"
 	sender := "+1234567890"
 
 	// Mock database to return no mapping
 	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, targetMessageID).Return(nil, nil)
 
-	// Process the deletion
+	// Process the deletion — should succeed (dropped gracefully)
 	err := bridge.HandleSignalMessageDeletion(ctx, targetMessageID, sender)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no mapping found for deletion target message")
+	assert.NoError(t, err)
 
 	// Verify database was queried but WhatsApp delete was not called
 	bridge.db.(*mockDatabaseService).AssertCalled(t, "GetMessageMappingBySignalID", ctx, targetMessageID)

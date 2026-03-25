@@ -1625,10 +1625,16 @@ func TestExtractMappingFromQuotedText(t *testing.T) {
 			wantNil:    true,
 		},
 		{
-			name:       "no digits at all",
+			name:       "no digits - name not in contacts",
 			quotedText: "NoDigits: Some message",
 			wantChatID: "",
 			wantNil:    true,
+		},
+		{
+			name:       "no digits - name found in contacts",
+			quotedText: "Nick: Hello there",
+			wantChatID: "15551234567@c.us",
+			wantNil:    false,
 		},
 		{
 			name:       "empty string",
@@ -1637,7 +1643,7 @@ func TestExtractMappingFromQuotedText(t *testing.T) {
 			wantNil:    true,
 		},
 		{
-			name:       "group message - display name without digits in group name",
+			name:       "group message - display name not in contacts",
 			quotedText: "Alice in Family Group: Hello there",
 			wantChatID: "",
 			wantNil:    true,
@@ -1649,6 +1655,14 @@ func TestExtractMappingFromQuotedText(t *testing.T) {
 			wantNil:    false,
 		},
 	}
+
+	// Set up contact name lookup mocks
+	bridge.db.(*mockDatabaseService).On("GetContactByName", mock.Anything, "NoDigits").Return(nil, nil)
+	bridge.db.(*mockDatabaseService).On("GetContactByName", mock.Anything, "Nick").Return(&models.Contact{
+		PhoneNumber: "15551234567",
+		Name:        "Nick",
+	}, nil)
+	bridge.db.(*mockDatabaseService).On("GetContactByName", mock.Anything, "Alice").Return(nil, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2164,6 +2178,8 @@ func TestResolveMessageMapping_TimestampPrecisionMismatch_ReturnsError(t *testin
 	// But quote.ID is "1700000000001000" (microseconds — different precision)
 	// GetMessageMapping should return nil for the mismatched ID
 	b.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "1700000000001000").Return(nil, nil)
+	// Contact name lookup for "Alice" — not found
+	b.db.(*mockDatabaseService).On("GetContactByName", mock.Anything, "Alice").Return(nil, nil)
 
 	// Bob's mapping is the latest — this is the one we do NOT want to route to
 	bobMapping := &models.MessageMapping{

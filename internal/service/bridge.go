@@ -160,6 +160,7 @@ type DatabaseService interface {
 	UpdateDeliveryStatus(ctx context.Context, id string, status string) error
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
 	GetStaleMessageCount(ctx context.Context, threshold time.Duration) (int, error)
+	GetContactByName(ctx context.Context, name string) (*models.Contact, error)
 }
 
 type bridge struct {
@@ -844,10 +845,7 @@ func (b *bridge) extractMappingFromQuotedText(quotedText string) *models.Message
 		senderInfo = senderInfo[:idx]
 	}
 
-	if len(senderInfo) < constants.MinPhoneNumberLength || !strings.ContainsAny(senderInfo, "0123456789") {
-		return nil
-	}
-
+	// Try extracting phone number digits from the sender info
 	var phoneNumber string
 	for _, char := range senderInfo {
 		if char >= '0' && char <= '9' {
@@ -855,14 +853,43 @@ func (b *bridge) extractMappingFromQuotedText(quotedText string) *models.Message
 		}
 	}
 
-	if len(phoneNumber) < constants.MinPhoneNumberLength {
-		return nil
+	if len(phoneNumber) >= constants.MinPhoneNumberLength {
+		b.logger.Debug("Extracted phone number from quoted text for fallback")
+		return &models.MessageMapping{
+			WhatsAppChatID: phoneNumber + "@c.us",
+		}
 	}
 
-	b.logger.Debug("Extracted phone number from quoted text for fallback")
-	return &models.MessageMapping{
-		WhatsAppChatID: phoneNumber + "@c.us",
+	// Phone number extraction failed (sender is a display name like "Nick").
+	// Look up the name in the contacts database to find their phone number.
+	// Only attempt lookup for plausible display names (contains at least one letter).
+	hasLetter := false
+	for _, c := range senderInfo {
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c > 127 {
+			hasLetter = true
+			break
+		}
 	}
+	if hasLetter {
+		ctx := context.Background()
+		contact, err := b.db.GetContactByName(ctx, senderInfo)
+		if err != nil {
+			b.logger.WithError(err).Debug("Contact name lookup failed")
+			return nil
+		}
+		if contact != nil && contact.PhoneNumber != "" {
+			b.logger.WithField("name", senderInfo).Debug("Resolved sender name to phone number via contacts database")
+			chatID := contact.PhoneNumber
+			if !strings.HasSuffix(chatID, "@c.us") {
+				chatID = chatID + "@c.us"
+			}
+			return &models.MessageMapping{
+				WhatsAppChatID: chatID,
+			}
+		}
+	}
+
+	return nil
 }
 
 func (b *bridge) processSignalAttachments(attachments []string) ([]string, error) {

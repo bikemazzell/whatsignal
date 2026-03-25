@@ -342,6 +342,14 @@ func (m *mockDatabaseService) CleanupOldContacts(ctx context.Context, retentionD
 	return args.Error(0)
 }
 
+func (m *mockDatabaseService) GetContactByName(ctx context.Context, name string) (*models.Contact, error) {
+	args := m.Called(ctx, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.Contact), args.Error(1)
+}
+
 func (m *mockDatabaseService) GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, sessionName)
 	if args.Get(0) == nil {

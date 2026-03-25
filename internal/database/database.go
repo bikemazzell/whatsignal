@@ -788,6 +788,30 @@ func (d *Database) GetContactByPhone(ctx context.Context, phoneNumber string) (*
 	return d.GetContact(ctx, contactID)
 }
 
+// GetContactByName retrieves a contact by matching name, push_name, or short_name.
+// Returns nil if no contact is found.
+func (d *Database) GetContactByName(ctx context.Context, name string) (*models.Contact, error) {
+	contact := &models.Contact{}
+	err := d.db.QueryRowContext(ctx, SelectContactByNameQuery, name, name, name).Scan(
+		&contact.ContactID,
+		&contact.PhoneNumber,
+		&contact.Name,
+		&contact.PushName,
+		&contact.ShortName,
+		&contact.IsBlocked,
+		&contact.IsGroup,
+		&contact.IsMyContact,
+		&contact.CachedAt,
+	)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get contact by name: %w", err)
+	}
+	return contact, nil
+}
+
 // CleanupOldContacts removes contacts older than the specified days
 func (d *Database) CleanupOldContacts(ctx context.Context, retentionDays int) error {
 	query := DeleteOldContactsQuery

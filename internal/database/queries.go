@@ -110,6 +110,14 @@ const (
 		WHERE contact_id = ?
 	`
 
+	SelectContactByNameQuery = `
+		SELECT contact_id, phone_number, name, push_name, short_name,
+			   is_blocked, is_group, is_my_contact, cached_at
+		FROM contacts
+		WHERE name = ? OR push_name = ? OR short_name = ?
+		LIMIT 1
+	`
+
 	DeleteOldContactsQuery = `
 		DELETE FROM contacts
 		WHERE cached_at < datetime('now', '-' || ? || ' days')

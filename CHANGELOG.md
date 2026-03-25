@@ -5,6 +5,40 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.40]
+
+### Fixed
+- **Gracefully drop reactions and deletions with missing target mappings**: When a reaction or deletion targets a message whose mapping was never saved (e.g., the original forward timed out), the bridge now drops the operation silently instead of logging errors and retrying indefinitely. Also clears stuck pending deletion messages that were failing on every restart.
+
+## [1.2.39]
+
+### Added
+- **Contact name lookup for quote routing fallback**: When a quoted message's Signal ID is missing from the database, `extractMappingFromQuotedText` now looks up sender display names (e.g., "Nick") in the contacts table, matching against name, push\_name, and short\_name fields. Previously only worked when the sender was a phone number.
+- **`GetContactByName` database method**: New query matching contacts by name, push\_name, or short\_name for reverse-lookup routing.
+
+## [1.2.38]
+
+### Fixed
+- **Reaction forwarding showed emoji instead of sender name**: Reaction text format was "emoji Reacted with emoji" (e.g., "heart Reacted with heart") because both placeholders used the emoji. Fixed to use the sender's display name (e.g., "Nick reacted with heart"). Falls back to NotifyName, PushName, then phone number.
+
+## [1.2.37]
+
+### Fixed
+- **Signal send timeouts (context deadline exceeded)**: Webhook processing context increased from 60s to 120s. The 60s budget collided with signal-cli's connection latency (10-30s after restart), leaving no room for retries.
+- **Stale message warning log spam**: Delivery monitor now only warns when the stale count increases (new messages getting stuck). Stable counts from old messages are logged at Debug level.
+- **Health check log spam**: Suppressed request start/completion logging for `/health` endpoint. Docker HEALTHCHECK fires every 30s, producing log noise with zero diagnostic value. Metrics still recorded.
+- **Webhook timestamp rejections**: Increased `DefaultWebhookMaxSkewSec` from 300 (5min) to 600 (10min). WAHA retries with exponential backoff were arriving >5min old and getting rejected.
+
+## [1.2.36]
+
+### Fixed
+- **Removed misleading fallback routing warning**: signal-cli v0.97 did not serialize quote fields in received DataMessages (filed as bbernhard/signal-cli-rest-api#818). Since quotes were never available, fallback routing was the normal path even when the user quoted a message. The warning "Message routed to last active chat / Tip: Quote a message to reply to a specific chat" was misleading and has been removed. Fixed upstream in signal-cli-rest-api v0.98.
+
+## [1.2.35]
+
+### Added
+- **Raw frame diagnostics for WebSocket receive path**: WebSocket `ReadMessage` now logs raw JSON frames at Warn level when a DataMessage has text but no quote, matching the same diagnostic in the HTTP polling path. Also logs each converted message with `hasQuote`/`isSentByMe`/`hasText` fields for immediate visibility.
+
 ## [1.2.34]
 
 ### Added
@@ -1002,6 +1036,12 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.40]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.40
+[1.2.39]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.39
+[1.2.38]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.38
+[1.2.37]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.37
+[1.2.36]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.36
+[1.2.35]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.35
 [1.2.34]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.34
 [1.2.33]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.33
 [1.2.32]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.32

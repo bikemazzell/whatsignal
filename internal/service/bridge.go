@@ -161,6 +161,7 @@ type DatabaseService interface {
 	CleanupOldRecords(ctx context.Context, retentionDays int) error
 	GetStaleMessageCount(ctx context.Context, threshold time.Duration) (int, error)
 	GetContactByName(ctx context.Context, name string) (*models.Contact, error)
+	UpdateSignalIDByWhatsAppID(ctx context.Context, whatsappMsgID, signalMsgID string, signalTimestamp time.Time, status string) error
 }
 
 type bridge struct {
@@ -323,6 +324,27 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 		"MaxAttempts":      b.retryConfig.MaxAttempts,
 	}).Info("Retry configuration for Signal send")
 
+	// Save a partial mapping BEFORE the Signal send. If the send times out but signal-cli
+	// eventually delivers the message, we still have the WhatsApp side (chatID, msgID) for
+	// routing reactions and replies. The SignalMsgID is a placeholder until the send succeeds.
+	partialMapping := &models.MessageMapping{
+		WhatsAppChatID:  chatID,
+		WhatsAppMsgID:   msgID,
+		SignalMsgID:     "pending:" + msgID,
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     sessionName,
+	}
+
+	if len(attachments) > 0 {
+		partialMapping.MediaPath = &attachments[0]
+	}
+
+	if err := b.db.SaveMessageMapping(ctx, partialMapping); err != nil {
+		b.logger.WithError(err).Warn("Failed to save partial message mapping before Signal send")
+	}
+
 	backoff := retry.NewBackoff(backoffConfig)
 
 	var resp *signaltypes.SendMessageResponse
@@ -333,7 +355,7 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 	}, isRetryableSignalError)
 
 	if retryErr != nil {
-		// Check if this was a non-retryable error to provide better error context
+		// Partial mapping remains in DB with "pending:" prefix — allows routing by WhatsApp ID
 		if !isRetryableSignalError(retryErr) {
 			return fmt.Errorf("signal message failed (non-retryable): %w", retryErr)
 		}
@@ -344,29 +366,26 @@ func (b *bridge) HandleWhatsAppMessageWithSession(ctx context.Context, sessionNa
 		return fmt.Errorf("received nil response from Signal client after successful retry")
 	}
 
-	mapping := &models.MessageMapping{
-		WhatsAppChatID:  chatID,
-		WhatsAppMsgID:   msgID,
-		SignalMsgID:     resp.MessageID,
-		SignalTimestamp: time.Unix(resp.Timestamp/constants.MillisecondsPerSecond, 0),
-		ForwardedAt:     time.Now(),
-		DeliveryStatus:  models.DeliveryStatusDelivered,
-		SessionName:     sessionName,
-	}
-
-	if len(attachments) > 0 {
-		mapping.MediaPath = &attachments[0]
-	}
-
-	if err := b.db.SaveMessageMapping(ctx, mapping); err != nil {
-		// Record failure metrics
-		metrics.IncrementCounter("message_processing_failures", map[string]string{
-			"direction": "whatsapp_to_signal",
-			"session":   sessionName,
-			"stage":     "save_mapping",
-		}, "Message processing failures by stage")
-
-		return fmt.Errorf("failed to save message mapping: %w", err)
+	// Update the partial mapping with the real Signal message ID and timestamp
+	signalTimestamp := time.Unix(resp.Timestamp/constants.MillisecondsPerSecond, 0)
+	if err := b.db.UpdateSignalIDByWhatsAppID(ctx, msgID, resp.MessageID, signalTimestamp, string(models.DeliveryStatusDelivered)); err != nil {
+		b.logger.WithError(err).Warn("Failed to update partial mapping with Signal ID, saving new mapping")
+		// Fallback: save a fresh mapping if update fails
+		mapping := &models.MessageMapping{
+			WhatsAppChatID:  chatID,
+			WhatsAppMsgID:   msgID,
+			SignalMsgID:     resp.MessageID,
+			SignalTimestamp: signalTimestamp,
+			ForwardedAt:     time.Now(),
+			DeliveryStatus:  models.DeliveryStatusDelivered,
+			SessionName:     sessionName,
+		}
+		if len(attachments) > 0 {
+			mapping.MediaPath = &attachments[0]
+		}
+		if saveErr := b.db.SaveMessageMapping(ctx, mapping); saveErr != nil {
+			return fmt.Errorf("failed to save message mapping: %w", saveErr)
+		}
 	}
 
 	// Record success metrics and timing
@@ -1246,11 +1265,19 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 	}
 
 	if mapping == nil {
-		// Target message mapping is missing (e.g., the original forward timed out and no mapping
-		// was saved). Reactions can't be routed without knowing which WA message to target.
-		// Drop gracefully — this is not an actionable error.
-		b.logger.WithField("targetID", targetID).Debug("Skipping reaction — no mapping found for target message")
-		return nil
+		// Target message mapping not found by Signal timestamp. The original forward may have
+		// timed out, leaving only a partial mapping. Fall back to the latest mapping for this
+		// session — the reaction goes to the right person even if we can't target the exact message.
+		b.logger.WithField("targetID", targetID).Debug("Reaction target not found by Signal ID, trying session fallback")
+		mapping, err = b.db.GetLatestMessageMappingBySession(ctx, sessionName)
+		if err != nil || mapping == nil {
+			b.logger.WithField("targetID", targetID).Debug("Skipping reaction — no mapping found for target message")
+			return nil
+		}
+		b.logger.WithFields(logrus.Fields{
+			"targetID":       targetID,
+			"fallbackChatID": SanitizePhoneNumber(mapping.WhatsAppChatID),
+		}).Debug("Using session fallback for reaction target")
 	}
 
 	// Send reaction to WhatsApp

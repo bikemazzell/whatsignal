@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,11 +106,15 @@ func TestBridge_MultiChannel_HandleWhatsAppMessage(t *testing.T) {
 						Timestamp: time.Now().Unix() * 1000,
 					}, nil)
 
+				// Partial mapping saved before Signal send
 				mockDB.On("SaveMessageMapping", ctx, mock.MatchedBy(func(mapping *models.MessageMapping) bool {
 					return mapping.SessionName == tt.sessionName &&
 						mapping.WhatsAppChatID == "1234567890@c.us" &&
-						mapping.SignalMsgID == "sig-123"
+						strings.HasPrefix(mapping.SignalMsgID, "pending:")
 				})).Return(nil)
+
+				// Updated with real Signal ID after successful send
+				mockDB.On("UpdateSignalIDByWhatsAppID", ctx, "wa-123", "sig-123", mock.AnythingOfType("time.Time"), string(models.DeliveryStatusDelivered)).Return(nil)
 			}
 
 			// Execute
@@ -326,8 +331,9 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 			}, nil).Once()
 
 		mockDB.On("SaveMessageMapping", ctx, mock.MatchedBy(func(mapping *models.MessageMapping) bool {
-			return mapping.SessionName == "personal"
+			return mapping.SessionName == "personal" && strings.HasPrefix(mapping.SignalMsgID, "pending:")
 		})).Return(nil).Once()
+		mockDB.On("UpdateSignalIDByWhatsAppID", ctx, "wa-personal-1", "sig-personal-1", mock.AnythingOfType("time.Time"), string(models.DeliveryStatusDelivered)).Return(nil).Once()
 
 		err := bridge.HandleWhatsAppMessageWithSession(
 			ctx,
@@ -353,8 +359,9 @@ func TestBridge_MultiChannel_MessageIsolation(t *testing.T) {
 			}, nil).Once()
 
 		mockDB.On("SaveMessageMapping", ctx, mock.MatchedBy(func(mapping *models.MessageMapping) bool {
-			return mapping.SessionName == "business"
+			return mapping.SessionName == "business" && strings.HasPrefix(mapping.SignalMsgID, "pending:")
 		})).Return(nil).Once()
+		mockDB.On("UpdateSignalIDByWhatsAppID", ctx, "wa-business-1", "sig-business-1", mock.AnythingOfType("time.Time"), string(models.DeliveryStatusDelivered)).Return(nil).Once()
 
 		err := bridge.HandleWhatsAppMessageWithSession(
 			ctx,

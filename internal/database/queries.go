@@ -41,6 +41,12 @@ const (
 		WHERE signal_msg_id_hash = ?
 	`
 
+	UpdateSignalIDByWhatsAppIDQuery = `
+		UPDATE message_mappings
+		SET signal_msg_id = ?, signal_msg_id_hash = ?, signal_timestamp = ?, delivery_status = ?
+		WHERE whatsapp_msg_id_hash = ?
+	`
+
 	SelectLatestMessageMappingByWhatsAppChatIDQuery = `
 		SELECT id, whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp,
 		       forwarded_at, delivery_status, media_path, session_name, media_type,

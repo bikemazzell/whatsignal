@@ -414,6 +414,34 @@ func (d *Database) updateDeliveryStatusInternal(ctx context.Context, id string, 
 	return fmt.Errorf("no message found with ID: %s", id)
 }
 
+// UpdateSignalIDByWhatsAppID updates the Signal message ID and timestamp for an existing mapping
+// identified by its WhatsApp message ID. Used when a partial mapping was saved before the Signal
+// send completed (e.g., the send timed out but signal-cli eventually delivered the message).
+func (d *Database) UpdateSignalIDByWhatsAppID(ctx context.Context, whatsappMsgID, signalMsgID string, signalTimestamp time.Time, status string) error {
+	waHash, err := d.encryptor.LookupHash(whatsappMsgID)
+	if err != nil {
+		return fmt.Errorf("failed to compute WhatsApp ID hash: %w", err)
+	}
+
+	encryptedSignalID, err := d.encryptor.EncryptForLookupIfEnabled(signalMsgID)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt Signal ID: %w", err)
+	}
+
+	sigHash, err := d.encryptor.LookupHash(signalMsgID)
+	if err != nil {
+		return fmt.Errorf("failed to compute Signal ID hash: %w", err)
+	}
+
+	_, err = d.db.ExecContext(ctx, UpdateSignalIDByWhatsAppIDQuery,
+		encryptedSignalID, sigHash, signalTimestamp, status, waHash)
+	if err != nil {
+		return fmt.Errorf("failed to update Signal ID: %w", err)
+	}
+
+	return nil
+}
+
 func (d *Database) GetStaleMessageCount(ctx context.Context, threshold time.Duration) (int, error) {
 	var count int
 	err := d.db.QueryRowContext(ctx, CountStaleMessagesQuery, int(threshold.Seconds())).Scan(&count)

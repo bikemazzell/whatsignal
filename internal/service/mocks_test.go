@@ -350,6 +350,11 @@ func (m *mockDatabaseService) GetContactByName(ctx context.Context, name string)
 	return args.Get(0).(*models.Contact), args.Error(1)
 }
 
+func (m *mockDatabaseService) UpdateSignalIDByWhatsAppID(ctx context.Context, whatsappMsgID, signalMsgID string, signalTimestamp time.Time, status string) error {
+	args := m.Called(ctx, whatsappMsgID, signalMsgID, signalTimestamp, status)
+	return args.Error(0)
+}
+
 func (m *mockDatabaseService) GetLatestMessageMappingBySession(ctx context.Context, sessionName string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, sessionName)
 	if args.Get(0) == nil {

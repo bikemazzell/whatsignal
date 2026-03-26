@@ -5,6 +5,12 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.41]
+
+### Added
+- **Partial mapping persistence for timeout resilience**: The bridge now saves a partial message mapping (with WhatsApp chatID and msgID) BEFORE the Signal send. If the send times out but signal-cli eventually delivers the message, the mapping still exists for routing reactions and replies by WhatsApp ID. On successful send, the mapping is updated with the real Signal message ID and timestamp.
+- **Reaction session fallback**: When a reaction targets a message whose exact Signal timestamp mapping is missing, the reaction handler falls back to the latest message mapping for the session, routing the reaction to the correct person even if not the exact message.
+
 ## [1.2.40]
 
 ### Fixed
@@ -1036,6 +1042,7 @@ Docker internal hostname and the port matches
 - Non-root Docker containers
 - Secure secret generation in deployment
 
+[1.2.41]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.41
 [1.2.40]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.40
 [1.2.39]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.39
 [1.2.38]: https://github.com/bikemazzell/whatsignal/releases/tag/v1.2.38

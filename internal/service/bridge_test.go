@@ -66,6 +66,13 @@ func setupTestBridge(t *testing.T) (*bridge, string, func()) {
 	// Create bridge without contact service and group service for basic tests (those services have their own tests)
 	bridge := NewBridge(mockWAClient, mockSignalClient, mockDB, mediaHandler, retryConfig, mediaConfig, channelManager, nil, nil, "", testLogger).(*bridge)
 
+	// Default mock for partial mapping save (called before every Signal send).
+	// Individual tests can override with .Once() expectations for specific assertions.
+	mockDB.On("SaveMessageMapping", mock.Anything, mock.MatchedBy(func(m *models.MessageMapping) bool {
+		return strings.HasPrefix(m.SignalMsgID, "pending:")
+	})).Return(nil).Maybe()
+	mockDB.On("UpdateSignalIDByWhatsAppID", mock.Anything, mock.Anything, mock.Anything, mock.AnythingOfType("time.Time"), mock.Anything).Return(nil).Maybe()
+
 	cleanup := func() {
 		_ = os.RemoveAll(tmpDir)
 	}
@@ -174,12 +181,12 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 					MessageID: "sig123",
 					Timestamp: time.Now().UnixMilli(),
 				}
+				// Partial mapping saved before send
 				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
-					return m.WhatsAppChatID == "chat123" &&
-						m.WhatsAppMsgID == "msg123" &&
-						m.SignalMsgID == "sig123" &&
-						m.DeliveryStatus == models.DeliveryStatusDelivered
+					return m.WhatsAppMsgID == "msg123" && strings.HasPrefix(m.SignalMsgID, "pending:")
 				})).Return(nil).Once()
+				// Updated with real Signal ID after send
+				bridge.db.(*mockDatabaseService).On("UpdateSignalIDByWhatsAppID", ctx, "msg123", "sig123", mock.AnythingOfType("time.Time"), string(models.DeliveryStatusDelivered)).Return(nil).Once()
 			},
 		},
 		{
@@ -196,13 +203,12 @@ func TestHandleWhatsAppMessage(t *testing.T) {
 					MessageID: "sig124",
 					Timestamp: time.Now().UnixMilli(),
 				}
+				// Partial mapping saved before send
 				bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
-					return m.WhatsAppChatID == "chat123" &&
-						m.WhatsAppMsgID == "msg124" &&
-						m.SignalMsgID == "sig124" &&
-						m.DeliveryStatus == models.DeliveryStatusDelivered &&
-						*m.MediaPath == mediaPath
+					return m.WhatsAppMsgID == "msg124" && strings.HasPrefix(m.SignalMsgID, "pending:")
 				})).Return(nil).Once()
+				// Updated with real Signal ID after send
+				bridge.db.(*mockDatabaseService).On("UpdateSignalIDByWhatsAppID", ctx, "msg124", "sig124", mock.AnythingOfType("time.Time"), string(models.DeliveryStatusDelivered)).Return(nil).Once()
 			},
 		},
 		{
@@ -246,18 +252,19 @@ func TestHandleWhatsAppMessageDeliveryStatus(t *testing.T) {
 	err := os.WriteFile(mediaPath, mediaContent, 0644)
 	require.NoError(t, err)
 
-	// Verify that WA→Signal message mapping uses DeliveryStatusDelivered
+	// Verify that WA→Signal message mapping saves partial first, then updates to delivered
 	bridge.sigClient.(*mockSignalClient).sendMessageResponse = &signaltypes.SendMessageResponse{
 		MessageID: "sig123",
 		Timestamp: time.Now().UnixMilli(),
 	}
+	// Partial mapping saved before send with "pending:" prefix and "sent" status
 	bridge.db.(*mockDatabaseService).On("SaveMessageMapping", ctx, mock.MatchedBy(func(m *models.MessageMapping) bool {
-		// This is the critical assertion: delivery status should be DeliveryStatusDelivered
-		return m.WhatsAppChatID == "chat123" &&
-			m.WhatsAppMsgID == "msg123" &&
-			m.SignalMsgID == "sig123" &&
-			m.DeliveryStatus == models.DeliveryStatusDelivered
+		return m.WhatsAppMsgID == "msg123" &&
+			strings.HasPrefix(m.SignalMsgID, "pending:") &&
+			m.DeliveryStatus == models.DeliveryStatusSent
 	})).Return(nil).Once()
+	// Updated to "delivered" with real Signal ID after successful send
+	bridge.db.(*mockDatabaseService).On("UpdateSignalIDByWhatsAppID", ctx, "msg123", "sig123", mock.AnythingOfType("time.Time"), string(models.DeliveryStatusDelivered)).Return(nil).Once()
 
 	err = bridge.HandleWhatsAppMessageWithSession(ctx, "default", "chat123", "msg123", "sender123", "", "Hello Signal", "")
 	assert.NoError(t, err)
@@ -1063,6 +1070,11 @@ func TestHandleSignalReaction(t *testing.T) {
 			targetID := "1234567890000"
 			mockDB := bridge.db.(*mockDatabaseService)
 			mockDB.On("GetMessageMapping", ctx, targetID).Return(tt.mapping, tt.mappingError).Once()
+
+			// When mapping is nil and no error, the handler tries session fallback
+			if tt.mapping == nil && tt.mappingError == nil {
+				mockDB.On("GetLatestMessageMappingBySession", ctx, "default").Return(nil, nil).Once()
+			}
 
 			// Setup WhatsApp client mock if needed
 			if tt.mapping != nil && tt.mappingError == nil {

@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unbounded attachment download**: `DownloadAttachment` used `io.ReadAll` without size limit. Now bounded to `MaxRecommendedFileSizeBytes`.
 - **Missing `rows.Err()` check**: `GetLatestGroupMessageMappingBySession` could silently discard mid-iteration driver errors.
 - **Dead indexes on encrypted columns**: Dropped `idx_whatsapp_msg_id`, `idx_signal_msg_id`, and `idx_chat_time` which indexed ciphertext columns never queried directly.
-
 - **Encryption salt fallback warning**: Startup now logs a WARNING when using default hardcoded PBKDF2 salts instead of environment-configured ones.
 - **Attachment download silent truncation**: `DownloadAttachment` now errors when the response exceeds the size limit instead of silently saving a partial file.
 - **URL parameters not escaped in WhatsApp client**: `chatID`, `contactID`, `groupID` now use `url.PathEscape`/`url.QueryEscape` to prevent URL corruption from special characters.
@@ -27,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale README badges**: Version and Go badges updated from 1.2.2/1.22 to current values. `bump-version.sh` now uses badge URL patterns for reliable future updates.
 - **Delivery status error classification**: Uses sentinel error `ErrNoMessageFound` instead of fragile `strings.Contains` matching on error text.
 - **Health check exempt from circuit breaker**: `HealthCheck` bypasses the circuit breaker so it can detect WAHA recovery when the breaker is open.
+- **Session status error detail leak**: `/session/status` endpoint no longer returns raw `err.Error()` in the JSON response, which could expose internal hostnames or connection strings.
 
 ### Added
 - **Composite indexes for delivery monitor and chat lookups**: `(delivery_status, forwarded_at)` for the stale message query, `(chat_id_hash, forwarded_at)` for chat-timeline queries.

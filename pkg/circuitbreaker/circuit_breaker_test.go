@@ -156,7 +156,7 @@ func TestCircuitBreakerRecovery(t *testing.T) {
 	}
 	assert.Equal(t, StateOpen, cb.GetState())
 
-	// Wait for timeout
+	// Intentional: waiting for the 100ms circuit breaker timeout to elapse
 	time.Sleep(time.Millisecond * 150)
 
 	// Should transition to half-open on next state check
@@ -184,7 +184,7 @@ func TestCircuitBreakerHalfOpenLimits(t *testing.T) {
 	})
 	assert.Equal(t, StateOpen, cb.GetState())
 
-	// Wait for timeout
+	// Intentional: waiting for the 100ms circuit breaker timeout to elapse
 	time.Sleep(time.Millisecond * 150)
 
 	// Force transition to half-open by checking state
@@ -239,7 +239,7 @@ func TestCircuitBreakerHalfOpenFailure(t *testing.T) {
 		return errors.New("failure")
 	})
 
-	// Wait for timeout
+	// Intentional: waiting for the 100ms circuit breaker timeout to elapse
 	time.Sleep(time.Millisecond * 150)
 	cb.GetState() // Transition to half-open
 
@@ -326,7 +326,7 @@ func TestShouldAttemptReset(t *testing.T) {
 	// Should not reset immediately
 	assert.False(t, cb.shouldAttemptReset())
 
-	// Wait for timeout
+	// Intentional: waiting for the 100ms circuit breaker timeout to elapse
 	time.Sleep(time.Millisecond * 150)
 	assert.True(t, cb.shouldAttemptReset())
 }
@@ -454,7 +454,7 @@ func TestConcurrentStateTransition(t *testing.T) {
 	})
 	assert.Equal(t, StateOpen, cb.GetState())
 
-	// Wait for timeout to be almost ready
+	// Intentional: waiting for most (but not all) of the 50ms timeout to elapse before probing the transition window
 	time.Sleep(time.Millisecond * 40)
 
 	// Launch many goroutines that will call GetState() concurrently
@@ -467,7 +467,7 @@ func TestConcurrentStateTransition(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			// Small sleep to spread out the calls around the transition time
+			// Intentional: stagger goroutines across the OPEN→HALF_OPEN transition window
 			time.Sleep(time.Millisecond * time.Duration(idx%20))
 			statesSeen[idx] = cb.GetState()
 		}(i)
@@ -481,7 +481,7 @@ func TestConcurrentStateTransition(t *testing.T) {
 			"goroutine %d saw invalid state: %s", i, state)
 	}
 
-	// Final state should be HALF_OPEN (timeout has definitely elapsed)
+	// Intentional: ensure the remaining timeout window has fully elapsed
 	time.Sleep(time.Millisecond * 20)
 	assert.Equal(t, StateHalfOpen, cb.GetState())
 }
@@ -499,7 +499,7 @@ func TestConcurrentExecuteDuringRecovery(t *testing.T) {
 		return errors.New("failure")
 	})
 
-	// Wait for timeout
+	// Intentional: waiting for the 50ms circuit breaker timeout to elapse
 	time.Sleep(time.Millisecond * 60)
 
 	// Verify we're in half-open

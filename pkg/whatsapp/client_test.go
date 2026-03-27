@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/stretchr/testify/assert"
@@ -1157,8 +1158,9 @@ func TestClient_ServerVersionDetection(t *testing.T) {
 			defer server.Close()
 
 			client := &WhatsAppClient{
-				baseURL: server.URL,
-				client:  &http.Client{Timeout: 5 * time.Second},
+				baseURL:        server.URL,
+				client:         &http.Client{Timeout: 5 * time.Second},
+				circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 			}
 
 			ctx := context.Background()
@@ -1319,8 +1321,9 @@ func TestClient_VideoSupportCaching(t *testing.T) {
 	defer server.Close()
 
 	client := &WhatsAppClient{
-		baseURL: server.URL,
-		client:  &http.Client{Timeout: 5 * time.Second},
+		baseURL:        server.URL,
+		client:         &http.Client{Timeout: 5 * time.Second},
+		circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 	}
 
 	ctx := context.Background()
@@ -1379,8 +1382,9 @@ func TestClient_ServerVersionError(t *testing.T) {
 			defer server.Close()
 
 			client := &WhatsAppClient{
-				baseURL: server.URL,
-				client:  &http.Client{Timeout: 50 * time.Millisecond},
+				baseURL:        server.URL,
+				client:         &http.Client{Timeout: 50 * time.Millisecond},
+				circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 			}
 
 			ctx := context.Background()

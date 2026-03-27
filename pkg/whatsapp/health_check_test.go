@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/pkg/circuitbreaker"
+
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -77,11 +79,12 @@ func TestWhatsAppClient_HealthCheck(t *testing.T) {
 			logger.SetLevel(logrus.FatalLevel) // Silence logs during test
 
 			client := &WhatsAppClient{
-				baseURL:     server.URL,
-				sessionName: "test-session",
-				apiKey:      "test-api-key",
-				client:      &http.Client{Timeout: 10 * time.Second},
-				logger:      logger,
+				baseURL:        server.URL,
+				sessionName:    "test-session",
+				apiKey:         "test-api-key",
+				client:         &http.Client{Timeout: 10 * time.Second},
+				logger:         logger,
+				circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 			}
 
 			ctx := context.Background()
@@ -112,11 +115,12 @@ func TestWhatsAppClient_HealthCheck_ContextCancellation(t *testing.T) {
 	logger.SetLevel(logrus.FatalLevel) // Silence logs during test
 
 	client := &WhatsAppClient{
-		baseURL:     server.URL,
-		sessionName: "test-session",
-		apiKey:      "test-api-key",
-		client:      &http.Client{Timeout: 1 * time.Second},
-		logger:      logger,
+		baseURL:        server.URL,
+		sessionName:    "test-session",
+		apiKey:         "test-api-key",
+		client:         &http.Client{Timeout: 1 * time.Second},
+		logger:         logger,
+		circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -132,11 +136,12 @@ func TestWhatsAppClient_HealthCheck_NetworkError(t *testing.T) {
 	logger.SetLevel(logrus.FatalLevel) // Silence logs during test
 
 	client := &WhatsAppClient{
-		baseURL:     "http://localhost:9999", // Non-existent server
-		sessionName: "test-session",
-		apiKey:      "test-api-key",
-		client:      &http.Client{Timeout: 100 * time.Millisecond},
-		logger:      logger,
+		baseURL:        "http://localhost:9999", // Non-existent server
+		sessionName:    "test-session",
+		apiKey:         "test-api-key",
+		client:         &http.Client{Timeout: 100 * time.Millisecond},
+		logger:         logger,
+		circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 	}
 
 	ctx := context.Background()
@@ -150,11 +155,12 @@ func TestWhatsAppClient_HealthCheck_InvalidURL(t *testing.T) {
 	logger.SetLevel(logrus.FatalLevel) // Silence logs during test
 
 	client := &WhatsAppClient{
-		baseURL:     "://invalid-url", // Invalid URL
-		sessionName: "test-session",
-		apiKey:      "test-api-key",
-		client:      &http.Client{},
-		logger:      logger,
+		baseURL:        "://invalid-url", // Invalid URL
+		sessionName:    "test-session",
+		apiKey:         "test-api-key",
+		client:         &http.Client{},
+		logger:         logger,
+		circuitBreaker: circuitbreaker.New("test", 5, time.Second),
 	}
 
 	ctx := context.Background()

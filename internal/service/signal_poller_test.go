@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type mockMessageService struct {
@@ -222,6 +223,7 @@ func TestSignalPoller_Start_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, poller.IsRunning())
 
+	// Intentional: waiting for 2+ poll cycles at 1s interval to confirm the poller runs repeatedly
 	time.Sleep(2500 * time.Millisecond)
 
 	poller.Stop()
@@ -316,6 +318,7 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 	err := poller.Start(ctx)
 	assert.NoError(t, err)
 
+	// Intentional: waiting for retry backoff cycles to complete (2 failures + backoffs)
 	time.Sleep(1500 * time.Millisecond)
 	poller.Stop()
 
@@ -574,8 +577,9 @@ func TestSignalPoller_ContextCancellationDuringRetry(t *testing.T) {
 	err := poller.Start(ctx)
 	assert.NoError(t, err)
 
-	// Wait a bit for polling to start
-	time.Sleep(500 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return poller.IsRunning()
+	}, 2*time.Second, 10*time.Millisecond, "poller should be running")
 
 	// Stop the poller (cancels context)
 	poller.Stop()
@@ -644,7 +648,7 @@ func TestSignalPoller_NonRetryableErrorStopsRetries(t *testing.T) {
 	err := poller.Start(ctx)
 	assert.NoError(t, err)
 
-	// Wait for one poll cycle
+	// Intentional: waiting for one full poll cycle (1s interval) to complete
 	time.Sleep(1500 * time.Millisecond)
 	poller.Stop()
 
@@ -690,7 +694,7 @@ func TestSignalPoller_Stop_NoDeadlock(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	// Allow the poll goroutine to enter PollSignalMessages and block there.
+	// Intentional: allow the poll goroutine to enter PollSignalMessages and block on the unblock channel
 	time.Sleep(50 * time.Millisecond)
 
 	// Issue Stop() in a goroutine; capture completion via a channel.
@@ -700,7 +704,7 @@ func TestSignalPoller_Stop_NoDeadlock(t *testing.T) {
 		poller.Stop()
 	}()
 
-	// Give Stop() a moment to reach wg.Wait(), then unblock the poll goroutine.
+	// Intentional: allow Stop() to reach wg.Wait() before unblocking the poll goroutine
 	time.Sleep(50 * time.Millisecond)
 	close(unblock)
 

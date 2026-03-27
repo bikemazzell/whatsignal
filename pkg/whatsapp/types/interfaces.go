@@ -44,8 +44,3 @@ type SessionManager interface {
 	Stop(ctx context.Context, name string) error
 	Delete(ctx context.Context, name string) error
 }
-
-type WebhookHandler interface {
-	Handle(ctx context.Context, event *WebhookEvent) error
-	RegisterEventHandler(eventType string, handler func(context.Context, []byte) error)
-}

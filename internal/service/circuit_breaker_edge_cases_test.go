@@ -52,7 +52,7 @@ func TestCircuitBreaker_EdgeCases(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "circuit breaker is open")
 
-		// Wait for timeout
+		// Intentional: waiting for the 10ms circuit breaker timeout to elapse
 		time.Sleep(15 * time.Millisecond)
 
 		// Should allow one request (half-open state)
@@ -155,7 +155,7 @@ func TestCircuitBreaker_HalfOpenTransition(t *testing.T) {
 			return errors.New("failure")
 		})
 
-		// Wait for timeout to enter half-open
+		// Intentional: waiting for the 10ms circuit breaker timeout to elapse
 		time.Sleep(15 * time.Millisecond)
 
 		// Should allow calls in half-open state
@@ -174,7 +174,7 @@ func TestCircuitBreaker_HalfOpenTransition(t *testing.T) {
 			return errors.New("failure")
 		})
 
-		// Wait for timeout to enter half-open
+		// Intentional: waiting for the 10ms circuit breaker timeout to elapse
 		time.Sleep(15 * time.Millisecond)
 
 		// Fail in half-open state
@@ -264,7 +264,7 @@ func TestCircuitBreaker_HalfOpenSuccess(t *testing.T) {
 	_ = cb.Execute(ctx, func(ctx context.Context) error { return errors.New("fail") })
 	assert.Equal(t, StateOpen, cb.GetState())
 
-	// Wait for timeout to enter half-open
+	// Intentional: waiting for the 10ms circuit breaker timeout to elapse
 	time.Sleep(15 * time.Millisecond)
 
 	// Multiple successes in half-open should close circuit

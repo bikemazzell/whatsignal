@@ -78,7 +78,7 @@ func TestSignalGroupTextReply_Quoted_UsesReplyTo(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	time.Sleep(150 * time.Millisecond)
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	if env.CountMockAPIRequests("whatsapp_send") != 1 {
 		t.Errorf("expected 1 whatsapp send, got %d", env.CountMockAPIRequests("whatsapp_send"))
@@ -146,7 +146,7 @@ func TestSignalGroupImageReply_Quoted_UsesReplyTo(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	waitForMockAPICount(t, env, "whatsapp_send_image", 1)
 
 	if env.CountMockAPIRequests("whatsapp_send_image") != 1 {
 		t.Errorf("expected 1 whatsapp image send, got %d", env.CountMockAPIRequests("whatsapp_send_image"))
@@ -185,7 +185,7 @@ func TestSignalGroupNoQuote_FallbackNoReplyTo(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	time.Sleep(150 * time.Millisecond)
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	if env.CountMockAPIRequests("whatsapp_send") != 1 {
 		t.Errorf("expected 1 whatsapp send, got %d", env.CountMockAPIRequests("whatsapp_send"))

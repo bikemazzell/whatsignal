@@ -286,7 +286,7 @@ func TestBackoff_ContextCancelledDuringBackoff(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Cancel context after first attempt during backoff
+	// Intentional: cancel the context while the first backoff sleep (100ms) is in progress
 	go func() {
 		time.Sleep(10 * time.Millisecond)
 		cancel()

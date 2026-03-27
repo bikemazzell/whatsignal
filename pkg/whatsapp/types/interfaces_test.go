@@ -190,20 +190,6 @@ func (m *MockSessionManager) Delete(ctx context.Context, name string) error {
 	return args.Error(0)
 }
 
-// MockWebhookHandler is a mock implementation of the WebhookHandler interface
-type MockWebhookHandler struct {
-	mock.Mock
-}
-
-func (m *MockWebhookHandler) Handle(ctx context.Context, event *WebhookEvent) error {
-	args := m.Called(ctx, event)
-	return args.Error(0)
-}
-
-func (m *MockWebhookHandler) RegisterEventHandler(eventType string, handler func(context.Context, []byte) error) {
-	m.Called(eventType, handler)
-}
-
 func TestWAClientInterface(t *testing.T) {
 	// Test that MockWAClient implements WAClient interface
 	var client WAClient = &MockWAClient{}
@@ -214,12 +200,6 @@ func TestSessionManagerInterface(t *testing.T) {
 	// Test that MockSessionManager implements SessionManager interface
 	var manager SessionManager = &MockSessionManager{}
 	assert.NotNil(t, manager)
-}
-
-func TestWebhookHandlerInterface(t *testing.T) {
-	// Test that MockWebhookHandler implements WebhookHandler interface
-	var handler WebhookHandler = &MockWebhookHandler{}
-	assert.NotNil(t, handler)
 }
 
 func TestMockWAClientSendText(t *testing.T) {
@@ -406,34 +386,10 @@ func TestMockSessionManagerOperations(t *testing.T) {
 	mockManager.AssertExpectations(t)
 }
 
-func TestMockWebhookHandlerOperations(t *testing.T) {
-	mockHandler := &MockWebhookHandler{}
-	ctx := context.Background()
-
-	// Test Handle
-	event := &WebhookEvent{
-		Event:   "message.any",
-		Payload: []byte(`{"test": "data"}`),
-	}
-	mockHandler.On("Handle", ctx, event).Return(nil)
-	err := mockHandler.Handle(ctx, event)
-	assert.NoError(t, err)
-
-	// Test RegisterEventHandler
-	handler := func(ctx context.Context, payload []byte) error {
-		return nil
-	}
-	mockHandler.On("RegisterEventHandler", "message.any", mock.AnythingOfType("func(context.Context, []uint8) error")).Return()
-	mockHandler.RegisterEventHandler("message.any", handler)
-
-	mockHandler.AssertExpectations(t)
-}
-
 func TestInterfaceCompliance(t *testing.T) {
 	// Verify that all mock types satisfy their respective interfaces at compile time
 	var _ WAClient = (*MockWAClient)(nil)
 	var _ SessionManager = (*MockSessionManager)(nil)
-	var _ WebhookHandler = (*MockWebhookHandler)(nil)
 }
 
 func TestWAClientErrorHandling(t *testing.T) {
@@ -472,20 +428,4 @@ func TestSessionManagerErrorHandling(t *testing.T) {
 	assert.Error(t, err)
 
 	mockManager.AssertExpectations(t)
-}
-
-func TestWebhookHandlerErrorHandling(t *testing.T) {
-	mockHandler := &MockWebhookHandler{}
-	ctx := context.Background()
-
-	event := &WebhookEvent{
-		Event:   "message.any",
-		Payload: []byte(`{"test": "data"}`),
-	}
-
-	mockHandler.On("Handle", ctx, event).Return(assert.AnError)
-	err := mockHandler.Handle(ctx, event)
-	assert.Error(t, err)
-
-	mockHandler.AssertExpectations(t)
 }

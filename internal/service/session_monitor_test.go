@@ -89,7 +89,7 @@ func TestSessionMonitor_Start(t *testing.T) {
 			// Start monitoring
 			monitor.Start(ctx)
 
-			// Wait a bit to ensure the goroutine starts
+			// Intentional: allow the monitor goroutine to enter its select loop before stopping
 			time.Sleep(50 * time.Millisecond)
 
 			// Stop monitoring
@@ -126,7 +126,7 @@ func TestSessionMonitor_Stop(t *testing.T) {
 
 	monitor.Start(ctx)
 
-	// Give it a moment to start
+	// Intentional: allow the monitor goroutine to enter its select loop before stopping
 	time.Sleep(100 * time.Millisecond)
 
 	// Stop monitoring
@@ -291,6 +291,7 @@ func TestSessionMonitor_StopMultipleTimes(t *testing.T) {
 	}, nil).Maybe()
 
 	monitor.Start(ctx)
+	// Intentional: allow the monitor goroutine to enter its select loop before stopping
 	time.Sleep(100 * time.Millisecond)
 
 	// First stop
@@ -324,6 +325,7 @@ func TestSessionMonitor_ConcurrentStop(t *testing.T) {
 	}, nil).Maybe()
 
 	monitor.Start(ctx)
+	// Intentional: allow the monitor goroutine to enter its select loop before stopping
 	time.Sleep(100 * time.Millisecond)
 
 	// Launch multiple goroutines calling Stop() concurrently
@@ -357,6 +359,7 @@ func TestSessionMonitor_StartStopStartStop(t *testing.T) {
 		Status: "WORKING",
 	}, nil).Maybe()
 
+	// Intentional: each sleep allows the monitor goroutine to enter its select loop before stopping.
 	// First cycle
 	monitor.Start(ctx)
 	time.Sleep(100 * time.Millisecond)
@@ -488,7 +491,7 @@ func TestSessionMonitor_StartingStatusTimeout(t *testing.T) {
 			ctx := context.Background()
 			monitor.checkAndRecoverSession(ctx)
 
-			// Wait for the specified duration
+			// Intentional: waiting for the startup timeout to elapse (tests time-dependent state machine)
 			time.Sleep(tt.waitBeforeCheck)
 
 			// Second check - should trigger restart if beyond timeout
@@ -571,7 +574,7 @@ func TestSessionMonitor_UpdateAndCheckStartingTimeout(t *testing.T) {
 	assert.Greater(t, duration, time.Duration(0), "Duration should be > 0")
 	assert.Less(t, duration, 50*time.Millisecond, "Duration should be less than timeout")
 
-	// Wait beyond timeout
+	// Intentional: waiting for the 50ms startup timeout to elapse (tests time-dependent state machine)
 	time.Sleep(60 * time.Millisecond)
 
 	// Third call - should return true (timeout exceeded)

@@ -220,8 +220,11 @@ func TestConfigWatcher_ReloadConfig_FileChanged(t *testing.T) {
 	// Trigger reload
 	watcher.reloadConfig()
 
-	// Give callbacks time to execute
-	time.Sleep(10 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return callbackCalled
+	}, 3*time.Second, 5*time.Millisecond, "callback should have been invoked after reload")
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -362,10 +365,13 @@ func TestConfigWatcher_CallbackPanic(t *testing.T) {
 	// Trigger reload
 	watcher.reloadConfig()
 
-	// Give callbacks time to execute and panic
-	time.Sleep(10 * time.Millisecond)
+	// Poll until the panic log message appears, confirming the callback goroutine ran
+	require.Eventually(t, func() bool {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return strings.Contains(logOutput.String(), "Config change callback panicked")
+	}, 3*time.Second, 5*time.Millisecond, "callback panic should have been logged")
 
-	// Check that panic was handled and logged
 	logMu.Lock()
 	logStr := logOutput.String()
 	logMu.Unlock()

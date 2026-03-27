@@ -48,7 +48,7 @@ func TestRateLimiter_WindowReset(t *testing.T) {
 	}
 	assert.False(t, rl.Allow(ip), "6th request should be denied")
 
-	// Wait for window to reset
+	// Intentional: waiting for the 100ms rate limiting window to reset
 	time.Sleep(110 * time.Millisecond)
 
 	// Should be able to make requests again
@@ -125,7 +125,7 @@ func TestRateLimiter_CleanupOldEntries(t *testing.T) {
 	rl.mu.RUnlock()
 	assert.Equal(t, 100, initialCount, "Should have 100 IP entries")
 
-	// Wait for entries to expire
+	// Intentional: waiting for the 50ms window entries to expire
 	time.Sleep(60 * time.Millisecond)
 
 	// Trigger cleanup by making a new request
@@ -153,16 +153,17 @@ func TestRateLimiter_EdgeCaseTimestamps(t *testing.T) {
 
 	// Make some requests
 	assert.True(t, rl.Allow(ip))
-	time.Sleep(15 * time.Millisecond) // Reduced sleep
+	// Intentional: stagger requests across the 50ms window to test sliding expiry
+	time.Sleep(15 * time.Millisecond)
 	assert.True(t, rl.Allow(ip))
-	time.Sleep(15 * time.Millisecond) // Reduced sleep
+	time.Sleep(15 * time.Millisecond)
 	assert.True(t, rl.Allow(ip))
 
 	// Should be at limit
 	assert.False(t, rl.Allow(ip))
 
-	// Wait for first request to expire
-	time.Sleep(25 * time.Millisecond) // Reduced sleep
+	// Intentional: wait for the first request's timestamp to fall outside the window
+	time.Sleep(25 * time.Millisecond)
 
 	// Should allow one more
 	assert.True(t, rl.Allow(ip))
@@ -211,7 +212,7 @@ func TestRateLimiter_VeryLongWindow(t *testing.T) {
 	assert.True(t, rl.Allow(ip))
 	assert.False(t, rl.Allow(ip))
 
-	// Even after some time, should still be limited
+	// Intentional: verifying the 24-hour window does not reset after a short wait
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, rl.Allow(ip))
 }
@@ -265,7 +266,7 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 		}
 	}
 
-	// Wait for entries to expire
+	// Intentional: waiting for the 100ms cleanup window to expire
 	time.Sleep(110 * time.Millisecond)
 
 	// Trigger cleanup

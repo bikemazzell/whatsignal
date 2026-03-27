@@ -75,7 +75,8 @@ func TestWhatsAppToSignalMessageFlow(t *testing.T) {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
 
-			time.Sleep(100 * time.Millisecond)
+			waitForMockAPICount(t, env, "ack", tt.expectedAcks)
+			waitForMockAPICount(t, env, "send", tt.expectedSends)
 
 			acks := env.CountMockAPIRequests("ack")
 			sends := env.CountMockAPIRequests("send")
@@ -158,7 +159,7 @@ func TestSignalToWhatsAppMessageFlow(t *testing.T) {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
 
-			time.Sleep(100 * time.Millisecond)
+			waitForMockAPICount(t, env, "whatsapp_send", tt.expectedSends)
 
 			sends := env.CountMockAPIRequests("whatsapp_send")
 
@@ -193,7 +194,7 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	time.Sleep(50 * time.Millisecond)
+	waitForMockAPICount(t, env, "send", 1)
 
 	signalWebhook := env.fixtures.Scenarios()["signal_text"].SignalWebhook
 	signalWebhook.Envelope.Timestamp = time.Now().UnixMilli()
@@ -213,7 +214,7 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	}
 	_ = resp2.Body.Close()
 
-	time.Sleep(100 * time.Millisecond)
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 	waAcks := env.CountMockAPIRequests("ack")
 	signalSends := env.CountMockAPIRequests("send")
@@ -266,12 +267,14 @@ func TestMessageFlowWithRetries(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	time.Sleep(500 * time.Millisecond)
+	waitForMockAPICount(t, env, "send", 3)
 
 	sendAttempts := env.CountMockAPIRequests("send")
 	if sendAttempts < 3 {
 		t.Errorf("Expected at least 3 send attempts (original + retries), got %d", sendAttempts)
 	}
+
+	waitForMockAPICount(t, env, "ack", 1)
 
 	acks := env.CountMockAPIRequests("ack")
 	if acks != 1 {
@@ -284,9 +287,6 @@ func TestHighVolumeMessageFlow(t *testing.T) {
 	defer env.Cleanup()
 
 	env.StartMessageFlowServer()
-
-	// Give the database and server time to fully initialize before high-volume load
-	time.Sleep(500 * time.Millisecond)
 
 	// Verify database is ready by checking for required tables
 	if err := env.VerifyDatabaseConnection(); err != nil {
@@ -333,6 +333,7 @@ func TestHighVolumeMessageFlow(t *testing.T) {
 				_ = resp.Body.Close()
 
 				if j%10 == 0 {
+					// Intentional: throttle burst traffic to avoid overwhelming the test HTTP server
 					time.Sleep(10 * time.Millisecond)
 				}
 			}
@@ -343,7 +344,8 @@ func TestHighVolumeMessageFlow(t *testing.T) {
 		<-done
 	}
 
-	time.Sleep(1 * time.Second)
+	waitForMockAPICount(t, env, "ack", messageCount)
+	waitForMockAPICount(t, env, "send", messageCount)
 	totalTime := time.Since(startTime)
 
 	acks := env.CountMockAPIRequests("ack")
@@ -404,7 +406,8 @@ func TestGroupMessageBidirectionalFlow(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "ack", 1)
+		waitForMockAPICount(t, env, "send", 1)
 
 		acks := env.CountMockAPIRequests("ack")
 		sends := env.CountMockAPIRequests("send")
@@ -463,7 +466,7 @@ func TestGroupMessageBidirectionalFlow(t *testing.T) {
 			t.Errorf("Expected status 200 for Signal reply to group, got %d", resp.StatusCode)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 		whatsappSends := env.CountMockAPIRequests("whatsapp_send")
 		if whatsappSends != 1 {
@@ -505,7 +508,7 @@ func TestSignalToWhatsAppMessageFlowWithRetries(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	waitForMockAPICount(t, env, "whatsapp_send", 3)
 
 	sends := env.CountMockAPIRequests("whatsapp_send")
 	if sends < 3 {
@@ -584,8 +587,8 @@ func TestConcurrentWhatsAppMessages(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Wait for processing to complete
-	time.Sleep(500 * time.Millisecond)
+	// Wait for all messages to be forwarded to Signal
+	waitForMockAPICount(t, env, "send", numMessages)
 
 	// Verify all messages were processed
 	ctx := context.Background()
@@ -679,8 +682,10 @@ func TestConcurrentMessagesFromDifferentSenders(t *testing.T) {
 		t.Errorf("Error during concurrent send: %v", err)
 	}
 
-	// Wait for processing to complete
-	time.Sleep(500 * time.Millisecond)
+	expectedTotal := numSenders * messagesPerSender
+
+	// Wait for all messages to be forwarded to Signal
+	waitForMockAPICount(t, env, "send", expectedTotal)
 
 	// Verify all messages were processed
 	ctx := context.Background()
@@ -696,7 +701,6 @@ func TestConcurrentMessagesFromDifferentSenders(t *testing.T) {
 		}
 	}
 
-	expectedTotal := numSenders * messagesPerSender
 	if processedCount != expectedTotal {
 		t.Errorf("Expected %d messages processed, got %d", expectedTotal, processedCount)
 	}

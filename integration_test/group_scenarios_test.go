@@ -42,7 +42,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		}
 		_ = resp1.Body.Close()
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "send", 1)
 
 		// Send message from Family Group
 		familyMsg := env.fixtures.WhatsAppWebhooks()["group_family_message"]
@@ -64,7 +64,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		}
 		_ = resp2.Body.Close()
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "send", 2)
 
 		// Send message from Work Group
 		workMsg := env.fixtures.WhatsAppWebhooks()["group_work_message"]
@@ -86,7 +86,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		}
 		_ = resp3.Body.Close()
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "send", 3)
 
 		// Verify all messages were processed
 		acks := env.CountMockAPIRequests("ack")
@@ -193,7 +193,7 @@ func TestMultipleGroupsScenarios(t *testing.T) {
 		}
 		_ = resp.Body.Close()
 
-		time.Sleep(2 * time.Second)
+		waitForMockAPICount(t, env, "whatsapp_send", 1)
 
 		whatsappSends := env.CountMockAPIRequests("whatsapp_send")
 		if whatsappSends != 1 {
@@ -239,7 +239,8 @@ func TestGroupSpecificFeatures(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "ack", 1)
+		waitForMockAPICount(t, env, "send", 1)
 
 		acks := env.CountMockAPIRequests("ack")
 		sends := env.CountMockAPIRequests("send")
@@ -295,7 +296,8 @@ func TestGroupSpecificFeatures(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", resp.StatusCode)
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		waitForMockAPICount(t, env, "ack", 1)
+		waitForMockAPICount(t, env, "send", 1)
 
 		acks := env.CountMockAPIRequests("ack")
 		sends := env.CountMockAPIRequests("send")
@@ -350,11 +352,9 @@ func TestGroupSpecificFeatures(t *testing.T) {
 				t.Fatalf("Failed to send webhook %d: %v", i, err)
 			}
 			_ = resp.Body.Close()
-
-			time.Sleep(50 * time.Millisecond)
 		}
 
-		time.Sleep(200 * time.Millisecond)
+		waitForMockAPICount(t, env, "send", messageCount)
 
 		acks := env.CountMockAPIRequests("ack")
 		sends := env.CountMockAPIRequests("send")

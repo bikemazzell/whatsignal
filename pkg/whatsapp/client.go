@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,7 +96,7 @@ func (c *WhatsAppClient) doGetJSON(ctx context.Context, url string, target inter
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
@@ -264,7 +265,7 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 			req.Header.Set("X-Api-Key", c.apiKey)
 		}
 
-		resp, err := c.doRequest(req)
+		resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to get sessions: %w", err)
 		}
@@ -540,9 +541,9 @@ func (c *WhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID st
 	}
 
 	// Build the URL according to WAHA API: DELETE /api/{session}/chats/{chatId}/messages/{messageId}
-	url := fmt.Sprintf("%s/api/%s/chats/%s/messages/%s", c.baseURL, c.sessionName, chatID, messageID)
+	reqURL := fmt.Sprintf("%s/api/%s/chats/%s/messages/%s", c.baseURL, url.PathEscape(c.sessionName), url.PathEscape(chatID), url.PathEscape(messageID))
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
 	}
@@ -551,7 +552,7 @@ func (c *WhatsAppClient) DeleteMessage(ctx context.Context, chatID, messageID st
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to send delete request: %w", err)
 	}
@@ -588,7 +589,7 @@ func (c *WhatsAppClient) sendReactionRequest(ctx context.Context, endpoint strin
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -750,9 +751,9 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 // GetContact retrieves a specific contact by ID (phone number or chat ID)
 func (c *WhatsAppClient) GetContact(ctx context.Context, contactID string) (*types.Contact, error) {
 	endpoint := fmt.Sprintf("%s%s", types.APIBase, types.EndpointContacts)
-	url := fmt.Sprintf("%s%s?contactId=%s&session=%s", c.baseURL, endpoint, contactID, c.sessionName)
+	reqURL := fmt.Sprintf("%s%s?contactId=%s&session=%s", c.baseURL, endpoint, url.QueryEscape(contactID), url.QueryEscape(c.sessionName))
 	var contact types.Contact
-	if err := c.doGetJSON(ctx, url, &contact); err != nil {
+	if err := c.doGetJSON(ctx, reqURL, &contact); err != nil {
 		if errors.Is(err, errNotFound) {
 			return nil, nil
 		}
@@ -777,7 +778,7 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -812,9 +813,9 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 
 // GetGroup retrieves a specific group by group ID
 func (c *WhatsAppClient) GetGroup(ctx context.Context, groupID string) (*types.Group, error) {
-	url := fmt.Sprintf("%s%s/%s%s/%s", c.baseURL, types.APIBase, c.sessionName, types.EndpointGroups, groupID)
+	reqURL := fmt.Sprintf("%s%s/%s%s/%s", c.baseURL, types.APIBase, url.PathEscape(c.sessionName), types.EndpointGroups, url.PathEscape(groupID))
 	var group types.Group
-	if err := c.doGetJSON(ctx, url, &group); err != nil {
+	if err := c.doGetJSON(ctx, reqURL, &group); err != nil {
 		if errors.Is(err, errNotFound) {
 			return nil, nil
 		}
@@ -838,7 +839,7 @@ func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -932,7 +933,7 @@ func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
 	req.Header.Set("X-Api-Key", c.apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
 		return fmt.Errorf("WhatsApp API health check failed: %w", err)
 	}

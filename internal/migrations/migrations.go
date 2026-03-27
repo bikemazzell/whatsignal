@@ -134,36 +134,43 @@ func getMigrationNumber(filename string) int {
 	return num
 }
 
-// applyMigration applies a single migration if it hasn't been applied yet
+// applyMigration applies a single migration if it hasn't been applied yet.
+// The DDL execution and tracking INSERT are wrapped in a transaction so that
+// a crash between the two steps cannot leave the database in a partially-applied state.
 func applyMigration(ctx context.Context, db *sql.DB, migrationFile string) error {
 	filename := filepath.Base(migrationFile)
 
-	// Check if migration already applied
 	var count int
 	err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE filename = ?", filename).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check migration status: %w", err)
 	}
-
 	if count > 0 {
-		return nil // Already applied
+		return nil
 	}
 
-	// Read migration file
 	content, err := os.ReadFile(migrationFile) // #nosec G304 - Path validated above
 	if err != nil {
 		return fmt.Errorf("failed to read migration file: %w", err)
 	}
 
-	// Execute migration
-	if _, err := db.ExecContext(ctx, string(content)); err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin migration transaction: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, string(content)); err != nil {
+		_ = tx.Rollback()
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
 
-	// Record migration as applied
-	_, err = db.ExecContext(ctx, "INSERT INTO schema_migrations (filename) VALUES (?)", filename)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename) VALUES (?)", filename); err != nil {
+		_ = tx.Rollback()
 		return fmt.Errorf("failed to record migration: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration: %w", err)
 	}
 
 	return nil

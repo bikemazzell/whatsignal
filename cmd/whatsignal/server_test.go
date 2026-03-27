@@ -531,7 +531,7 @@ func TestServer_SessionStatus(t *testing.T) {
 			name:           "session error",
 			sessionError:   assert.AnError,
 			expectedStatus: http.StatusServiceUnavailable,
-			expectedFields: []string{"error", "details"},
+			expectedFields: []string{"error"},
 		},
 	}
 

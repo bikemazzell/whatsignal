@@ -346,8 +346,7 @@ func (s *Server) handleSessionStatus() http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			if err := json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":   "Failed to get session status",
-				"details": err.Error(),
+				"error": "Failed to get session status",
 			}); err != nil {
 				s.logger.WithError(err).Error("Failed to write error response")
 			}

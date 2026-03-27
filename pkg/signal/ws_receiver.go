@@ -47,7 +47,7 @@ func (w *WSReceiver) Connect(ctx context.Context) (*websocket.Conn, error) {
 		return nil, fmt.Errorf("websocket dial failed: %w", err)
 	}
 
-	w.logger.WithField("endpoint", endpoint).Info("WebSocket connection established")
+	w.logger.WithField("mode", "websocket").Info("WebSocket connection established")
 	return conn, nil
 }
 

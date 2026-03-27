@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -98,6 +99,14 @@ func New(dbPath string, cfg *models.DatabaseConfig) (*Database, error) {
 			return nil, fmt.Errorf("failed to set synchronous mode: %w (close error: %v)", err, closeErr)
 		}
 		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
+	}
+
+	// Avoid immediate SQLITE_BUSY errors when another connection holds a write lock
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to set busy timeout: %w (close error: %v)", err, closeErr)
+		}
+		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
 
 	// Run all database migrations
@@ -399,13 +408,14 @@ func (d *Database) UpdateDeliveryStatus(ctx context.Context, id string, status s
 }
 
 func (d *Database) updateDeliveryStatusInternal(ctx context.Context, id string, status string) error {
-	// Try WhatsApp ID first
 	err := d.UpdateDeliveryStatusByWhatsAppID(ctx, id, status)
 	if err == nil {
 		return nil
 	}
+	if !strings.Contains(err.Error(), "no message found") {
+		return fmt.Errorf("failed to update delivery status by WhatsApp ID: %w", err)
+	}
 
-	// If not found, try Signal ID
 	err = d.UpdateDeliveryStatusBySignalID(ctx, id, status)
 	if err == nil {
 		return nil
@@ -706,6 +716,10 @@ func (d *Database) GetLatestGroupMessageMappingBySession(ctx context.Context, se
 		}
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating message mappings: %w", err)
+	}
+
 	// If none matched, return nil without error
 	return nil, nil
 }
@@ -746,11 +760,32 @@ func (d *Database) SaveContact(ctx context.Context, contact *models.Contact) err
 		return fmt.Errorf("failed to encrypt push name: %w", err)
 	}
 
+	encryptedShortName, err := d.encryptor.EncryptIfEnabled(contact.ShortName)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt short name: %w", err)
+	}
+
+	nameHash, err := d.encryptor.LookupHash(contact.Name)
+	if err != nil {
+		return fmt.Errorf("failed to compute name hash: %w", err)
+	}
+
+	pushNameHash, err := d.encryptor.LookupHash(contact.PushName)
+	if err != nil {
+		return fmt.Errorf("failed to compute push name hash: %w", err)
+	}
+
+	shortNameHash, err := d.encryptor.LookupHash(contact.ShortName)
+	if err != nil {
+		return fmt.Errorf("failed to compute short name hash: %w", err)
+	}
+
 	query := InsertOrReplaceContactQuery
 
 	_, err = d.db.ExecContext(ctx, query,
-		encryptedContactID, encryptedPhone, encryptedName, encryptedPushName, contact.ShortName,
-		contact.IsBlocked, contact.IsGroup, contact.IsMyContact)
+		encryptedContactID, encryptedPhone, encryptedName, encryptedPushName, encryptedShortName,
+		contact.IsBlocked, contact.IsGroup, contact.IsMyContact,
+		nameHash, pushNameHash, shortNameHash)
 	if err != nil {
 		return fmt.Errorf("failed to save contact: %w", err)
 	}
@@ -770,12 +805,12 @@ func (d *Database) GetContact(ctx context.Context, contactID string) (*models.Co
 	row := d.db.QueryRowContext(ctx, query, encryptedContactID)
 
 	var contact models.Contact
-	var encryptedPhone, encryptedName, encryptedPushName string
+	var encryptedPhone, encryptedName, encryptedPushName, encryptedShortName string
 
 	err = row.Scan(&contact.ContactID, &encryptedPhone, &encryptedName, &encryptedPushName,
-		&contact.ShortName, &contact.IsBlocked, &contact.IsGroup, &contact.IsMyContact, &contact.CachedAt)
+		&encryptedShortName, &contact.IsBlocked, &contact.IsGroup, &contact.IsMyContact, &contact.CachedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // Contact not found
 		}
 		return nil, fmt.Errorf("failed to scan contact: %w", err)
@@ -802,6 +837,11 @@ func (d *Database) GetContact(ctx context.Context, contactID string) (*models.Co
 		return nil, fmt.Errorf("failed to decrypt push name: %w", err)
 	}
 
+	contact.ShortName, err = d.encryptor.DecryptIfEnabled(encryptedShortName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt short name: %w", err)
+	}
+
 	return &contact, nil
 }
 
@@ -819,25 +859,58 @@ func (d *Database) GetContactByPhone(ctx context.Context, phoneNumber string) (*
 // GetContactByName retrieves a contact by matching name, push_name, or short_name.
 // Returns nil if no contact is found.
 func (d *Database) GetContactByName(ctx context.Context, name string) (*models.Contact, error) {
-	contact := &models.Contact{}
-	err := d.db.QueryRowContext(ctx, SelectContactByNameQuery, name, name, name).Scan(
-		&contact.ContactID,
-		&contact.PhoneNumber,
-		&contact.Name,
-		&contact.PushName,
-		&contact.ShortName,
+	nameHash, err := d.encryptor.LookupHash(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute name hash: %w", err)
+	}
+
+	var contact models.Contact
+	var encryptedContactID, encryptedPhone, encryptedName, encryptedPushName, encryptedShortName string
+
+	err = d.db.QueryRowContext(ctx, SelectContactByNameQuery, nameHash, nameHash, nameHash).Scan(
+		&encryptedContactID,
+		&encryptedPhone,
+		&encryptedName,
+		&encryptedPushName,
+		&encryptedShortName,
 		&contact.IsBlocked,
 		&contact.IsGroup,
 		&contact.IsMyContact,
 		&contact.CachedAt,
 	)
 	if err != nil {
-		if err.Error() == "sql: no rows in result set" {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get contact by name: %w", err)
 	}
-	return contact, nil
+
+	contact.ContactID, err = d.encryptor.DecryptIfEnabled(encryptedContactID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt contact ID: %w", err)
+	}
+
+	contact.PhoneNumber, err = d.encryptor.DecryptIfEnabled(encryptedPhone)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt phone number: %w", err)
+	}
+
+	contact.Name, err = d.encryptor.DecryptIfEnabled(encryptedName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt name: %w", err)
+	}
+
+	contact.PushName, err = d.encryptor.DecryptIfEnabled(encryptedPushName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt push name: %w", err)
+	}
+
+	contact.ShortName, err = d.encryptor.DecryptIfEnabled(encryptedShortName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt short name: %w", err)
+	}
+
+	return &contact, nil
 }
 
 // CleanupOldContacts removes contacts older than the specified days

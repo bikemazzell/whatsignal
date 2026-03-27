@@ -651,3 +651,66 @@ func TestSignalPoller_NonRetryableErrorStopsRetries(t *testing.T) {
 	// Should have been called only once (non-retryable error)
 	mockMessageService.AssertNumberOfCalls(t, "PollSignalMessages", 1)
 }
+
+// TestSignalPoller_Stop_NoDeadlock verifies that Stop() does not deadlock when called
+// while a poll goroutine is actively executing pollWithRetry (which acquires sp.mu
+// before returning). The bug was that the old Stop() held sp.mu.Lock() while calling
+// sp.wg.Wait(), so the poll goroutine could never release sp.mu to finish, causing a
+// permanent hang.
+func TestSignalPoller_Stop_NoDeadlock(t *testing.T) {
+	msgSvc := &mockMessageService{}
+	sigClient := &mockSignalClient{}
+
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 1,
+		PollingEnabled:  true,
+	}
+	retryConfig := models.RetryConfig{
+		InitialBackoffMs: 10,
+		MaxBackoffMs:     50,
+		MaxAttempts:      3,
+	}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	// Gate that lets the test control when PollSignalMessages returns.
+	// The first call blocks until we release it, simulating a long-running poll
+	// that holds sp.mu briefly at the end of pollWithRetry.
+	unblock := make(chan struct{})
+	sigClient.On("InitializeDevice", mock.Anything).Return(nil)
+	msgSvc.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
+	msgSvc.On("PollSignalMessages", mock.Anything).
+		Run(func(args mock.Arguments) { <-unblock }).
+		Return(nil)
+
+	poller := NewSignalPoller(sigClient, msgSvc, signalConfig, retryConfig, logger)
+
+	ctx := context.Background()
+	if err := poller.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Allow the poll goroutine to enter PollSignalMessages and block there.
+	time.Sleep(50 * time.Millisecond)
+
+	// Issue Stop() in a goroutine; capture completion via a channel.
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		poller.Stop()
+	}()
+
+	// Give Stop() a moment to reach wg.Wait(), then unblock the poll goroutine.
+	time.Sleep(50 * time.Millisecond)
+	close(unblock)
+
+	// Stop() must return within 5 seconds; if it deadlocks, the test fails.
+	select {
+	case <-stopped:
+		// success
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop() deadlocked: did not return within 5 seconds")
+	}
+
+	assert.False(t, poller.IsRunning())
+}

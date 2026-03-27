@@ -119,6 +119,42 @@ END;`
 	err = os.WriteFile(filepath.Join(migrationsPath, "002_add_groups_table.sql"), []byte(groupsContent), 0644)
 	require.NoError(t, err)
 
+	// Create migration 003 for pending signal messages table
+	pendingContent := `-- Add pending_signal_messages table for crash-safe message processing
+CREATE TABLE IF NOT EXISTS pending_signal_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    message_id_hash TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    message TEXT,
+    group_id TEXT,
+    timestamp INTEGER NOT NULL,
+    raw_json TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    retry_count INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id_hash, destination)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_signal_created_at ON pending_signal_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_pending_signal_message_id_hash ON pending_signal_messages(message_id_hash);`
+
+	err = os.WriteFile(filepath.Join(migrationsPath, "003_add_pending_signal_messages.sql"), []byte(pendingContent), 0644)
+	require.NoError(t, err)
+
+	// Create migration 004 for contact name hash columns
+	nameHashContent := `-- Add hash columns for encrypted name lookups in contacts table
+ALTER TABLE contacts ADD COLUMN name_hash TEXT;
+ALTER TABLE contacts ADD COLUMN push_name_hash TEXT;
+ALTER TABLE contacts ADD COLUMN short_name_hash TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_contact_name_hash ON contacts(name_hash);
+CREATE INDEX IF NOT EXISTS idx_contact_push_name_hash ON contacts(push_name_hash);
+CREATE INDEX IF NOT EXISTS idx_contact_short_name_hash ON contacts(short_name_hash);`
+
+	err = os.WriteFile(filepath.Join(migrationsPath, "004_add_contact_name_hashes.sql"), []byte(nameHashContent), 0644)
+	require.NoError(t, err)
+
 	return migrationsPath
 }
 
@@ -1818,4 +1854,45 @@ func TestDatabase_CleanupOldGroups(t *testing.T) {
 	recentRetrieved, err := db.GetGroup(ctx, "recent@g.us", "default")
 	assert.NoError(t, err)
 	assert.NotNil(t, recentRetrieved, "Recent group should still exist")
+}
+
+func TestGetContactByName_RoundTrip(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	contact := &models.Contact{
+		ContactID:   "12345@c.us",
+		PhoneNumber: "12345",
+		Name:        "Alice",
+		PushName:    "Alice Push",
+		ShortName:   "Ali",
+		IsBlocked:   false,
+		IsGroup:     false,
+		IsMyContact: true,
+	}
+	err := db.SaveContact(ctx, contact)
+	require.NoError(t, err)
+
+	// Look up by Name
+	found, err := db.GetContactByName(ctx, "Alice")
+	require.NoError(t, err)
+	require.NotNil(t, found, "GetContactByName should find contact by name")
+	assert.Equal(t, "12345@c.us", found.ContactID)
+
+	// Look up by PushName
+	found2, err := db.GetContactByName(ctx, "Alice Push")
+	require.NoError(t, err)
+	require.NotNil(t, found2, "GetContactByName should find contact by push_name")
+
+	// Look up by ShortName
+	found3, err := db.GetContactByName(ctx, "Ali")
+	require.NoError(t, err)
+	require.NotNil(t, found3, "GetContactByName should find contact by short_name")
+
+	// Miss
+	notFound, err := db.GetContactByName(ctx, "Nobody")
+	require.NoError(t, err)
+	assert.Nil(t, notFound)
 }

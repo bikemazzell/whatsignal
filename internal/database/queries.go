@@ -105,8 +105,9 @@ const (
 	InsertOrReplaceContactQuery = `
 		INSERT OR REPLACE INTO contacts (
 			contact_id, phone_number, name, push_name, short_name,
-			is_blocked, is_group, is_my_contact, cached_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			is_blocked, is_group, is_my_contact, cached_at,
+			name_hash, push_name_hash, short_name_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
 	`
 
 	SelectContactByIDQuery = `
@@ -120,7 +121,7 @@ const (
 		SELECT contact_id, phone_number, name, push_name, short_name,
 			   is_blocked, is_group, is_my_contact, cached_at
 		FROM contacts
-		WHERE name = ? OR push_name = ? OR short_name = ?
+		WHERE name_hash = ? OR push_name_hash = ? OR short_name_hash = ?
 		LIMIT 1
 	`
 

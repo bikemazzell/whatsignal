@@ -311,7 +311,8 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 					c.logger.Error("DataMessage JSON has quote key but parsing yielded nil - possible field name mismatch")
 					c.logger.WithField("envelope", rawEnvStr).Debug("Raw envelope for quote parse failure")
 				} else if msg.Envelope.DataMessage.Message != "" {
-					c.logger.WithField("raw_envelope", rawEnvStr).Warn("DataMessage has text but no quote in JSON - if user quoted a message, signal-cli did not include it")
+					c.logger.Warn("DataMessage has text but no quote in JSON - if user quoted a message, signal-cli did not include it")
+					c.logger.WithField("raw_envelope", rawEnvStr).Debug("Raw envelope for no-quote message")
 				}
 			}
 			if msg.Envelope.DataMessage != nil &&
@@ -765,7 +766,7 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 		return nil, fmt.Errorf("attachment download failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(constants.MaxRecommendedFileSizeBytes)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read attachment data: %w", err)
 	}

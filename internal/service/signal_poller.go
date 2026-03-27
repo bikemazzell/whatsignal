@@ -34,6 +34,7 @@ import (
 	"whatsignal/internal/constants"
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
+	"whatsignal/internal/privacy"
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
 
@@ -190,26 +191,23 @@ func (sp *SignalPoller) Start(ctx context.Context) error {
 // It waits for the polling goroutine to complete before returning.
 func (sp *SignalPoller) Stop() {
 	sp.mu.Lock()
-	defer sp.mu.Unlock()
-
 	if !sp.running {
+		sp.mu.Unlock()
 		return
 	}
-
 	sp.logger.WithFields(sp.logFields()).Info("Stopping Signal poller...")
-
-	// Cancel context if it exists
 	if sp.cancel != nil {
 		sp.cancel()
 	}
+	sp.mu.Unlock()
 
 	sp.wg.Wait()
-	sp.running = false
 
-	// Clear context and cancel function for idempotency
+	sp.mu.Lock()
+	sp.running = false
 	sp.ctx = nil
 	sp.cancel = nil
-
+	sp.mu.Unlock()
 	sp.logger.WithFields(sp.logFields()).Info("Signal poller stopped")
 }
 
@@ -237,7 +235,7 @@ func (sp *SignalPoller) testConnection(ctx context.Context) error {
 func (sp *SignalPoller) logFields() logrus.Fields {
 	return logrus.Fields{
 		"component":         "signal_poller",
-		"phone_number":      sp.config.IntermediaryPhoneNumber,
+		"phone_number":      privacy.MaskPhoneNumber(sp.config.IntermediaryPhoneNumber),
 		"poll_interval_sec": sp.config.PollIntervalSec,
 		"poll_timeout_sec":  sp.config.PollTimeoutSec,
 		"polling_enabled":   sp.config.PollingEnabled,

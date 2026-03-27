@@ -72,12 +72,18 @@ CREATE TABLE IF NOT EXISTS contacts (
     is_group BOOLEAN DEFAULT FALSE,
     is_my_contact BOOLEAN DEFAULT FALSE,
     cached_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    name_hash TEXT,
+    push_name_hash TEXT,
+    short_name_hash TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_contact_id ON contacts(contact_id);
 CREATE INDEX IF NOT EXISTS idx_phone_number ON contacts(phone_number);
 CREATE INDEX IF NOT EXISTS idx_cached_at ON contacts(cached_at);
+CREATE INDEX IF NOT EXISTS idx_contact_name_hash ON contacts(name_hash);
+CREATE INDEX IF NOT EXISTS idx_contact_push_name_hash ON contacts(push_name_hash);
+CREATE INDEX IF NOT EXISTS idx_contact_short_name_hash ON contacts(short_name_hash);
 
 CREATE TRIGGER IF NOT EXISTS contacts_updated_at
 AFTER UPDATE ON contacts

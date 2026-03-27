@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
@@ -853,6 +854,53 @@ func TestDownloadAttachment(t *testing.T) {
 				if tt.serverResponse != nil {
 					assert.Equal(t, tt.serverResponse, data)
 				}
+			}
+		})
+	}
+}
+
+func TestDownloadAttachment_SizeLimitEnforced(t *testing.T) {
+	tests := []struct {
+		name        string
+		bodySize    int
+		expectError bool
+	}{
+		{
+			name:        "under limit",
+			bodySize:    100,
+			expectError: false,
+		},
+		{
+			name:        "exactly at limit",
+			bodySize:    constants.MaxRecommendedFileSizeBytes,
+			expectError: false,
+		},
+		{
+			name:        "one byte over limit",
+			bodySize:    constants.MaxRecommendedFileSizeBytes + 1,
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := make([]byte, tt.bodySize)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(body)
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
+			data, err := client.DownloadAttachment(context.Background(), "test-attachment")
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "exceeds maximum size")
+				assert.Nil(t, data)
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, data, tt.bodySize)
 			}
 		})
 	}

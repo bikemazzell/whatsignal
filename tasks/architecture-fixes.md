@@ -233,26 +233,9 @@ Expected: All pass. Existing tests mocking `SaveContact` may need arg count upda
 
 ---
 
-## Deferred MEDIUM Findings (not yet fixed)
+## Previously Deferred MEDIUM Findings — ALL FIXED
 
-These were verified during the architecture review but deferred from the initial fix batch.
-
-### M1 — URL parameters not escaped in WhatsApp client
-- **Location:** `pkg/whatsapp/client.go:543, 753, 815`
-- **Issue:** `contactID` with `@` in query string (line 753) should use `url.QueryEscape`. Path segments are less risky per RFC 3986.
-- **Why deferred:** Low risk for current WhatsApp ID format (`digits@c.us`). No known exploit path.
-
-### M2 — Circuit breaker coverage gap
-- **Location:** `pkg/whatsapp/client.go` — `doRequest` used at lines 98, 267, 554, 591, 780, 841, 935
-- **Issue:** Only `sendRequest` and `RestartSession` use `doRequestWithCircuitBreaker`. All other WAHA calls bypass it.
-- **Why deferred:** Requires routing all outbound calls through the circuit breaker, which is a broader refactor.
-
-### M4 — Duplicate `WebhookHandler` interface
-- **Location:** `pkg/whatsapp/types/interfaces.go:48-51` vs `pkg/whatsapp/interfaces.go:20-23`
-- **Issue:** Two incompatible interfaces with the same name (`[]byte` vs `json.RawMessage`).
-- **Why deferred:** Dead code in `types/` — the concrete implementation uses `interfaces.go`. Low impact.
-
-### M12 — `time.Sleep` in tests (78 occurrences)
-- **Location:** 25 test files, worst: `message_flow_test.go` (13), `session_monitor_test.go` (9)
-- **Issue:** Flaky on slow CI, wastes time on fast. `WaitForCondition` polling helper exists but isn't used.
-- **Why deferred:** High effort (78 instances), no functional impact. Best addressed incrementally.
+- [x] **M1** — URL escaping: `url.PathEscape`/`url.QueryEscape` added
+- [x] **M2** — Circuit breaker: All 7 call sites routed through `doRequestWithCircuitBreaker`. HealthCheck exempted (recovery detection).
+- [x] **M4** — Duplicate interface: `types.WebhookHandler` removed with mock + tests
+- [x] **M12** — Test sleeps: 78 → 54 (24 replaced with polling). Remaining 54 annotated as intentional.

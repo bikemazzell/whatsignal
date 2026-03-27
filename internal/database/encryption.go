@@ -9,11 +9,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -169,7 +169,7 @@ func getEncryptionSalt() []byte {
 	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT"); salt != "" && len(salt) >= 16 {
 		return []byte(salt)
 	}
-	log.Println("WARNING: WHATSIGNAL_ENCRYPTION_SALT is not set or too short (<16 chars). " +
+	logrus.Warn("WHATSIGNAL_ENCRYPTION_SALT is not set or too short (<16 chars). " +
 		"Using default salt from source code. Set a unique, random salt for production security.")
 	return []byte(constants.EncryptionSalt)
 }
@@ -179,7 +179,7 @@ func getEncryptionLookupSalt() []byte {
 	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT"); salt != "" && len(salt) >= 16 {
 		return []byte(salt)
 	}
-	log.Println("WARNING: WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is not set or too short (<16 chars). " +
+	logrus.Warn("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is not set or too short (<16 chars). " +
 		"Using default lookup salt from source code. Set a unique, random salt for production security.")
 	return []byte(constants.EncryptionLookupSalt)
 }

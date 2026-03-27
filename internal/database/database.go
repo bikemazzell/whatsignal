@@ -17,6 +17,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// ErrNoMessageFound is returned when no message mapping exists for the given ID.
+var ErrNoMessageFound = errors.New("no message found")
+
 type Database struct {
 	db        *sql.DB
 	encryptor *encryptor
@@ -370,7 +373,7 @@ func (d *Database) UpdateDeliveryStatusByWhatsAppID(ctx context.Context, whatsap
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("no message found with WhatsApp ID: %s", whatsappID)
+		return fmt.Errorf("%w with WhatsApp ID: %s", ErrNoMessageFound, whatsappID)
 	}
 
 	return nil
@@ -395,7 +398,7 @@ func (d *Database) UpdateDeliveryStatusBySignalID(ctx context.Context, signalID 
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("no message found with Signal ID: %s", signalID)
+		return fmt.Errorf("%w with Signal ID: %s", ErrNoMessageFound, signalID)
 	}
 
 	return nil
@@ -412,7 +415,7 @@ func (d *Database) updateDeliveryStatusInternal(ctx context.Context, id string, 
 	if err == nil {
 		return nil
 	}
-	if !strings.Contains(err.Error(), "no message found") {
+	if !errors.Is(err, ErrNoMessageFound) {
 		return fmt.Errorf("failed to update delivery status by WhatsApp ID: %w", err)
 	}
 
@@ -421,7 +424,7 @@ func (d *Database) updateDeliveryStatusInternal(ctx context.Context, id string, 
 		return nil
 	}
 
-	return fmt.Errorf("no message found with ID: %s", id)
+	return fmt.Errorf("%w with ID: %s", ErrNoMessageFound, id)
 }
 
 // UpdateSignalIDByWhatsAppID updates the Signal message ID and timestamp for an existing mapping

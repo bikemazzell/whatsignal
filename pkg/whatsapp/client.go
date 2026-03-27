@@ -933,7 +933,10 @@ func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
 	req.Header.Set("X-Api-Key", c.apiKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
+	// Health checks bypass the circuit breaker: they are the mechanism for
+	// detecting that WAHA has recovered. Routing them through the breaker
+	// would block recovery detection when the breaker is open.
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return fmt.Errorf("WhatsApp API health check failed: %w", err)
 	}

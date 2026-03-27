@@ -5,6 +5,23 @@ All notable changes to WhatSignal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Broken `GetContactByName` encryption**: The function queried AES-GCM encrypted name/push\_name columns with plaintext values, silently returning zero results. Added HMAC hash columns for deterministic lookups. Also encrypts `short_name` which was previously stored in plaintext.
+- **Deadlock in `SignalPoller.Stop()`**: `Stop()` held the mutex while calling `wg.Wait()`, but goroutines in `pollWithRetry()` needed the mutex before `wg.Done()` could fire. Released mutex before `wg.Wait()`.
+- **PII logged at INFO/WARN level**: Raw message envelopes (phone numbers, message content) were logged at WARN on the normal no-quote code path. Moved to DEBUG. Intermediary phone number masked in poller logs and removed from WebSocket URL log.
+- **Non-atomic migration execution**: DDL and tracking INSERT were separate statements. A crash between them could leave schema applied but unrecorded, re-running destructive DDL on restart. Now wrapped in a transaction.
+- **Missing `PRAGMA busy_timeout`**: With `MaxOpenConns=25`, concurrent writers hit `SQLITE_BUSY` immediately. Added `busy_timeout=5000` so SQLite waits instead of erroring.
+- **`updateDeliveryStatusInternal` error masking**: Real DB errors were silently discarded as "not found" when the WhatsApp ID lookup failed for non-"not found" reasons. Now propagates real errors.
+- **Unbounded attachment download**: `DownloadAttachment` used `io.ReadAll` without size limit. Now bounded to `MaxRecommendedFileSizeBytes`.
+- **Missing `rows.Err()` check**: `GetLatestGroupMessageMappingBySession` could silently discard mid-iteration driver errors.
+- **Dead indexes on encrypted columns**: Dropped `idx_whatsapp_msg_id`, `idx_signal_msg_id`, and `idx_chat_time` which indexed ciphertext columns never queried directly.
+
+### Added
+- **Composite indexes for delivery monitor and chat lookups**: `(delivery_status, forwarded_at)` for the stale message query, `(chat_id_hash, forwarded_at)` for chat-timeline queries.
+- **Integration test for contact name routing**: Verifies the full path from SaveContact through encrypted hash lookup to WhatsApp routing.
+
 ## [1.2.41]
 
 ### Added

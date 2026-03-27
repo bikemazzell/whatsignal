@@ -766,9 +766,13 @@ func (c *SignalClient) DownloadAttachment(ctx context.Context, attachmentID stri
 		return nil, fmt.Errorf("attachment download failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(constants.MaxRecommendedFileSizeBytes)))
+	maxSize := int64(constants.MaxRecommendedFileSizeBytes)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read attachment data: %w", err)
+	}
+	if int64(len(data)) > maxSize {
+		return nil, fmt.Errorf("attachment exceeds maximum size (%d bytes)", maxSize)
 	}
 
 	return data, nil

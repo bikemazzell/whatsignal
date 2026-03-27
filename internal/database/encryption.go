@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
@@ -161,20 +162,24 @@ func (e *encryptor) DecryptIfEnabled(ciphertext string) (string, error) { return
 // DecryptAuto defers to full decryption; no plaintext compatibility
 func (e *encryptor) DecryptAuto(value string) (string, error) { return e.Decrypt(value) }
 
-// getEncryptionSalt returns the encryption salt from environment or default
+// getEncryptionSalt returns the encryption salt from environment or default.
+// Using the default salt is a security weakness: the salt is public in the
+// repository, so all default deployments share the same PBKDF2 parameters.
 func getEncryptionSalt() []byte {
 	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT"); salt != "" && len(salt) >= 16 {
 		return []byte(salt)
 	}
-	// Fallback to default for backward compatibility
+	log.Println("WARNING: WHATSIGNAL_ENCRYPTION_SALT is not set or too short (<16 chars). " +
+		"Using default salt from source code. Set a unique, random salt for production security.")
 	return []byte(constants.EncryptionSalt)
 }
 
-// getEncryptionLookupSalt returns the lookup salt from environment or default
+// getEncryptionLookupSalt returns the lookup salt from environment or default.
 func getEncryptionLookupSalt() []byte {
 	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT"); salt != "" && len(salt) >= 16 {
 		return []byte(salt)
 	}
-	// Fallback to default for backward compatibility
+	log.Println("WARNING: WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is not set or too short (<16 chars). " +
+		"Using default lookup salt from source code. Set a unique, random salt for production security.")
 	return []byte(constants.EncryptionLookupSalt)
 }

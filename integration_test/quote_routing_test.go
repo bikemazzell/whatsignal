@@ -329,17 +329,14 @@ func TestContactNameRouting_QuotedDisplayName(t *testing.T) {
 
 	// The bridge should resolve "Carol" -> contact -> 15559998877@c.us
 	// and send the message to Carol's WhatsApp chat
-	if resp.StatusCode == http.StatusOK {
-		waitForMockAPICount(t, env, "whatsapp_send", 1)
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"Signal webhook should succeed — bridge must resolve Carol via contact name lookup")
+	waitForMockAPICount(t, env, "whatsapp_send", 1)
 
-		sends := env.GetWhatsAppSends()
-		require.NotEmpty(t, sends, "Should have at least one WhatsApp send")
-		assert.Equal(t, carolChatID, sends[len(sends)-1].ChatID,
-			"Reply should route to Carol's chat via contact name lookup")
-	}
-	// If status is 500, the bridge couldn't route — that's also acceptable to log
-	// as the fallback path may not find a latest mapping. The key assertion is
-	// the DB round-trip (above) which proves GetContactByName works with encryption.
+	sends := env.GetWhatsAppSends()
+	require.NotEmpty(t, sends, "Should have at least one WhatsApp send")
+	assert.Equal(t, carolChatID, sends[len(sends)-1].ChatID,
+		"Reply should route to Carol's chat via contact name lookup")
 }
 
 // TestGroupQuoteRouting_CorrectGroup verifies that quoting a message from Group A

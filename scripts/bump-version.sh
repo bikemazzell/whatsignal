@@ -105,9 +105,17 @@ echo "=== All checks passed ==="
 step 8 "Bumping version"
 echo "$NEW_VERSION" > "$VERSION_FILE"
 
-if grep -q "version.*$CURRENT_VERSION" README.md 2>/dev/null; then
-    sed -i.bak "s/$CURRENT_VERSION/$NEW_VERSION/g" README.md && rm -f README.md.bak
-    echo "  Updated README.md"
+# Update version badge in README (matches badge pattern regardless of current value)
+if [ -f "README.md" ]; then
+    sed -i.bak "s|badge/version-[0-9.]*-blue|badge/version-$NEW_VERSION-blue|g" README.md && rm -f README.md.bak
+    echo "  Updated README.md version badge"
+
+    # Update Go version badge from go.mod
+    GO_VER=$(grep '^go ' go.mod | awk '{print $2}' | cut -d. -f1,2)
+    if [ -n "$GO_VER" ]; then
+        sed -i.bak "s|badge/go-[0-9.]*+-blue|badge/go-${GO_VER}+-blue|g" README.md && rm -f README.md.bak
+        echo "  Updated README.md Go version badge to $GO_VER"
+    fi
 fi
 
 if [ -f "docker-compose.yml" ] && grep -q "whatsignal:$CURRENT_VERSION" docker-compose.yml 2>/dev/null; then

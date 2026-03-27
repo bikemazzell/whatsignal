@@ -1,7 +1,7 @@
 # WhatSignal
 
-[![Version](https://img.shields.io/badge/version-1.2.2-blue.svg)](CHANGELOG.md)
-[![Go Version](https://img.shields.io/badge/go-1.22+-blue.svg)](go.mod)
+[![Version](https://img.shields.io/badge/version-1.2.42-blue.svg)](CHANGELOG.md)
+[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and Signal. It forwards messages (text, images, videos, audio, reactions) between the platforms while maintaining conversation context, supporting replies, and providing intelligent auto-reply functionality.

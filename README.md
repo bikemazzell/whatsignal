@@ -4,19 +4,18 @@
 [![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-WhatSignal is a bridge service that enables one-to-one chat between WhatsApp and Signal. It forwards messages (text, images, videos, audio, reactions) between the platforms while maintaining conversation context, supporting replies, and providing intelligent auto-reply functionality.
+WhatSignal is a self-hosted bridge between WhatsApp and Signal. Messages go both ways — text, images, videos, voice notes, reactions — and reply threading is preserved across protocols. You read and reply from Signal; the person on WhatsApp doesn't know the difference.
 
 ## Features
 
-- WhatsApp ↔ Signal one-to-one bridge with preserved context (replies, quotes, metadata)
-- Group chat support: WhatsApp groups → Signal messages & reply support
-- Smart contacts: show names (not just numbers), warm cache at startup, periodic refresh, graceful fallback
-- Media support: images, videos, documents, voice notes
-- Status support: typing indicators, seen status
-- Message extras: reactions, auto‑reply to last sender, delivery status tracking
-- Security by default: encrypted storage, webhook auth/validation, configurable retention, automated cleanup
-- Operational hygiene: health endpoint, structured JSON logs, graceful retries
-- Developer‑friendly: Dockerized, type‑safe handling, comprehensive tests (>80% coverage)
+- Bidirectional WhatsApp-Signal bridge (individual and group chats)
+- Quoted replies route to the correct contact, even across different message ID schemes
+- Contact names resolved from cache, with fallback to phone numbers
+- Images, videos, documents, voice notes in both directions
+- Typing indicators, read receipts, reactions, delivery tracking
+- AES-256-GCM field encryption, webhook HMAC auth, configurable data retention
+- Health endpoint, structured JSON logs, circuit breakers, graceful retries
+- Dockerized, 80%+ test coverage
 
 
 ## Prerequisite Accounts
@@ -28,14 +27,14 @@ To use WhatSignal, you must have:
 
 ## Quick Start
 
-### 🚀 Deploy with Pre-built Image (Easiest)
+### Deploy with Pre-built Image (Easiest)
 
 **One-liner deployment (no source code needed):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bikemazzell/whatsignal/main/scripts/deploy.sh | bash
 ```
 
-📋 **Then follow the [Quick Start Checklist](docs/quickstart.md) for complete setup steps.**
+**Then follow the [Quick Start Checklist](docs/quickstart.md) for complete setup steps.**
 
 **Manual deployment:**
 ```bash
@@ -57,9 +56,9 @@ docker compose ps
 curl http://localhost:8082/health
 ```
 
-📖 **For detailed deployment instructions, see:** [Deployment Guide](docs/deployment.md)
+**For detailed deployment instructions, see:** [Deployment Guide](docs/deployment.md)
 
-### 🐳 Build from Source (Developers)
+### Build from Source (Developers)
 
 **For development or customization:**
 ```bash
@@ -69,7 +68,7 @@ cd whatsignal
 make docker-up      # Build and start all services
 ```
 
-### 🔧 Docker Commands
+### Docker Commands
 
 ```bash
 make docker-up         # Start all services
@@ -80,7 +79,7 @@ make docker-restart    # Restart services
 make docker-clean      # Clean up everything
 ```
 
-### 🔧 Troubleshooting
+### Troubleshooting
 
 **Services won't start:**
 ```bash

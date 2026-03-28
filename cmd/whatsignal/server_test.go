@@ -1918,15 +1918,15 @@ func TestServer_UndefinedSessionHandling(t *testing.T) {
 		},
 		{
 			name:    "message from undefined session",
-			session: "jo",
+			session: "unknown-session",
 			payload: map[string]interface{}{
 				"event":   "message",
-				"session": "jo",
+				"session": "unknown-session",
 				"payload": map[string]interface{}{
 					"id":       "msg456",
 					"from":     "+1234567896",
 					"fromMe":   false,
-					"body":     "Hello from jo session",
+					"body":     "Hello from unknown session",
 					"hasMedia": false,
 				},
 			},

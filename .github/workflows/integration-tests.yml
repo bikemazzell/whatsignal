@@ -23,7 +23,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.26.1'
+  GO_VERSION: '1.26.2'
   TEST_TIMEOUT: '20m'
   WHATSIGNAL_TEST_MODE: 'true'
 

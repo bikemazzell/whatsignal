@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Dependabot: OpenTelemetry SDK vulnerability**: Updated `go.opentelemetry.io/otel/*` from v1.42.0 to v1.43.0 to resolve critical vulnerability in `go.opentelemetry.io/otel/sdk`.
+- **Go stdlib CVEs (GO-2026-4947, GO-2026-4946, GO-2026-4870, GO-2026-4866, GO-2026-4865)**: Updated Go from 1.26.1 to 1.26.2, fixing vulnerabilities in crypto/x509 (chain building, policy validation, auth bypass), crypto/tls (KeyUpdate DoS), and html/template (XSS).
+
+### Changed
+- **Dependency updates**: `github.com/mattn/go-sqlite3` v1.14.37 to v1.14.42, `google.golang.org/grpc` v1.79.3 to v1.80.0, `google.golang.org/genproto` updated.
+- **Go toolchain**: Updated from 1.26.1 to 1.26.2 across go.mod, Dockerfile, and all CI workflows.
+
 ### Fixed
 - **Broken `GetContactByName` encryption**: The function queried AES-GCM encrypted name/push\_name columns with plaintext values, silently returning zero results. Added HMAC hash columns for deterministic lookups. Also encrypts `short_name` which was previously stored in plaintext.
 - **Deadlock in `SignalPoller.Stop()`**: `Stop()` held the mutex while calling `wg.Wait()`, but goroutines in `pollWithRetry()` needed the mutex before `wg.Done()` could fire. Released mutex before `wg.Wait()`.

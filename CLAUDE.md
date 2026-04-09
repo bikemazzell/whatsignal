@@ -36,6 +36,17 @@
 - **Expect instability after switching to json-rpc.** Monitor closely. If messages stop flowing, this is the likely cause. The previous failure mode was total — not partial. Have a rollback plan ready (switch back to native + re-add AUTO_RECEIVE_SCHEDULE).
 - If json-rpc proves unreliable again, the alternative is to stay on native mode and implement quote detection via a different mechanism (e.g., tracking recent outbound messages and matching reply text patterns, or using signal-cli's dbus interface).
 
+### Git history scrubbing: BFG + filter-repo have different scopes
+- **BFG** (`--replace-text`) rewrites file blob content only. It does NOT touch commit messages. Use `git filter-repo --message-callback` for commit messages.
+- **BFG protects HEAD by default.** If the latest commit already has clean values (because you committed a fix before running BFG), BFG will report "no dirty commits found" and do nothing. Either: (a) use `--no-blob-protection` on a mirror cloned from remote, or (b) push your cleanup commit first so BFG's protected HEAD is already clean.
+- **After BFG force-push, `git reset --hard origin/main` wipes unpushed local changes.** If you have local commits that haven't been pushed (README edits, doc removal, etc.), they're gone. Push everything to remote before running BFG, or stash/branch first.
+- **Correct sequence:** commit all fixes -> push to remote -> clone mirror from remote -> BFG on mirror -> filter-repo for commit messages -> force-push mirror -> re-sync local.
+
+### Test data hygiene: no real PII in test files
+- Real phone numbers, IPs, and contact names from `config.json` end up in test files when copying payloads. Use NANP 555 numbers (+15550001111), RFC 5737 IPs (192.0.2.x, 198.51.100.x), and generic names.
+- Pre-publication audit must check: source files, test fixtures, config examples, docs, CHANGELOG, git history (blobs AND commit messages), and any internal planning docs that shouldn't be public.
+- Once real data is committed, it persists in git history forever unless scrubbed with BFG/filter-repo. Catch it before the first commit, not before the first presentation.
+
 ## Release checklist
 
 - Always check for the latest Go version and update ALL of the following before finishing a commit or release:

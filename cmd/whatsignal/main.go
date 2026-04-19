@@ -153,8 +153,8 @@ func run(ctx context.Context) error {
 
 	// Validate required environment variables
 	apiKey := os.Getenv("WHATSAPP_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
+	if err := validateWhatsAppAPIKey(apiKey, os.Getenv("WHATSIGNAL_ENV")); err != nil {
+		return err
 	}
 
 	mediaHandler, err := media.NewHandlerWithServices(cfg.Media.CacheDir, cfg.Media, cfg.WhatsApp.APIBaseURL, apiKey, cfg.Signal.RPCURL)
@@ -322,6 +322,16 @@ func run(ctx context.Context) error {
 	}
 
 	logger.Info("Server shutdown completed")
+	return nil
+}
+
+func validateWhatsAppAPIKey(apiKey, environment string) error {
+	if apiKey == "" {
+		return fmt.Errorf("WHATSAPP_API_KEY environment variable is required")
+	}
+	if environment == "production" && apiKey == "your-api-key" {
+		return fmt.Errorf("WHATSAPP_API_KEY must not use the placeholder value in production")
+	}
 	return nil
 }
 

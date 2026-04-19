@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -337,6 +338,10 @@ func (s *Server) handleHealth() http.HandlerFunc {
 
 func (s *Server) handleSessionStatus() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireProductionAdminToken(w, r) {
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(constants.DefaultSessionStatusTimeoutSec)*time.Second)
 		defer cancel()
 
@@ -385,7 +390,7 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 		maxSkew := time.Duration(maxSkewSec) * time.Second
 		bodyBytes, err := verifySignatureWithSkew(r, s.cfg.WhatsApp.WebhookSecret, XWahaSignatureHeader, maxSkew)
 		if err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "body too large") {
+			if isRequestBodyTooLarge(err) {
 				s.logger.WithError(err).Warn("Webhook request body too large")
 				http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 				return
@@ -454,6 +459,11 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr)
 }
 
 func (s *Server) handleWhatsAppMessage(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {

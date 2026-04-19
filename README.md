@@ -94,9 +94,9 @@ make docker-restart
 ```
 
 **Port conflicts:**
-- WhatSignal: 8082
-- WAHA: 3000  
-- Signal-CLI: 8080
+- WhatSignal host port: 8083
+- WAHA: Compose network only by default
+- Signal-CLI: Compose network only by default
 
 **Clean slate restart:**
 ```bash
@@ -137,4 +137,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - [Waha](https://github.com/devlikeapro/waha) for the WhatsApp HTTP API
-- [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) for the Signal CLI interface 
+- [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) for the Signal CLI interface

@@ -542,11 +542,23 @@ func TestValidateBounds(t *testing.T) {
 func TestValidateSecurity(t *testing.T) {
 	// Store original environment value
 	originalEnv := os.Getenv("WHATSIGNAL_ENV")
+	originalSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT")
+	originalLookupSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
 	defer func() {
 		if originalEnv != "" {
 			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
 		} else {
 			_ = os.Unsetenv("WHATSIGNAL_ENV")
+		}
+		if originalSalt != "" {
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
+		} else {
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		}
+		if originalLookupSalt != "" {
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
+		} else {
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
 		}
 	}()
 
@@ -636,6 +648,9 @@ func TestValidateSecurity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "production-encryption-salt-value")
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "production-lookup-salt-value")
+
 			// Set environment
 			if tt.environment != "" {
 				_ = os.Setenv("WHATSIGNAL_ENV", tt.environment)
@@ -650,6 +665,100 @@ func TestValidateSecurity(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.errorMsg)
 			} else {
 				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateSecurity_ProductionRequiresEncryptionSalts(t *testing.T) {
+	originalEnv := os.Getenv("WHATSIGNAL_ENV")
+	originalSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT")
+	originalLookupSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+	defer func() {
+		if originalEnv != "" {
+			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
+		} else {
+			_ = os.Unsetenv("WHATSIGNAL_ENV")
+		}
+		if originalSalt != "" {
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
+		} else {
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+		}
+		if originalLookupSalt != "" {
+			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
+		} else {
+			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+		}
+	}()
+
+	_ = os.Setenv("WHATSIGNAL_ENV", "production")
+
+	tests := []struct {
+		name       string
+		salt       string
+		lookupSalt string
+		errorMsg   string
+	}{
+		{
+			name:       "missing encryption salt",
+			salt:       "",
+			lookupSalt: "production-lookup-salt-value",
+			errorMsg:   "WHATSIGNAL_ENCRYPTION_SALT is required in production",
+		},
+		{
+			name:       "short encryption salt",
+			salt:       "short",
+			lookupSalt: "production-lookup-salt-value",
+			errorMsg:   "WHATSIGNAL_ENCRYPTION_SALT must be at least 16 characters long",
+		},
+		{
+			name:       "missing lookup salt",
+			salt:       "production-encryption-salt-value",
+			lookupSalt: "",
+			errorMsg:   "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is required in production",
+		},
+		{
+			name:       "short lookup salt",
+			salt:       "production-encryption-salt-value",
+			lookupSalt: "short",
+			errorMsg:   "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT must be at least 16 characters long",
+		},
+		{
+			name:       "valid salts",
+			salt:       "production-encryption-salt-value",
+			lookupSalt: "production-lookup-salt-value",
+			errorMsg:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.salt != "" {
+				_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", tt.salt)
+			} else {
+				_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+			}
+			if tt.lookupSalt != "" {
+				_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", tt.lookupSalt)
+			} else {
+				_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+			}
+
+			cfg := &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					WebhookSecret: "this-is-a-very-long-webhook-secret-that-meets-requirements",
+				},
+				LogLevel: "info",
+			}
+
+			err := validateSecurity(cfg)
+			if tt.errorMsg == "" {
+				assert.NoError(t, err)
+			} else {
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			}
 		})
 	}

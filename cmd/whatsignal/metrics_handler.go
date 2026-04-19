@@ -13,6 +13,10 @@ import (
 // handleMetrics returns current application metrics
 func (s *Server) handleMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireProductionAdminToken(w, r) {
+			return
+		}
+
 		requestInfo := tracing.GetRequestInfo(r.Context())
 
 		s.logger.WithFields(logrus.Fields{

@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **Dependabot: OpenTelemetry SDK vulnerability**: Updated `go.opentelemetry.io/otel/*` from v1.42.0 to v1.43.0 to resolve critical vulnerability in `go.opentelemetry.io/otel/sdk`.
 - **Go stdlib CVEs (GO-2026-4947, GO-2026-4946, GO-2026-4870, GO-2026-4866, GO-2026-4865)**: Updated Go from 1.26.1 to 1.26.2, fixing vulnerabilities in crypto/x509 (chain building, policy validation, auth bypass), crypto/tls (KeyUpdate DoS), and html/template (XSS).
+- **SSRF: decimal/hex/octal IP bypass closed**: `parseLegacyIPv4` now detects and blocks non-standard loopback representations such as `2130706433` (decimal) and `0x7f000001` (hex) before the SSRF allowlist check runs. Previously these were treated as single-label Docker hostnames and allowed.
+- **SSRF: DNS resolution validation before fetch**: Media download hostnames are now resolved and each resulting IP checked against the blocked range (loopback, private, link-local, unspecified). Redirects receive the same check via the existing `CheckRedirect` policy.
+- **SSRF: Docker hostname allowlist restricted to configured endpoints**: Single-label Docker hostnames are no longer unconditionally allowed. Only the exact configured WAHA and Signal RPC hostnames (and their direct IPs on the same port) are permitted. Arbitrary containers such as `redis` or `postgres` sharing the Docker network are now blocked.
+- **Docker supply chain: builder image digest-pinned**: The `golang:1.26.2-alpine` builder stage is now pinned with its SHA256 digest, matching the already-pinned distroless runtime image.
+- **Docker: WAHA and Signal CLI ports no longer published to host by default**: `ports:` bindings replaced with `expose:` in `docker-compose.yml`. Signal CLI has no built-in auth and WAHA is only protected by its API key; binding them to `0.0.0.0` was an unnecessary exposure.
+- **Docker: Compose runtime user mismatch fixed**: Removed `user: "1000:1000"` override from the `whatsignal` service. The distroless `nonroot` user (uid=65532) specified in the Dockerfile now applies. Running as uid=1000 in a distroless image that owns files at uid=65532 produced a silent permission mismatch.
+- **Deployment: placeholder API key removed and rejected**: `WHATSAPP_API_KEY=${WHATSAPP_API_KEY:-your-api-key}` default removed from `docker-compose.yml`; production startup now rejects the literal value `your-api-key` at launch.
+- **413 detection uses typed error**: Replaced `strings.Contains(err.Error(), "body too large")` with `errors.As(err, &maxBytesErr)` against `*http.MaxBytesError` (available since Go 1.19). The string match would silently stop working if Go changed the error message.
 
 ### Changed
 - **Dependency updates**: `github.com/mattn/go-sqlite3` v1.14.37 to v1.14.42, `google.golang.org/grpc` v1.79.3 to v1.80.0, `google.golang.org/genproto` updated.
@@ -39,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Composite indexes for delivery monitor and chat lookups**: `(delivery_status, forwarded_at)` for the stale message query, `(chat_id_hash, forwarded_at)` for chat-timeline queries.
 - **Integration test for contact name routing**: Verifies the full path from SaveContact through encrypted hash lookup to WhatsApp routing.
+- **Static security tests for Dockerfile and Compose**: `TestDockerfileSecurityStructure` asserts both builder and runtime images are digest-pinned, the final stage runs as `nonroot`, and no package manager or shell command appears in the final stage. `TestDockerComposeSecurityStructure` asserts `read_only`, `cap_drop: ALL`, `no-new-privileges`, required env vars, and no host-published ports for WAHA/Signal CLI. `TestDockerComposeDoesNotProvidePlaceholderSecrets` asserts no literal placeholder credentials appear in the Compose file.
+- **Deployment scripts generate salts and admin token**: `scripts/deploy.sh` and `scripts/setup.sh` now auto-generate `WHATSIGNAL_ENCRYPTION_SALT`, `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`, and `WHATSIGNAL_ADMIN_TOKEN` alongside the existing secrets.
 
 ## [1.2.41]
 

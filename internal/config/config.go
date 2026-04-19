@@ -210,6 +210,18 @@ func validateSecurity(c *models.Config) error {
 			return models.ConfigError{Message: fmt.Sprintf("WhatsApp webhook secret must be at least %d characters long", constants.MinWebhookSecretLength)}
 		}
 
+		if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT"); salt == "" {
+			return models.ConfigError{Message: "WHATSIGNAL_ENCRYPTION_SALT is required in production"}
+		} else if len(salt) < models.SaltSize {
+			return models.ConfigError{Message: fmt.Sprintf("WHATSIGNAL_ENCRYPTION_SALT must be at least %d characters long", models.SaltSize)}
+		}
+
+		if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT"); salt == "" {
+			return models.ConfigError{Message: "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is required in production"}
+		} else if len(salt) < models.SaltSize {
+			return models.ConfigError{Message: fmt.Sprintf("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT must be at least %d characters long", models.SaltSize)}
+		}
+
 		// Signal CLI REST API typically doesn't require auth tokens in standard deployments
 		// Remove auth token validation as it's not part of the standard Signal CLI REST API
 

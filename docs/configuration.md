@@ -227,6 +227,13 @@ Signal-CLI Internal Timeout (10s, fixed)
   - Default: `300` seconds (5 minutes)
   - Protects against replay attacks by rejecting stale or far-future webhooks
 
+## Diagnostics Authentication
+
+- **`WHATSIGNAL_ADMIN_TOKEN`**: Bearer token for production diagnostics endpoints
+  - Required to access `/metrics` and `/session/status` when `WHATSIGNAL_ENV=production`
+  - Send as `Authorization: Bearer <token>`
+  - Generate a strong random value and keep it separate from webhook and encryption secrets
+
 ## Channels Configuration
 
 **Required**: WhatSignal now requires the `channels` array configuration for routing messages between WhatsApp sessions and Signal destinations.
@@ -516,9 +523,19 @@ WhatSignal supports encryption at rest for sensitive data in the database. This 
   - Should be a strong, random string
   - **CRITICAL**: Never change this after initial setup - doing so will make existing encrypted data unreadable
 
+- **`WHATSIGNAL_ENCRYPTION_SALT`**: Unique salt for deriving the encryption key
+  - **Required in production**
+  - Must be at least 16 characters long
+  - Generate once before first startup and keep stable for the lifetime of the database
+
+- **`WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`**: Unique salt for deriving lookup HMAC keys
+  - **Required in production**
+  - Must be at least 16 characters long
+  - Generate once before first startup and keep stable for lookup compatibility
+
 ### Important Notes on Encryption
 
-1. **Encryption salts are hardcoded**: The application uses internal salts for key derivation and deterministic encryption. These are intentionally not configurable to prevent accidental data loss.
+1. **Encryption salts must be stable**: Production deployments must set unique salts. Changing either salt after data is written can make encrypted data or lookup indexes unusable.
 
 2. **Cannot change encryption secret**: Once you've encrypted data with a specific `WHATSIGNAL_ENCRYPTION_SECRET`, you cannot change it without losing access to all existing encrypted data.
 
@@ -532,6 +549,8 @@ WhatSignal supports encryption at rest for sensitive data in the database. This 
 # Enable encryption before first run
 export WHATSIGNAL_ENABLE_ENCRYPTION=true
 export WHATSIGNAL_ENCRYPTION_SECRET="your-very-long-random-secret-at-least-32-chars"
+export WHATSIGNAL_ENCRYPTION_SALT="your-unique-random-encryption-salt"
+export WHATSIGNAL_ENCRYPTION_LOOKUP_SALT="your-unique-random-lookup-salt"
 
 # Start the application
 ./whatsignal

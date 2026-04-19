@@ -32,11 +32,17 @@ if [ ! -f .env ]; then
     echo "🔐 Generating secure secrets..."
     WHATSAPP_WEBHOOK_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
     WHATSIGNAL_ENCRYPTION_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
+    WHATSIGNAL_ENCRYPTION_SALT=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64)
+    WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64)
+    WHATSIGNAL_ADMIN_TOKEN=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
     
     # Update .env file with generated secrets
     sed -i.bak "s/your-waha-api-key/$(openssl rand -base64 16 | tr -d '=' | tr -d '\n')/" .env
     sed -i.bak "s/your-very-secure-whatsapp-webhook-secret/$WHATSAPP_WEBHOOK_SECRET/" .env
     sed -i.bak "s/your-very-secure-encryption-secret-change-this/$WHATSIGNAL_ENCRYPTION_SECRET/" .env
+    sed -i.bak "s/your-unique-encryption-salt/$WHATSIGNAL_ENCRYPTION_SALT/" .env
+    sed -i.bak "s/your-unique-lookup-salt/$WHATSIGNAL_ENCRYPTION_LOOKUP_SALT/" .env
+    sed -i.bak "s/your-very-secure-admin-token/$WHATSIGNAL_ADMIN_TOKEN/" .env
     
     # Remove backup file
     rm -f .env.bak

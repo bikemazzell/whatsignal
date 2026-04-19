@@ -149,6 +149,55 @@ func TestRun_MissingWhatsAppAPIKey(t *testing.T) {
 		strings.Contains(err.Error(), "failed to initialize database"), "Expected API key or database error, got: %v", err)
 }
 
+func TestValidateWhatsAppAPIKeyRejectsProductionPlaceholders(t *testing.T) {
+	tests := []struct {
+		name        string
+		apiKey      string
+		environment string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "missing API key always rejected",
+			apiKey:      "",
+			environment: "",
+			expectError: true,
+			errorMsg:    "WHATSAPP_API_KEY environment variable is required",
+		},
+		{
+			name:        "placeholder rejected in production",
+			apiKey:      "your-api-key",
+			environment: "production",
+			expectError: true,
+			errorMsg:    "WHATSAPP_API_KEY must not use the placeholder value in production",
+		},
+		{
+			name:        "placeholder allowed outside production for local setup",
+			apiKey:      "your-api-key",
+			environment: "",
+			expectError: false,
+		},
+		{
+			name:        "real key allowed in production",
+			apiKey:      "real-waha-api-key",
+			environment: "production",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateWhatsAppAPIKey(tt.apiKey, tt.environment)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestRun_InvalidLogLevel(t *testing.T) {
 	// Create temporary config file with invalid log level
 	tmpDir, err := os.MkdirTemp("", "whatsignal-test")

@@ -58,9 +58,12 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 				eventTime.Format(time.RFC3339), now.Format(time.RFC3339), timeDiff, maxSkew)
 		}
 
-		// Validate signature (body-only per current WAHA tests); if WAHA binds timestamp in the future, include it here
+		// Bind the signature to both timestamp and body so a captured body HMAC
+		// cannot be replayed with a different fresh timestamp.
 		expectedSignatureHex := signatureHeader
 		mac := hmac.New(sha512.New, []byte(secretKey))
+		mac.Write([]byte(timestampStr))
+		mac.Write([]byte("."))
 		mac.Write(body)
 		computedMAC := mac.Sum(nil)
 		computedSignatureHex := hex.EncodeToString(computedMAC)
@@ -85,6 +88,30 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 	}
 
 	return body, nil
+}
+
+func requireProductionAdminToken(w http.ResponseWriter, r *http.Request) bool {
+	if os.Getenv("WHATSIGNAL_ENV") != "production" {
+		return true
+	}
+
+	adminToken := os.Getenv("WHATSIGNAL_ADMIN_TOKEN")
+	authHeader := r.Header.Get("Authorization")
+	const bearerPrefix = "Bearer "
+	if adminToken == "" || !strings.HasPrefix(authHeader, bearerPrefix) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="whatsignal diagnostics"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+
+	presentedToken := strings.TrimPrefix(authHeader, bearerPrefix)
+	if !hmac.Equal([]byte(presentedToken), []byte(adminToken)) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="whatsignal diagnostics"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+
+	return true
 }
 
 // RateLimiter implements a simple rate limiter for webhook endpoints

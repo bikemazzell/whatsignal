@@ -112,8 +112,9 @@ func TestValidateDownloadURL_SchemeValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -185,8 +186,9 @@ func TestValidateDownloadURL_HostValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
 				// Note: even valid host URLs may fail on DNS resolution in test environment
 				// That's expected and still validates the host checking logic
@@ -262,8 +264,9 @@ func TestValidateDownloadURL_IPLiteralBlocking(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -367,6 +370,84 @@ func TestValidateDownloadURL_SecurityBypass(t *testing.T) {
 	}
 }
 
+func TestValidateDownloadURL_EncodedLoopbackHostsBlocked(t *testing.T) {
+	h := setupHandlerForURLValidation(t, "http://192.168.1.50:3000")
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{
+			name: "decimal loopback",
+			url:  "http://2130706433:3000/api/files/private.jpg",
+		},
+		{
+			name: "hex loopback",
+			url:  "http://0x7f000001:3000/api/files/private.jpg",
+		},
+		{
+			name: "octal loopback",
+			url:  "http://017700000001:3000/api/files/private.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if assert.Error(t, err) {
+				assert.Contains(t, err.Error(), "disallowed IP")
+			}
+		})
+	}
+}
+
+func TestValidateDownloadURL_OnlyConfiguredDockerHostsAllowed(t *testing.T) {
+	h := setupHandlerForURLValidationWithSignal(t, "http://waha:3000", "http://signal-cli-waha:8080")
+
+	tests := []struct {
+		name        string
+		url         string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "configured WAHA Docker host allowed",
+			url:         "http://waha:3000/api/files/voice.ogg",
+			expectError: false,
+		},
+		{
+			name:        "configured Signal Docker host allowed",
+			url:         "http://signal-cli-waha:8080/v1/attachments/abc123",
+			expectError: false,
+		},
+		{
+			name:        "unconfigured Docker host on WAHA port blocked",
+			url:         "http://redis:3000/api/files/voice.ogg",
+			expectError: true,
+			errorMsg:    "download host not allowed: redis",
+		},
+		{
+			name:        "unconfigured Docker host on Signal port blocked",
+			url:         "http://internal-api:8080/v1/attachments/abc123",
+			expectError: true,
+			errorMsg:    "download host not allowed: internal-api",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := h.validateDownloadURL(tt.url)
+			if tt.expectError {
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestValidateDownloadURL_RealWorldExamples(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -394,7 +475,7 @@ func TestValidateDownloadURL_RealWorldExamples(t *testing.T) {
 			wahaBaseURL: "http://localhost:3000",
 			testURL:     "http://localhost:8080/admin/secret",
 			expectError: true,
-			errorMsg:    "download host not allowed", // Different port blocked
+			errorMsg:    "disallowed IP", // Different port blocked before host allowance
 		},
 		{
 			name:        "legitimate same-host URL",
@@ -461,6 +542,7 @@ func TestValidateDownloadURL_ComprehensiveSecurity(t *testing.T) {
 			assert.True(t,
 				strings.Contains(err.Error(), "unsupported URL scheme") ||
 					strings.Contains(err.Error(), "download host not allowed") ||
+					strings.Contains(err.Error(), "disallowed IP") ||
 					strings.Contains(err.Error(), "download IP not allowed") ||
 					strings.Contains(err.Error(), "resolved to disallowed IP") ||
 					strings.Contains(err.Error(), "invalid media URL") ||
@@ -556,19 +638,22 @@ func TestValidateDownloadURL_DockerInternalHosts(t *testing.T) {
 		errorMsg    string
 	}{
 		{
-			name:        "Docker internal host 'waha' - allowed",
+			name:        "Unconfigured Docker internal host 'waha' - blocked",
 			url:         "http://waha:3000/api/files/voice.ogg",
-			expectError: false,
+			expectError: true,
+			errorMsg:    "download host not allowed: waha",
 		},
 		{
-			name:        "Docker internal host 'signal-cli-waha' - allowed",
+			name:        "Unconfigured Docker internal host 'signal-cli-waha' - blocked",
 			url:         "http://signal-cli-waha:8080/api/files/voice.ogg",
-			expectError: false,
+			expectError: true,
+			errorMsg:    "download host not allowed: signal-cli-waha",
 		},
 		{
-			name:        "Docker internal host 'myservice' - allowed",
+			name:        "Unconfigured Docker internal host 'myservice' - blocked",
 			url:         "http://myservice:3000/api/files/voice.ogg",
-			expectError: false,
+			expectError: true,
+			errorMsg:    "download host not allowed: myservice",
 		},
 		{
 			name:        "Domain name with dots - blocked",
@@ -592,8 +677,9 @@ func TestValidateDownloadURL_DockerInternalHosts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -701,9 +787,10 @@ func TestValidateDownloadURL_DockerHostnameWithExternalIP(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "Different Docker internal hostname with same port - allowed",
+			name:        "Different Docker internal hostname with same port - blocked",
 			url:         "http://other-service:3000/api/files/test.jpg",
-			expectError: false,
+			expectError: true,
+			errorMsg:    "download host not allowed: other-service",
 		},
 		{
 			name:        "External domain with same port - blocked",
@@ -717,8 +804,7 @@ func TestValidateDownloadURL_DockerHostnameWithExternalIP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
 			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorMsg != "" {
+				if assert.Error(t, err) && tt.errorMsg != "" {
 					assert.Contains(t, err.Error(), tt.errorMsg)
 				}
 			} else {
@@ -777,8 +863,7 @@ func TestValidateDownloadURL_DockerHostnameWithExternalIP_Signal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := h.validateDownloadURL(tt.url)
 			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorMsg != "" {
+				if assert.Error(t, err) && tt.errorMsg != "" {
 					assert.Contains(t, err.Error(), tt.errorMsg)
 				}
 			} else {

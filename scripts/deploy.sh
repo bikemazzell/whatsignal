@@ -60,10 +60,16 @@ if [ ! -f .env ]; then
     if command -v openssl &> /dev/null; then
         WHATSAPP_WEBHOOK_SECRET=$(openssl rand -base64 32)
         WHATSIGNAL_ENCRYPTION_SECRET=$(openssl rand -base64 32)
+        WHATSIGNAL_ENCRYPTION_SALT=$(openssl rand -base64 24)
+        WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=$(openssl rand -base64 24)
+        WHATSIGNAL_ADMIN_TOKEN=$(openssl rand -base64 32)
         API_KEY=$(openssl rand -base64 16 | tr -d '=')
     else
         WHATSAPP_WEBHOOK_SECRET=$(head -c 32 /dev/urandom | base64)
         WHATSIGNAL_ENCRYPTION_SECRET=$(head -c 32 /dev/urandom | base64)
+        WHATSIGNAL_ENCRYPTION_SALT=$(head -c 24 /dev/urandom | base64)
+        WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=$(head -c 24 /dev/urandom | base64)
+        WHATSIGNAL_ADMIN_TOKEN=$(head -c 32 /dev/urandom | base64)
         API_KEY=$(head -c 16 /dev/urandom | base64 | tr -d '=')
     fi
     
@@ -71,6 +77,9 @@ if [ ! -f .env ]; then
     sed -i.bak "s|your-waha-api-key|$API_KEY|" .env
     sed -i.bak "s|your-very-secure-whatsapp-webhook-secret|$WHATSAPP_WEBHOOK_SECRET|" .env
     sed -i.bak "s|your-very-secure-encryption-secret-change-this|$WHATSIGNAL_ENCRYPTION_SECRET|" .env
+    sed -i.bak "s|your-unique-encryption-salt|$WHATSIGNAL_ENCRYPTION_SALT|" .env
+    sed -i.bak "s|your-unique-lookup-salt|$WHATSIGNAL_ENCRYPTION_LOOKUP_SALT|" .env
+    sed -i.bak "s|your-very-secure-admin-token|$WHATSIGNAL_ADMIN_TOKEN|" .env
     
     # Remove backup file
     rm -f .env.bak

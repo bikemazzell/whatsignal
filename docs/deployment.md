@@ -57,14 +57,14 @@ whatsignal-deploy/
    docker compose logs -f
    
    # Test health endpoint
-   curl http://localhost:8082/health
+   curl http://localhost:8083/health
    ```
 
 ## Service Endpoints
 
-- **WhatSignal**: http://localhost:8082
-- **WAHA (WhatsApp)**: http://localhost:3000
-- **Signal-CLI**: http://localhost:8080
+- **WhatSignal**: http://localhost:8083
+- **WAHA (WhatsApp)**: Compose network only by default
+- **Signal-CLI**: Compose network only by default
 
 ## Management Commands
 

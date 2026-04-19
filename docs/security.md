@@ -13,6 +13,10 @@ Encryption is always enabled. You must set this environment variable:
 ```bash
 # Encryption secret (required, minimum 32 characters)
 WHATSIGNAL_ENCRYPTION_SECRET=your-very-secure-encryption-secret-change-this
+
+# Unique salts (required in production, minimum 16 characters each)
+WHATSIGNAL_ENCRYPTION_SALT=your-unique-encryption-salt
+WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=your-unique-lookup-salt
 ```
 
 ### What Gets Encrypted
@@ -81,7 +85,10 @@ Store all secrets in environment variables, never in code:
 ```bash
 # Required secrets
 WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET=your-very-secure-whatsapp-webhook-secret
+WHATSIGNAL_ADMIN_TOKEN=your-very-secure-admin-token
 WHATSIGNAL_ENCRYPTION_SECRET=your-very-secure-encryption-secret
+WHATSIGNAL_ENCRYPTION_SALT=your-unique-encryption-salt
+WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=your-unique-lookup-salt
 
 # Optional overrides
 WHATSAPP_API_URL=https://your-waha-instance
@@ -253,4 +260,4 @@ If you discover a security vulnerability:
 1. **Do not** create a public issue
 2. Email security concerns to the maintainers
 3. Provide detailed reproduction steps
-4. Allow reasonable time for response and fixes 
+4. Allow reasonable time for response and fixes

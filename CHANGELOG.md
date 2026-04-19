@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.46] - 2026-04-19
+
+### Changed
+- Dependency updates: `golang.org/x/crypto` v0.49.0 → v0.50.0, `golang.org/x/net` v0.52.0 → v0.53.0, `golang.org/x/sys` v0.42.0 → v0.43.0, `golang.org/x/text` v0.35.0 → v0.36.0.
+
+## [1.2.45] - 2026-04-19
+
 ### Security
 - **Dependabot: OpenTelemetry SDK vulnerability**: Updated `go.opentelemetry.io/otel/*` from v1.42.0 to v1.43.0 to resolve critical vulnerability in `go.opentelemetry.io/otel/sdk`.
 - **Go stdlib CVEs (GO-2026-4947, GO-2026-4946, GO-2026-4870, GO-2026-4866, GO-2026-4865)**: Updated Go from 1.26.1 to 1.26.2, fixing vulnerabilities in crypto/x509 (chain building, policy validation, auth bypass), crypto/tls (KeyUpdate DoS), and html/template (XSS).

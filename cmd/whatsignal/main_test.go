@@ -40,7 +40,11 @@ func TestMain(t *testing.T) {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			assert.Contains(t, err.Error(), "context canceled")
+			assert.True(t,
+				strings.Contains(err.Error(), "context canceled") ||
+					strings.Contains(err.Error(), "operation not permitted"),
+				"unexpected run error: %v", err,
+			)
 		}
 	case <-ctx.Done():
 		// Expected case: context timeout

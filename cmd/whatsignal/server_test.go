@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -1677,7 +1678,12 @@ func TestServer_StartAndShutdown(t *testing.T) {
 
 	// Find an available port
 	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
+	if err != nil {
+		if strings.Contains(err.Error(), "operation not permitted") {
+			t.Skipf("sandbox denied ephemeral port bind: %v", err)
+		}
+		require.NoError(t, err)
+	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	if err := listener.Close(); err != nil {
 		t.Logf("Warning: failed to close listener: %v", err)

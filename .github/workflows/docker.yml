@@ -21,6 +21,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      digest: ${{ steps.docker_build.outputs.digest }}
+      primary_tag: ${{ steps.primary_tag.outputs.tag }}
 
     steps:
       - name: Checkout repository
@@ -62,6 +66,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
         timeout-minutes: 3
 
+      # NOTE: `latest` is intentionally NOT generated here. It is moved only
+      # by the promote-latest job after smoke-test passes. This prevents a
+      # broken release (like v1.2.47's HMAC bug) from poisoning `latest`.
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -72,7 +79,6 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Get version
         id: version
@@ -83,6 +89,7 @@ jobs:
           echo "git_commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
+        id: docker_build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -96,6 +103,22 @@ jobs:
             GIT_COMMIT=${{ steps.version.outputs.git_commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Pick the most specific tag that smoke-test should use to pull.
+      # On a tag push, this is the `vX.Y.Z`-derived tag; on a branch push,
+      # it's the branch tag. PR builds don't push, so smoke-test is skipped.
+      - name: Pick primary tag for smoke-test
+        id: primary_tag
+        if: github.event_name != 'pull_request'
+        run: |
+          TAGS='${{ steps.meta.outputs.tags }}'
+          # Prefer semver tag, then branch tag, then anything.
+          PRIMARY=$(echo "$TAGS" | grep -E "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:[0-9]+\.[0-9]+\.[0-9]+$" | head -1 || true)
+          if [ -z "$PRIMARY" ]; then
+            PRIMARY=$(echo "$TAGS" | head -1)
+          fi
+          echo "tag=$PRIMARY" >> $GITHUB_OUTPUT
+          echo "Primary tag for smoke-test: $PRIMARY"
 
       - name: Generate deployment artifact
         if: github.event_name != 'pull_request'
@@ -112,3 +135,60 @@ jobs:
         with:
           name: whatsignal-deployment
           path: deploy-artifacts/
+
+  # Smoke test: pull the freshly published image and verify it accepts a
+  # webhook signed in the documented WAHA HMAC format. Catches contract
+  # drift between the verifier and the external signing format. v1.2.47
+  # would have failed this gate.
+  smoke-test:
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run release smoke test
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.primary_tag }}
+        run: ./scripts/release-smoke-test.sh
+
+  # Move the `latest` tag only after smoke-test passes, and only for
+  # tagged releases (semver tags). Branch pushes do not promote `latest`.
+  promote-latest:
+    needs: [build-and-push, smoke-test]
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Retag :version as :latest
+        env:
+          SOURCE: ${{ needs.build-and-push.outputs.primary_tag }}
+          TARGET: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        run: |
+          echo "Retagging $SOURCE as $TARGET"
+          docker buildx imagetools create -t "$TARGET" "$SOURCE"

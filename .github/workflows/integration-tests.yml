@@ -63,6 +63,16 @@ jobs:
           WHATSIGNAL_LOG_LEVEL: info
           WHATSIGNAL_INTEGRATION_USE_DOCKER: false
 
+      # E2E contract tests: builds whatsignal binary, runs it, sends webhooks
+      # signed in the documented WAHA format. Catches divergence between the
+      # verifier and the external system's actual signing format. See
+      # integration_test/waha_webhook_contract_test.go and the
+      # "Testing: contract tests for external integrations" lesson in CLAUDE.md.
+      - name: Run end-to-end contract tests
+        run: make test-e2e
+        env:
+          WHATSIGNAL_LOG_LEVEL: info
+
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v4

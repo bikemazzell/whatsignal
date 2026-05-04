@@ -226,6 +226,15 @@ test-integration-perf:
 	@echo "Running performance integration tests..."
 	@CGO_ENABLED=$(CGO_ENABLED) go test -bench=. -benchmem -timeout=20m ./integration_test/...
 
+# Run end-to-end contract tests (builds binary, runs it, sends real
+# external-format webhooks to it). These are the contract tests for
+# integrations with WAHA / signal-cli that catch format drift between
+# the verifier and the upstream system's actual signing format.
+.PHONY: test-e2e
+test-e2e:
+	@echo "Running end-to-end contract tests..."
+	@CGO_ENABLED=$(CGO_ENABLED) go test -tags=e2e -timeout 5m ./integration_test/ -run '_E2E$$' -v
+
 # Clean integration test artifacts
 .PHONY: clean-integration
 clean-integration:

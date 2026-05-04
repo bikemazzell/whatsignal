@@ -136,14 +136,59 @@ fi
 
 # -- Commit, tag, push --
 
-step 9 "Committing"
-git add -A
+# Files this script is allowed to modify. Anything else in the working tree
+# is an out-of-band edit that must not land in a "chore: bump version" commit.
+BUMP_FILES=(VERSION README.md docker-compose.yml CHANGELOG.md)
+
+step 9 "Verifying only bump-managed files changed"
+UNEXPECTED=$(git status --porcelain | awk '{print $2}' | while read -r f; do
+    [ -z "$f" ] && continue
+    keep=0
+    for allowed in "${BUMP_FILES[@]}"; do
+        [ "$f" = "$allowed" ] && keep=1 && break
+    done
+    [ $keep -eq 0 ] && echo "$f"
+done)
+if [ -n "$UNEXPECTED" ]; then
+    echo "Unexpected changes in working tree (release was contaminated by an out-of-band edit):"
+    echo "$UNEXPECTED"
+    fail "Aborting bump. Either commit/discard those changes first, or extend BUMP_FILES if they belong to bumps."
+fi
+
+step 10 "Committing"
+for f in "${BUMP_FILES[@]}"; do
+    [ -f "$f" ] && git add -- "$f" || true
+done
+# Ensure nothing else got staged.
+STAGED_UNEXPECTED=$(git diff --cached --name-only | while read -r f; do
+    keep=0
+    for allowed in "${BUMP_FILES[@]}"; do
+        [ "$f" = "$allowed" ] && keep=1 && break
+    done
+    [ $keep -eq 0 ] && echo "$f"
+done)
+if [ -n "$STAGED_UNEXPECTED" ]; then
+    git reset HEAD -- $STAGED_UNEXPECTED >/dev/null 2>&1 || true
+    fail "Refusing to commit unexpected staged files: $STAGED_UNEXPECTED"
+fi
 git commit -m "chore: bump version to v$NEW_VERSION"
 
-step 10 "Tagging v$NEW_VERSION"
+step 11 "Verifying bump commit only touched expected files"
+COMMIT_FILES=$(git diff --name-only HEAD~1 HEAD)
+for f in $COMMIT_FILES; do
+    keep=0
+    for allowed in "${BUMP_FILES[@]}"; do
+        [ "$f" = "$allowed" ] && keep=1 && break
+    done
+    if [ $keep -eq 0 ]; then
+        fail "Bump commit touched unexpected file: $f. Roll back with 'git reset --soft HEAD~1' and investigate."
+    fi
+done
+
+step 12 "Tagging v$NEW_VERSION"
 git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
 
-step 11 "Pushing to origin"
+step 13 "Pushing to origin"
 git push origin "$BRANCH"
 git push origin "v$NEW_VERSION"
 

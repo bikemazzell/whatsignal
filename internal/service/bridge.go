@@ -142,6 +142,7 @@ type MessageBridge interface {
 	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *signaltypes.SignalMessage) error
 	HandleSignalMessageWithDestination(ctx context.Context, msg *signaltypes.SignalMessage, destination string) error
+	HandleSignalReceipt(ctx context.Context, msg *signaltypes.SignalMessage) error
 	HandleSignalMessageDeletion(ctx context.Context, targetMessageID string, sender string) error
 	UpdateDeliveryStatus(ctx context.Context, msgID string, status models.DeliveryStatus) error
 	SendSignalNotificationForSession(ctx context.Context, sessionName, message string) error
@@ -573,6 +574,52 @@ func (b *bridge) HandleSignalMessageWithDestination(ctx context.Context, msg *si
 		LogFieldDuration:  time.Since(startTime).Milliseconds(),
 		"signal_msg_id":   SanitizeMessageID(msg.MessageID),
 	}).Info("Signal message forwarded to WhatsApp successfully")
+
+	return nil
+}
+
+func (b *bridge) HandleSignalReceipt(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	if msg == nil || msg.Receipt == nil {
+		return nil
+	}
+
+	targetID := fmt.Sprintf("%d", msg.Receipt.TargetTimestamp)
+	mapping, err := b.db.GetMessageMappingBySignalID(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("failed to get message mapping by signal ID: %w", err)
+	}
+	if mapping == nil {
+		mapping, err = b.db.GetMessageMapping(ctx, targetID)
+		if err != nil {
+			return fmt.Errorf("failed to get message mapping by target timestamp: %w", err)
+		}
+	}
+	if mapping == nil {
+		return nil
+	}
+
+	status := ""
+	if msg.Receipt.IsRead || msg.Receipt.IsViewed {
+		status = string(models.DeliveryStatusRead)
+	} else if msg.Receipt.IsDelivery {
+		status = string(models.DeliveryStatusDelivered)
+	}
+
+	if status != "" && shouldUpdateDeliveryStatus(mapping.DeliveryStatus, status) {
+		if err := b.db.UpdateDeliveryStatus(ctx, mapping.WhatsAppMsgID, status); err != nil {
+			return fmt.Errorf("failed to update delivery status from signal receipt: %w", err)
+		}
+	}
+
+	if msg.Receipt.IsRead || msg.Receipt.IsViewed {
+		sessionName := mapping.SessionName
+		if sessionName == "" {
+			sessionName = b.waClient.GetSessionName()
+		}
+		if err := b.waClient.AckMessage(ctx, mapping.WhatsAppChatID, sessionName); err != nil {
+			return fmt.Errorf("failed to mark WhatsApp chat seen from Signal read receipt: %w", err)
+		}
+	}
 
 	return nil
 }

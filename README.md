@@ -17,6 +17,8 @@ WhatSignal is a self-hosted bridge between WhatsApp and Signal. Messages go both
 - Health endpoint, structured JSON logs, circuit breakers, graceful retries
 - Dockerized, 80%+ test coverage
 
+Bridged read state is asymmetric by design: WhatsApp chats are only marked seen after a verified Signal read receipt for the bridged message, while WhatsApp delivery and read acknowledgments continue to update WhatSignal's stored status for Signal-originated messages.
+
 
 ## Prerequisite Accounts
 To use WhatSignal, you must have:

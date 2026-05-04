@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.47] - 2026-05-04
+
+### Changed
+- **Read-state sync now waits for real Signal reads**: WhatsApp chats are no longer marked seen when a message is merely forwarded into Signal. WhatSignal now waits for a real Signal read or view receipt before sending WAHA `sendSeen`.
+- **Signal receipt envelopes are now processed**: Receipt events from `signal-cli-rest-api` are converted into first-class internal events instead of being dropped on receipt.
+- **Bridged delivery state is tracked monotonically**: WAHA acknowledgment updates for Signal-originated messages continue to advance stored status from `sent` to `delivered` to `read` without downgrades.
+
 ## [1.2.46] - 2026-04-19
 
 ### Changed

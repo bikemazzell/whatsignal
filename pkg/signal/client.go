@@ -360,6 +360,10 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 			}
 			continue
 		}
+		if msg.Envelope.ReceiptMessage != nil {
+			result = append(result, c.convertReceiptMessageToSignalMessages(msg)...)
+			continue
+		}
 	}
 
 	return result, nil
@@ -386,6 +390,60 @@ func quotedMessageFromRestQuote(quote *types.RestMessageQuote) *struct {
 		Text:      quote.Text,
 		Timestamp: quote.ID,
 	}
+}
+
+func receiptMessageFromInterface(raw interface{}) (*types.RestReceiptMessage, error) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal receipt message: %w", err)
+	}
+
+	var receipt types.RestReceiptMessage
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal receipt message: %w", err)
+	}
+
+	return &receipt, nil
+}
+
+func (c *SignalClient) convertReceiptMessageToSignalMessages(msg types.RestMessage) []types.SignalMessage {
+	receipt, err := receiptMessageFromInterface(msg.Envelope.ReceiptMessage)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.WithError(err).Warn("Failed to parse Signal receipt message")
+		}
+		return nil
+	}
+	if receipt == nil {
+		return nil
+	}
+
+	targets := receipt.Timestamps
+	if len(targets) == 0 {
+		targets = []types.FlexibleInt64{receipt.When}
+	}
+
+	result := make([]types.SignalMessage, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, types.SignalMessage{
+			Timestamp: msg.Envelope.Timestamp,
+			Sender:    msg.Envelope.Source,
+			MessageID: fmt.Sprintf("%d", msg.Envelope.Timestamp),
+			Receipt: &types.SignalReceipt{
+				When:            receipt.When.Int64(),
+				TargetTimestamp: target.Int64(),
+				IsDelivery:      receipt.IsDelivery,
+				IsRead:          receipt.IsRead,
+				IsViewed:        receipt.IsViewed,
+			},
+		})
+	}
+
+	return result
 }
 
 // convertDataMessageToSignalMessage converts an incoming DataMessage to a SignalMessage
@@ -737,6 +795,9 @@ func (c *SignalClient) ConvertRestMessages(ctx context.Context, messages []types
 				result = append(result, *sigMsg)
 			}
 			continue
+		}
+		if msg.Envelope.ReceiptMessage != nil {
+			result = append(result, c.convertReceiptMessageToSignalMessages(msg)...)
 		}
 	}
 	return result

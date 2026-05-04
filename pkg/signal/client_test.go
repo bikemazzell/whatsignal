@@ -1670,3 +1670,88 @@ func TestConvertSyncMessageToSignalMessage_QuoteNesting(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertRestMessages_ReceiptMessage(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	sigClient := NewClientWithLogger("http://localhost", "+1234567890", "test", "", nil, logger).(*SignalClient)
+
+	messages := []types.RestMessage{
+		{
+			Envelope: struct {
+				Source         string                 `json:"source"`
+				SourceNumber   string                 `json:"sourceNumber"`
+				SourceUUID     string                 `json:"sourceUuid"`
+				SourceName     string                 `json:"sourceName"`
+				Timestamp      int64                  `json:"timestamp"`
+				DataMessage    *types.RestDataMessage `json:"dataMessage,omitempty"`
+				SyncMessage    *types.RestSyncMessage `json:"syncMessage,omitempty"`
+				ReceiptMessage interface{}            `json:"receiptMessage,omitempty"`
+				TypingMessage  interface{}            `json:"typingMessage,omitempty"`
+			}{
+				Source:    "+15550000001",
+				Timestamp: 1774363197904,
+				ReceiptMessage: map[string]interface{}{
+					"when":       float64(1774363197904),
+					"isDelivery": false,
+					"isRead":     true,
+					"isViewed":   false,
+					"timestamps": []interface{}{float64(1774363000001)},
+				},
+			},
+			Account: "+15550000002",
+		},
+	}
+
+	result := sigClient.ConvertRestMessages(context.Background(), messages)
+	require.Len(t, result, 1)
+	require.NotNil(t, result[0].Receipt)
+	assert.Equal(t, int64(1774363197904), result[0].Timestamp)
+	assert.Equal(t, "+15550000001", result[0].Sender)
+	assert.Equal(t, int64(1774363000001), result[0].Receipt.TargetTimestamp)
+	assert.True(t, result[0].Receipt.IsRead)
+	assert.False(t, result[0].Receipt.IsDelivery)
+	assert.False(t, result[0].Receipt.IsViewed)
+}
+
+func TestConvertRestMessages_ReceiptMessageMultipleTimestamps(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	sigClient := NewClientWithLogger("http://localhost", "+1234567890", "test", "", nil, logger).(*SignalClient)
+
+	messages := []types.RestMessage{
+		{
+			Envelope: struct {
+				Source         string                 `json:"source"`
+				SourceNumber   string                 `json:"sourceNumber"`
+				SourceUUID     string                 `json:"sourceUuid"`
+				SourceName     string                 `json:"sourceName"`
+				Timestamp      int64                  `json:"timestamp"`
+				DataMessage    *types.RestDataMessage `json:"dataMessage,omitempty"`
+				SyncMessage    *types.RestSyncMessage `json:"syncMessage,omitempty"`
+				ReceiptMessage interface{}            `json:"receiptMessage,omitempty"`
+				TypingMessage  interface{}            `json:"typingMessage,omitempty"`
+			}{
+				Source:    "+15550000001",
+				Timestamp: 1774363197904,
+				ReceiptMessage: map[string]interface{}{
+					"when":       float64(1774363197904),
+					"isDelivery": true,
+					"isRead":     false,
+					"isViewed":   false,
+					"timestamps": []interface{}{float64(1774363000001), float64(1774363000002)},
+				},
+			},
+			Account: "+15550000002",
+		},
+	}
+
+	result := sigClient.ConvertRestMessages(context.Background(), messages)
+	require.Len(t, result, 2)
+	require.NotNil(t, result[0].Receipt)
+	require.NotNil(t, result[1].Receipt)
+	assert.Equal(t, int64(1774363000001), result[0].Receipt.TargetTimestamp)
+	assert.Equal(t, int64(1774363000002), result[1].Receipt.TargetTimestamp)
+	assert.True(t, result[0].Receipt.IsDelivery)
+	assert.True(t, result[1].Receipt.IsDelivery)
+}

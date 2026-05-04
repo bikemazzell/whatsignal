@@ -220,8 +220,8 @@ func TestBidirectionalMessageFlow(t *testing.T) {
 	signalSends := env.CountMockAPIRequests("send")
 	whatsappSends := env.CountMockAPIRequests("whatsapp_send")
 
-	if waAcks != 2 {
-		t.Errorf("Expected 2 WhatsApp ACKs (1 from WA→Signal processing + 1 from Signal→WA sending), got %d", waAcks)
+	if waAcks != 1 {
+		t.Errorf("Expected 1 WhatsApp ACK from WA→Signal processing only, got %d", waAcks)
 	}
 	// 1 Signal send for WA->Signal forward (no fallback notification — removed because signal-cli doesn't provide quotes)
 	if signalSends != 1 {

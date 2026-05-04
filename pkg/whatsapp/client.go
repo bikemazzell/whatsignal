@@ -360,11 +360,6 @@ func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, 
 		}
 	}
 
-	if err := c.sendSeenWithSession(ctx, chatID, sessionName); err != nil {
-		if c.logger != nil {
-			c.logger.WithError(err).Debug("optional: sendSeen failed")
-		}
-	}
 	if err := c.startTypingWithSession(ctx, chatID, sessionName); err != nil {
 		if c.logger != nil {
 			c.logger.WithError(err).Debug("optional: startTyping failed")

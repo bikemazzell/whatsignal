@@ -69,8 +69,8 @@ func ReadMessage(ctx context.Context, conn *websocket.Conn, logger *logrus.Logge
 		return nil, fmt.Errorf("failed to unmarshal WebSocket message: %w", err)
 	}
 
-	// Skip non-actionable messages (receipts, typing indicators)
-	if msg.Envelope.DataMessage == nil && msg.Envelope.SyncMessage == nil {
+	// Skip non-actionable messages such as typing indicators.
+	if msg.Envelope.DataMessage == nil && msg.Envelope.SyncMessage == nil && msg.Envelope.ReceiptMessage == nil {
 		return nil, nil
 	}
 

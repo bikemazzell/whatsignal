@@ -80,6 +80,7 @@ type SignalMessage struct {
 	} `json:"quotedMessage,omitempty"`
 	Reaction    *SignalReaction `json:"reaction,omitempty"`
 	Deletion    *SignalDeletion `json:"deletion,omitempty"`
+	Receipt     *SignalReceipt  `json:"receipt,omitempty"`
 	IsSentByMe  bool            `json:"isSentByMe,omitempty"`
 	Destination string          `json:"destination,omitempty"`
 }
@@ -97,6 +98,15 @@ type SignalReaction struct {
 	TargetTimestamp int64  `json:"targetSentTimestamp"`
 	TargetMessageID string `json:"targetMessageId,omitempty"`
 	IsRemove        bool   `json:"isRemove"`
+}
+
+// SignalReceipt represents a delivery/read/viewed receipt for a previously sent message.
+type SignalReceipt struct {
+	When            int64 `json:"when"`
+	TargetTimestamp int64 `json:"targetTimestamp"`
+	IsDelivery      bool  `json:"isDelivery"`
+	IsRead          bool  `json:"isRead"`
+	IsViewed        bool  `json:"isViewed"`
 }
 
 // RestDataMessage represents the data message content in Signal messages
@@ -192,6 +202,15 @@ type RestMessage struct {
 		TypingMessage  interface{}      `json:"typingMessage,omitempty"`
 	} `json:"envelope"`
 	Account string `json:"account"`
+}
+
+// RestReceiptMessage represents the signal-cli receipt envelope payload.
+type RestReceiptMessage struct {
+	When       FlexibleInt64   `json:"when"`
+	IsDelivery bool            `json:"isDelivery"`
+	IsRead     bool            `json:"isRead"`
+	IsViewed   bool            `json:"isViewed"`
+	Timestamps []FlexibleInt64 `json:"timestamps"`
 }
 
 type RestMessageAttachment struct {

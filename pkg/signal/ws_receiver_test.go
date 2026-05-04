@@ -114,7 +114,7 @@ func TestReadMessage_DataMessageWithQuote(t *testing.T) {
 	assert.Equal(t, int64(1774347098265), result.Envelope.DataMessage.Quote.ID)
 }
 
-func TestReadMessage_ReceiptMessageIgnored(t *testing.T) {
+func TestReadMessage_ReceiptMessagePreserved(t *testing.T) {
 	msg := types.RestMessage{
 		Envelope: struct {
 			Source         string                 `json:"source"`
@@ -157,7 +157,8 @@ func TestReadMessage_ReceiptMessageIgnored(t *testing.T) {
 
 	result, err := ReadMessage(ctx, conn, testLogger())
 	require.NoError(t, err)
-	assert.Nil(t, result, "Receipt messages should be skipped")
+	require.NotNil(t, result, "Receipt messages should be returned for downstream processing")
+	assert.NotNil(t, result.Envelope.ReceiptMessage)
 }
 
 func TestReadMessage_ConnectionClosed(t *testing.T) {

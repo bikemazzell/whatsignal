@@ -35,7 +35,7 @@ func TestRestartSession_ErrorPaths(t *testing.T) {
 }
 
 func TestSendTextWithSession_OptionalEndpointsErrors(t *testing.T) {
-	// Server returns success for sendText, but 404 for optional endpoints
+	// Server returns success for sendText, but 404 for optional typing endpoints.
 	var sendTextCalled, seenCalled, typingStartCalled, typingStopCalled bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -71,7 +71,7 @@ func TestSendTextWithSession_OptionalEndpointsErrors(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.True(t, sendTextCalled)
-	assert.True(t, seenCalled)
+	assert.False(t, seenCalled)
 	assert.True(t, typingStartCalled)
 	assert.True(t, typingStopCalled)
 }

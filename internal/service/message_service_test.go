@@ -39,6 +39,11 @@ func (m *mockBridge) HandleSignalMessageWithDestination(ctx context.Context, msg
 	return args.Error(0)
 }
 
+func (m *mockBridge) HandleSignalReceipt(ctx context.Context, msg *signaltypes.SignalMessage) error {
+	args := m.Called(ctx, msg)
+	return args.Error(0)
+}
+
 func (m *mockBridge) SendSignalNotificationForSession(ctx context.Context, sessionName, message string) error {
 	args := m.Called(ctx, sessionName, message)
 	return args.Error(0)
@@ -644,6 +649,10 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 			msgID:  "msg123",
 			status: "delivered",
 			setup: func() {
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg123").Return(&models.MessageMapping{
+					WhatsAppMsgID:  "msg123",
+					DeliveryStatus: models.DeliveryStatusSent,
+				}, nil).Once()
 				db.On("UpdateDeliveryStatus", ctx, "msg123", "delivered").Return(nil).Once()
 			},
 		},
@@ -653,6 +662,7 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 			status:    "delivered",
 			wantError: true,
 			setup: func() {
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg124").Return((*models.MessageMapping)(nil), nil).Once()
 				db.On("UpdateDeliveryStatus", ctx, "msg124", "delivered").Return(assert.AnError).Once()
 			},
 		},
@@ -662,7 +672,19 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 			status:    "invalid",
 			wantError: true,
 			setup: func() {
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg125").Return((*models.MessageMapping)(nil), nil).Once()
 				db.On("UpdateDeliveryStatus", ctx, "msg125", "invalid").Return(assert.AnError).Once()
+			},
+		},
+		{
+			name:   "monotonic update skips downgrade",
+			msgID:  "msg126",
+			status: "delivered",
+			setup: func() {
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg126").Return(&models.MessageMapping{
+					WhatsAppMsgID:  "msg126",
+					DeliveryStatus: models.DeliveryStatusRead,
+				}, nil).Once()
 			},
 		},
 	}
@@ -753,6 +775,45 @@ func TestProcessIncomingSignalMessage(t *testing.T) {
 			bridge.AssertExpectations(t)
 		})
 	}
+}
+
+func TestProcessIncomingSignalMessageWithDestination_Receipt(t *testing.T) {
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	signalClient := &mockSignalClient{}
+	signalConfig := models.SignalConfig{
+		PollIntervalSec: 5,
+		PollTimeoutSec:  10,
+	}
+	channelManager, _ := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
+
+	ctx := context.Background()
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig-receipt-1",
+		Sender:    "+1234567890",
+		Timestamp: time.Now().UnixMilli(),
+		Receipt: &signaltypes.SignalReceipt{
+			When:            time.Now().UnixMilli(),
+			TargetTimestamp: 1700000000001,
+			IsRead:          true,
+		},
+	}
+
+	bridge.On("HandleSignalReceipt", ctx, mock.MatchedBy(func(msg *signaltypes.SignalMessage) bool {
+		return msg.MessageID == "sig-receipt-1" && msg.Receipt != nil && msg.Receipt.IsRead
+	})).Return(nil).Once()
+
+	err := service.ProcessIncomingSignalMessageWithDestination(ctx, msg, "+1234567890")
+	assert.NoError(t, err)
+	bridge.AssertExpectations(t)
+	bridge.AssertNotCalled(t, "HandleSignalMessageWithDestination", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestPollSignalMessages(t *testing.T) {

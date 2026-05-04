@@ -252,7 +252,7 @@ func TestWhatsAppClient_OptionalEndpoints(t *testing.T) {
 	assert.Equal(t, "msg123", resp.MessageID)
 
 	assert.True(t, endpointsCalled["/api/sendText"], "Should call sendText endpoint")
-	assert.True(t, endpointsCalled["/api/sendSeen"], "Should attempt sendSeen endpoint")
+	assert.False(t, endpointsCalled["/api/sendSeen"], "Should not attempt sendSeen endpoint")
 	assert.True(t, endpointsCalled["/api/startTyping"], "Should attempt startTyping endpoint")
 	assert.True(t, endpointsCalled["/api/stopTyping"], "Should attempt stopTyping endpoint")
 }

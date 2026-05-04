@@ -606,6 +606,71 @@ func TestUpdateDeliveryStatus(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestHandleSignalReceipt_ReadMarksWhatsAppSeen(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig_receipt_read",
+		Sender:    "+1234567890",
+		Timestamp: 1774363197904,
+		Receipt: &signaltypes.SignalReceipt{
+			When:            1774363197904,
+			TargetTimestamp: 1774363000001,
+			IsRead:          true,
+		},
+	}
+
+	mapping := &models.MessageMapping{
+		WhatsAppChatID: "123456789@c.us",
+		WhatsAppMsgID:  "wa_msg_123",
+		SignalMsgID:    "1774363000001",
+		SessionName:    "default",
+		DeliveryStatus: models.DeliveryStatusDelivered,
+	}
+
+	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, "1774363000001").Return(mapping, nil).Once()
+	bridge.waClient.(*mockWhatsAppClient).On("AckMessage", ctx, "123456789@c.us", "default").Return(nil).Once()
+	bridge.db.(*mockDatabaseService).On("UpdateDeliveryStatus", ctx, "wa_msg_123", "read").Return(nil).Once()
+
+	err := bridge.HandleSignalReceipt(ctx, msg)
+	assert.NoError(t, err)
+	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "AckMessage", ctx, "123456789@c.us", "default")
+}
+
+func TestHandleSignalReceipt_DeliveryDoesNotMarkWhatsAppSeen(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	msg := &signaltypes.SignalMessage{
+		MessageID: "sig_receipt_delivery",
+		Sender:    "+1234567890",
+		Timestamp: 1774363197904,
+		Receipt: &signaltypes.SignalReceipt{
+			When:            1774363197904,
+			TargetTimestamp: 1774363000001,
+			IsDelivery:      true,
+		},
+	}
+
+	mapping := &models.MessageMapping{
+		WhatsAppChatID: "123456789@c.us",
+		WhatsAppMsgID:  "wa_msg_123",
+		SignalMsgID:    "1774363000001",
+		SessionName:    "default",
+		DeliveryStatus: models.DeliveryStatusSent,
+	}
+
+	bridge.db.(*mockDatabaseService).On("GetMessageMappingBySignalID", ctx, "1774363000001").Return(mapping, nil).Once()
+	bridge.db.(*mockDatabaseService).On("UpdateDeliveryStatus", ctx, "wa_msg_123", "delivered").Return(nil).Once()
+
+	err := bridge.HandleSignalReceipt(ctx, msg)
+	assert.NoError(t, err)
+	bridge.waClient.(*mockWhatsAppClient).AssertNotCalled(t, "AckMessage", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func TestMediaTypeDetection(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -348,6 +348,10 @@ func (s *messageService) ProcessIncomingSignalMessageWithDestination(ctx context
 	// Ensure we clean up the in-progress marker when done
 	defer s.inProgressMessages.Delete(rawSignalMsg.MessageID)
 
+	if rawSignalMsg.Receipt != nil {
+		return s.bridge.HandleSignalReceipt(ctx, rawSignalMsg)
+	}
+
 	LogMessageProcessing(ctx, s.logger, "Signal", "", rawSignalMsg.MessageID, rawSignalMsg.Sender, rawSignalMsg.Message)
 
 	return s.bridge.HandleSignalMessageWithDestination(ctx, rawSignalMsg, destination)
@@ -356,6 +360,14 @@ func (s *messageService) ProcessIncomingSignalMessageWithDestination(ctx context
 func (s *messageService) UpdateDeliveryStatus(ctx context.Context, msgID string, status string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	mapping, err := s.db.GetMessageMappingByWhatsAppID(ctx, msgID)
+	if err != nil {
+		return err
+	}
+	if mapping != nil && !shouldUpdateDeliveryStatus(mapping.DeliveryStatus, status) {
+		return nil
+	}
 
 	return s.db.UpdateDeliveryStatus(ctx, msgID, status)
 }
@@ -590,9 +602,28 @@ func (s *messageService) DispatchSingleSignalMessage(ctx context.Context, msg si
 		}
 	}
 
-	LogMessageProcessing(ctx, s.logger, "Signal", "", msg.MessageID, msg.Sender, msg.Message)
+	return s.ProcessIncomingSignalMessageWithDestination(ctx, &msg, destination)
+}
 
-	return s.bridge.HandleSignalMessageWithDestination(ctx, &msg, destination)
+func deliveryStatusRank(status string) int {
+	switch status {
+	case string(models.DeliveryStatusPending):
+		return 0
+	case string(models.DeliveryStatusSent):
+		return 1
+	case string(models.DeliveryStatusDelivered):
+		return 2
+	case string(models.DeliveryStatusRead):
+		return 3
+	case string(models.DeliveryStatusFailed):
+		return -1
+	default:
+		return -1
+	}
+}
+
+func shouldUpdateDeliveryStatus(current models.DeliveryStatus, next string) bool {
+	return deliveryStatusRank(next) >= deliveryStatusRank(string(current))
 }
 
 func (s *messageService) determineDestinationForSender(ctx context.Context, sender string, availableDestinations []string) string {

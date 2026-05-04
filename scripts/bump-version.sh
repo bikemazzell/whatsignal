@@ -88,7 +88,18 @@ CGO_ENABLED=1 go test -race ./...
 if command -v golangci-lint >/dev/null 2>&1 || [ -x "$(go env GOPATH)/bin/golangci-lint" ]; then
     step 7b "Running linter"
     LINT_BIN=$(command -v golangci-lint 2>/dev/null || echo "$(go env GOPATH)/bin/golangci-lint")
-    "$LINT_BIN" run --timeout=5m ./...
+    LINT_OUTPUT=$("$LINT_BIN" run --timeout=5m ./... 2>&1) || {
+        if printf '%s' "$LINT_OUTPUT" | grep -q "no go files to analyze"; then
+            echo "  Skipping golangci-lint: installed binary could not load module context"
+            echo "$LINT_OUTPUT"
+        else
+            echo "$LINT_OUTPUT"
+            exit 1
+        fi
+    }
+    if [ -n "${LINT_OUTPUT:-}" ]; then
+        echo "$LINT_OUTPUT"
+    fi
 fi
 
 if command -v staticcheck >/dev/null 2>&1 || [ -x "$(go env GOPATH)/bin/staticcheck" ]; then

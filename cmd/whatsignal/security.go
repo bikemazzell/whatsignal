@@ -58,16 +58,22 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 				eventTime.Format(time.RFC3339), now.Format(time.RFC3339), timeDiff, maxSkew)
 		}
 
-		// Bind the signature to both timestamp and body so a captured body HMAC
-		// cannot be replayed with a different fresh timestamp.
 		expectedSignatureHex := signatureHeader
-		mac := hmac.New(sha512.New, []byte(secretKey))
-		mac.Write([]byte(timestampStr))
-		mac.Write([]byte("."))
-		mac.Write(body)
-		computedMAC := mac.Sum(nil)
-		computedSignatureHex := hex.EncodeToString(computedMAC)
-		if !hmac.Equal([]byte(computedSignatureHex), []byte(expectedSignatureHex)) {
+		bodyMAC := hmac.New(sha512.New, []byte(secretKey))
+		bodyMAC.Write(body)
+		computedBodySignatureHex := hex.EncodeToString(bodyMAC.Sum(nil))
+		if hmac.Equal([]byte(computedBodySignatureHex), []byte(expectedSignatureHex)) {
+			return body, nil
+		}
+
+		// Temporary compatibility path for older deployments that signed
+		// "timestamp.body" instead of the documented raw-body WAHA format.
+		legacyMAC := hmac.New(sha512.New, []byte(secretKey))
+		legacyMAC.Write([]byte(timestampStr))
+		legacyMAC.Write([]byte("."))
+		legacyMAC.Write(body)
+		computedLegacySignatureHex := hex.EncodeToString(legacyMAC.Sum(nil))
+		if !hmac.Equal([]byte(computedLegacySignatureHex), []byte(expectedSignatureHex)) {
 			return nil, fmt.Errorf("signature mismatch")
 		}
 	} else {

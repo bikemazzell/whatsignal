@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.48] - 2026-05-04
+
+### Fixed
+- **WAHA webhook HMAC compatibility restored**: WhatsApp webhooks now validate against WAHA's documented raw-body SHA-512 HMAC format while continuing to enforce timestamp skew checks.
+- **Temporary backward compatibility for existing deployments**: WhatSignal still accepts the previous timestamp-bound WAHA signature format during rollout to avoid breaking upgraded stacks immediately.
+- **Compose now wires the WAHA webhook HMAC key explicitly**: `docker-compose.yml` passes `WHATSAPP_HOOK_HMAC_KEY=${WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET}` so WAHA and WhatSignal can share the same signing secret by default.
+
 ## [1.2.47] - 2026-05-04
 
 ### Changed

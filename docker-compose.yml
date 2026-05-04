@@ -56,6 +56,7 @@ services:
     environment:
       - WHATSAPP_HOOK_URL=http://whatsignal:8082/webhook/whatsapp
       - WHATSAPP_HOOK_EVENTS=message,message.reaction,message.edited,message.ack,message.waiting
+      - WHATSAPP_HOOK_HMAC_KEY=${WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET}
       - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
       - PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --crash-dumps-dir=/var/crashes
     healthcheck:

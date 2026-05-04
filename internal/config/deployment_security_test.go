@@ -117,6 +117,10 @@ func TestDockerComposeSecurityStructure(t *testing.T) {
 		assert.NotContains(t, service, "ports", "%s must not publish ports to the host by default", serviceName)
 		assert.NotEmpty(t, service["expose"], "%s should expose its port only to the Compose network", serviceName)
 	}
+
+	waha := services["waha"].(map[string]interface{})
+	wahaEnv := asStringSlice(waha["environment"])
+	assert.Contains(t, wahaEnv, "WHATSAPP_HOOK_HMAC_KEY=${WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET}")
 }
 
 func TestDockerComposeDoesNotProvidePlaceholderSecrets(t *testing.T) {

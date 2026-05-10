@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Running pre-push hook..."
+
+if ! make pre-push; then
+  echo "Pre-push checks failed. Push aborted."
+  exit 1
+fi
+
+echo "Pre-push hook completed successfully."

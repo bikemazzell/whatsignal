@@ -514,11 +514,22 @@ pre-commit:
 	@$(MAKE) test
 	@echo "All pre-commit checks passed."
 
+.PHONY: pre-push
+pre-push:
+	@echo "Pre-push: running CI vulnerability gate..."
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		govulncheck ./...; \
+	else \
+		go run golang.org/x/vuln/cmd/govulncheck@latest ./...; \
+	fi
+	@echo "All pre-push checks passed."
+
 .PHONY: hooks-install
 hooks-install:
 	@echo "Installing git hooks..."
 	@mkdir -p .githooks
 	@chmod +x .githooks/pre-commit || true
+	@chmod +x .githooks/pre-push || true
 	@git config core.hooksPath .githooks
 	@echo "Git hooks installed (core.hooksPath=.githooks)"
 

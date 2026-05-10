@@ -130,6 +130,19 @@ func TestDockerComposeDoesNotProvidePlaceholderSecrets(t *testing.T) {
 	assert.NotContains(t, string(content), "your-api-key", "Compose must not provide placeholder credentials")
 }
 
+func TestDeploymentAllowsWhatSignalImageOverride(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	compose := loadComposeFile(t)
+	services := compose["services"].(map[string]interface{})
+	whatsignal := services["whatsignal"].(map[string]interface{})
+
+	assert.Equal(t, "${WHATSIGNAL_IMAGE:-ghcr.io/bikemazzell/whatsignal:latest}", whatsignal["image"])
+
+	envExample, err := os.ReadFile(filepath.Join(repoRoot, ".env.example"))
+	require.NoError(t, err)
+	assert.Contains(t, string(envExample), "WHATSIGNAL_IMAGE=ghcr.io/bikemazzell/whatsignal:latest")
+}
+
 func loadComposeFile(t *testing.T) map[string]interface{} {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join("..", "..", "docker-compose.yml"))

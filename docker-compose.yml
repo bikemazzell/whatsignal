@@ -69,7 +69,7 @@ services:
   # WhatSignal - main bridge application
   # Note: change /mnt/data/ to your desired storage folder
   whatsignal:
-    image: ghcr.io/bikemazzell/whatsignal:latest
+    image: ${WHATSIGNAL_IMAGE:-ghcr.io/bikemazzell/whatsignal:latest}
     container_name: whatsignal
     restart: unless-stopped
     read_only: true

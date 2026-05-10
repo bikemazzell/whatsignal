@@ -289,6 +289,7 @@ func createWhatsAppPayload(session, id, from, body string) models.WhatsAppWebhoo
 			} `json:"_data,omitempty"`
 			EditedMessageID *string `json:"editedMessageId,omitempty"`
 			ACK             *int    `json:"ack,omitempty"`
+			ACKName         string  `json:"ackName,omitempty"`
 		}{
 			ID:        id,
 			From:      from,

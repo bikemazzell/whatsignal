@@ -99,7 +99,8 @@ type WhatsAppWebhookPayload struct {
 		// Fields for message.edited event
 		EditedMessageID *string `json:"editedMessageId,omitempty"`
 		// Fields for message.ack event (ACK status is sent directly as a number)
-		ACK *int `json:"ack,omitempty"` // -1=ERROR, 0=PENDING, 1=SERVER, 2=DEVICE, 3=READ, 4=PLAYED
+		ACK     *int   `json:"ack,omitempty"`     // -1=ERROR, 0=PENDING, 1=SERVER, 2=DEVICE, 3=READ, 4=PLAYED
+		ACKName string `json:"ackName,omitempty"` // ERROR, PENDING, SERVER, DEVICE, READ, PLAYED
 	} `json:"payload"`
 	Engine      string `json:"engine"`
 	Environment struct {

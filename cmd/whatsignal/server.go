@@ -691,11 +691,20 @@ func (s *Server) handleWhatsAppEditedMessage(ctx context.Context, payload *model
 }
 
 func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {
-	if payload.Payload.ACK == nil {
-		return ValidationError{Message: "missing ACK data"}
+	ackStatus, hasACKStatus := ackStatusFromPayload(payload)
+	if !hasACKStatus {
+		s.logger.WithFields(logrus.Fields{
+			"messageId": service.SanitizeWhatsAppMessageID(payload.Payload.ID),
+			"from":      service.SanitizePhoneNumber(payload.Payload.From),
+			"to":        service.SanitizePhoneNumber(payload.Payload.To),
+			"ackName":   payload.Payload.ACKName,
+		}).Warn("WhatsApp ACK event missing usable status")
+		metrics.IncrementCounter("whatsapp_ack_total", map[string]string{
+			"result": "missing_data",
+		}, "WhatsApp ACK processing outcomes")
+		return nil
 	}
 
-	ackStatus := *payload.Payload.ACK
 	var statusText string
 	switch ackStatus {
 	case models.ACKError:
@@ -781,6 +790,29 @@ func (s *Server) handleWhatsAppACK(ctx context.Context, payload *models.WhatsApp
 	}
 
 	return nil
+}
+
+func ackStatusFromPayload(payload *models.WhatsAppWebhookPayload) (int, bool) {
+	if payload.Payload.ACK != nil {
+		return *payload.Payload.ACK, true
+	}
+
+	switch strings.ToUpper(payload.Payload.ACKName) {
+	case "ERROR":
+		return models.ACKError, true
+	case "PENDING":
+		return models.ACKPending, true
+	case "SERVER":
+		return models.ACKServer, true
+	case "DEVICE":
+		return models.ACKDevice, true
+	case "READ":
+		return models.ACKRead, true
+	case "PLAYED":
+		return models.ACKPlayed, true
+	default:
+		return 0, false
+	}
 }
 
 func (s *Server) handleWhatsAppWaitingMessage(ctx context.Context, payload *models.WhatsAppWebhookPayload) error {

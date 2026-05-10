@@ -277,6 +277,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:        "wamid.test123",
 				Timestamp: models.FlexibleTimestamp(time.Now().Unix()),
@@ -315,6 +316,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:        "wamid.img456",
 				Timestamp: models.FlexibleTimestamp(time.Now().Unix()),
@@ -362,6 +364,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:        "wamid.test123",
 				Timestamp: models.FlexibleTimestamp(time.Now().Unix()),
@@ -401,6 +404,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:        "wamid.reaction789",
 				Timestamp: models.FlexibleTimestamp(time.Now().Unix()),
@@ -446,6 +450,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:        "wamid.group123",
 				Timestamp: models.FlexibleTimestamp(time.Now().Unix()),
@@ -484,6 +489,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:          "wamid.family456",
 				Timestamp:   models.FlexibleTimestamp(time.Now().Unix()),
@@ -523,6 +529,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:          "wamid.work789",
 				Timestamp:   models.FlexibleTimestamp(time.Now().Unix()),
@@ -562,6 +569,7 @@ func (f *TestFixtures) WhatsAppWebhooks() map[string]models.WhatsAppWebhookPaylo
 				} `json:"_data,omitempty"`
 				EditedMessageID *string `json:"editedMessageId,omitempty"`
 				ACK             *int    `json:"ack,omitempty"`
+				ACKName         string  `json:"ackName,omitempty"`
 			}{
 				ID:          "wamid.groupquoted999",
 				Timestamp:   models.FlexibleTimestamp(time.Now().Unix()),

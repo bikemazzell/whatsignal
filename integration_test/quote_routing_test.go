@@ -47,6 +47,7 @@ func makeWhatsAppWebhook(session, chatID, msgID, body, notifyName string) models
 			} `json:"_data,omitempty"`
 			EditedMessageID *string `json:"editedMessageId,omitempty"`
 			ACK             *int    `json:"ack,omitempty"`
+			ACKName         string  `json:"ackName,omitempty"`
 		}{
 			ID:         msgID,
 			Timestamp:  models.FlexibleTimestamp(time.Now().Unix()),

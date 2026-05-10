@@ -36,6 +36,7 @@ func TestWhatsAppWebhookPayload_JSONMarshaling(t *testing.T) {
 			} `json:"_data,omitempty"`
 			EditedMessageID *string `json:"editedMessageId,omitempty"`
 			ACK             *int    `json:"ack,omitempty"`
+			ACKName         string  `json:"ackName,omitempty"`
 		}{
 			ID:       "msg123",
 			From:     "1234567890@c.us",

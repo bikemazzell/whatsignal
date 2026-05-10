@@ -71,6 +71,7 @@ func CreateTestWhatsAppWebhook(session, messageID, from, body string) models.Wha
 			} `json:"_data,omitempty"`
 			EditedMessageID *string `json:"editedMessageId,omitempty"`
 			ACK             *int    `json:"ack,omitempty"`
+			ACKName         string  `json:"ackName,omitempty"`
 		}{
 			ID:        messageID,
 			From:      from,

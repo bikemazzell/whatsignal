@@ -1514,6 +1514,22 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 			},
 		},
 		{
+			name:  "message.ack missing status returns OK to prevent webhook retries",
+			event: models.EventMessageACK,
+			payload: map[string]interface{}{
+				"event":     models.EventMessageACK,
+				"timestamp": time.Now().UnixMilli(),
+				"session":   "default",
+				"payload": map[string]interface{}{
+					"id":     "msg_ack_missing_status",
+					"from":   "+0987654321",
+					"to":     "+1234567890",
+					"fromMe": true,
+				},
+			},
+			setup: func() {},
+		},
+		{
 			name:  "message.waiting event",
 			event: models.EventMessageWaiting,
 			payload: map[string]interface{}{
@@ -2236,24 +2252,64 @@ func makeACKPayload(msgID string, ack int) *models.WhatsAppWebhookPayload {
 	return p
 }
 
+func makeACKNamePayload(t *testing.T, msgID, ackName string) *models.WhatsAppWebhookPayload {
+	t.Helper()
+
+	body := fmt.Sprintf(`{
+		"event": %q,
+		"session": "default",
+		"payload": {
+			"id": %q,
+			"from": "+1234567890",
+			"to": "+0987654321",
+			"ackName": %q
+		}
+	}`, models.EventMessageACK, msgID, ackName)
+
+	var payload models.WhatsAppWebhookPayload
+	require.NoError(t, json.Unmarshal([]byte(body), &payload))
+	return &payload
+}
+
 func TestHandleWhatsAppACK(t *testing.T) {
 	tests := []struct {
 		name       string
-		payload    *models.WhatsAppWebhookPayload
+		payload    func(t *testing.T) *models.WhatsAppWebhookPayload
 		setupMocks func(ms *mockMessageService)
 		expectErr  bool
 	}{
 		{
-			name: "missing ACK data returns validation error",
-			payload: &models.WhatsAppWebhookPayload{
-				Event: models.EventMessageACK,
+			name: "missing ACK data is ignored without retryable error",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return &models.WhatsAppWebhookPayload{
+					Event: models.EventMessageACK,
+				}
 			},
 			setupMocks: func(ms *mockMessageService) {},
-			expectErr:  true,
+			expectErr:  false,
 		},
 		{
-			name:    "lookup error returns nil but does not call update",
-			payload: makeACKPayload("msg_err_lookup", models.ACKRead),
+			name: "ackName fallback updates delivery status when numeric ack is missing",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKNamePayload(t, "msg_ack_name_device", "DEVICE")
+			},
+			setupMocks: func(ms *mockMessageService) {
+				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_ack_name_device").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:  "msg_ack_name_device",
+						WhatsAppChatID: "+0987654321@c.us",
+						DeliveryStatus: models.DeliveryStatusSent,
+					}, nil).Once()
+				ms.On("UpdateDeliveryStatus", mock.Anything, "msg_ack_name_device", "delivered").
+					Return(nil).Once()
+			},
+			expectErr: false,
+		},
+		{
+			name: "lookup error returns nil but does not call update",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_err_lookup", models.ACKRead)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_err_lookup").
 					Return(nil, fmt.Errorf("database connection error")).Once()
@@ -2261,8 +2317,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "no mapping found returns nil without update",
-			payload: makeACKPayload("msg_no_mapping", models.ACKDevice),
+			name: "no mapping found returns nil without update",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_no_mapping", models.ACKDevice)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_no_mapping").
 					Return(nil, nil).Once()
@@ -2270,8 +2328,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "ACK read updates delivery status to read",
-			payload: makeACKPayload("msg_read", models.ACKRead),
+			name: "ACK read updates delivery status to read",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_read", models.ACKRead)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_read").
 					Return(&models.MessageMapping{
@@ -2285,8 +2345,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "ACK device updates delivery status to delivered",
-			payload: makeACKPayload("msg_delivered", models.ACKDevice),
+			name: "ACK device updates delivery status to delivered",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_delivered", models.ACKDevice)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_delivered").
 					Return(&models.MessageMapping{
@@ -2300,8 +2362,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "ACK error updates delivery status to failed",
-			payload: makeACKPayload("msg_failed", models.ACKError),
+			name: "ACK error updates delivery status to failed",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_failed", models.ACKError)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_failed").
 					Return(&models.MessageMapping{
@@ -2315,8 +2379,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "ACK server updates delivery status to sent",
-			payload: makeACKPayload("msg_server", models.ACKServer),
+			name: "ACK server updates delivery status to sent",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_server", models.ACKServer)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_server").
 					Return(&models.MessageMapping{
@@ -2330,8 +2396,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "ACK played updates delivery status to read",
-			payload: makeACKPayload("msg_played", models.ACKPlayed),
+			name: "ACK played updates delivery status to read",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_played", models.ACKPlayed)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_played").
 					Return(&models.MessageMapping{
@@ -2345,8 +2413,10 @@ func TestHandleWhatsAppACK(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:    "update failure does not return error",
-			payload: makeACKPayload("msg_update_fail", models.ACKDevice),
+			name: "update failure does not return error",
+			payload: func(t *testing.T) *models.WhatsAppWebhookPayload {
+				return makeACKPayload("msg_update_fail", models.ACKDevice)
+			},
 			setupMocks: func(ms *mockMessageService) {
 				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "msg_update_fail").
 					Return(&models.MessageMapping{
@@ -2374,7 +2444,7 @@ func TestHandleWhatsAppACK(t *testing.T) {
 
 			tt.setupMocks(msgSvc)
 
-			err := server.handleWhatsAppACK(context.Background(), tt.payload)
+			err := server.handleWhatsAppACK(context.Background(), tt.payload(t))
 
 			if tt.expectErr {
 				assert.Error(t, err)

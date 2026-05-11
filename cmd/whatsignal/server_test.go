@@ -170,8 +170,18 @@ func (m *mockWAClient) RestartSession(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockWAClient) RestartSessionByName(ctx context.Context, sessionName string) error {
+	args := m.Called(ctx, sessionName)
+	return args.Error(0)
+}
+
 func (m *mockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
 	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
+}
+
+func (m *mockWAClient) WaitForSessionReadyByName(ctx context.Context, sessionName string, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, sessionName, maxWaitTime)
 	return args.Error(0)
 }
 

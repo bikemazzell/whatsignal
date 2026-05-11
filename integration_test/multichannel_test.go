@@ -336,6 +336,11 @@ func (m *mockMultiSessionWAClient) WaitForSessionReady(ctx context.Context, maxW
 	return args.Error(0)
 }
 
+func (m *mockMultiSessionWAClient) WaitForSessionReadyByName(ctx context.Context, sessionName string, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, sessionName, maxWaitTime)
+	return args.Error(0)
+}
+
 // Implement other required methods with minimal implementation
 func (m *mockMultiSessionWAClient) SendTextWithSession(ctx context.Context, chatID, message, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return nil, nil
@@ -374,6 +379,9 @@ func (m *mockMultiSessionWAClient) GetSessionStatusByName(ctx context.Context, s
 	return nil, nil
 }
 func (m *mockMultiSessionWAClient) RestartSession(ctx context.Context) error {
+	return nil
+}
+func (m *mockMultiSessionWAClient) RestartSessionByName(ctx context.Context, sessionName string) error {
 	return nil
 }
 func (m *mockMultiSessionWAClient) GetContact(ctx context.Context, contactID string) (*types.Contact, error) {

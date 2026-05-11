@@ -1862,6 +1862,38 @@ func TestSendMessageToWhatsApp_RetriesOnTransientError(t *testing.T) {
 	assert.Equal(t, 3, callCount, "Expected 3 attempts (2 failures + 1 success)")
 }
 
+func TestSendMessageToWhatsApp_RestartsStuckStartingSession(t *testing.T) {
+	bridge, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	callCount := 0
+
+	mockWA := &mockWhatsAppClient{
+		sendTextFunc: func(ctx context.Context, chatID, text string) (*types.SendMessageResponse, error) {
+			callCount++
+			if callCount == 1 {
+				return nil, &testError{msg: `request failed with status 422: {"error":"Session status is not as expected. Try again later or restart the session","session":"jo","status":"STARTING","expected":["WORKING"]}`}
+			}
+			return &types.SendMessageResponse{
+				MessageID: "wa_msg_after_restart",
+				Status:    "sent",
+			}, nil
+		},
+	}
+	mockWA.On("RestartSessionByName", mock.Anything, "jo").Return(nil).Once()
+	mockWA.On("WaitForSessionReadyByName", mock.Anything, "jo", mock.AnythingOfType("time.Duration")).Return(nil).Once()
+	bridge.waClient = mockWA
+
+	resp, err := bridge.sendMessageToWhatsApp(ctx, "123456789@c.us", "Test message", nil, "", "jo")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "wa_msg_after_restart", resp.MessageID)
+	assert.Equal(t, 2, callCount, "Expected one failed send and one retry after session restart")
+	mockWA.AssertExpectations(t)
+}
+
 func TestSendMessageToWhatsApp_FailsOnNonRetryableError(t *testing.T) {
 	bridge, _, cleanup := setupTestBridge(t)
 	defer cleanup()

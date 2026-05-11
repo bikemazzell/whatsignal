@@ -130,8 +130,18 @@ func (m *MockWAClient) RestartSession(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *MockWAClient) RestartSessionByName(ctx context.Context, sessionName string) error {
+	args := m.Called(ctx, sessionName)
+	return args.Error(0)
+}
+
 func (m *MockWAClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
 	args := m.Called(ctx, maxWaitTime)
+	return args.Error(0)
+}
+
+func (m *MockWAClient) WaitForSessionReadyByName(ctx context.Context, sessionName string, maxWaitTime time.Duration) error {
+	args := m.Called(ctx, sessionName, maxWaitTime)
 	return args.Error(0)
 }
 

@@ -17,9 +17,11 @@ type WAClient interface {
 	StartSession(ctx context.Context) error
 	StopSession(ctx context.Context) error
 	RestartSession(ctx context.Context) error
+	RestartSessionByName(ctx context.Context, sessionName string) error
 	GetSessionStatus(ctx context.Context) (*Session, error)
 	GetSessionStatusByName(ctx context.Context, sessionName string) (*Session, error)
 	WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error
+	WaitForSessionReadyByName(ctx context.Context, sessionName string, maxWaitTime time.Duration) error
 	GetSessionName() string
 
 	// Contact methods

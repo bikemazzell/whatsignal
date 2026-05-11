@@ -713,6 +713,7 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 
 	var resp *types.SendMessageResponse
 	attempt := 0
+	sessionRecoveryAttempted := false
 	retryErr := backoff.RetryWithPredicate(ctx, func() error {
 		attempt++
 		var sendErr error
@@ -771,6 +772,16 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 				"error":       sendErr.Error(),
 				"retryable":   isRetryable,
 			}).Warn("WhatsApp send attempt failed")
+
+			if isRetryable && !sessionRecoveryAttempted && shouldRestartWhatsAppSession(sendErr) {
+				sessionRecoveryAttempted = true
+				if recoveryErr := b.restartWhatsAppSession(ctx, sessionName); recoveryErr != nil {
+					b.logger.WithError(recoveryErr).WithFields(logrus.Fields{
+						"sessionName": sessionName,
+						"chatID":      SanitizePhoneNumber(chatID),
+					}).Error("Failed to restart WhatsApp session after send failure")
+				}
+			}
 		}
 
 		return sendErr
@@ -818,6 +829,43 @@ func (b *bridge) sendMessageToWhatsApp(ctx context.Context, chatID string, messa
 	}).Debug("WhatsApp message sent successfully")
 
 	return resp, nil
+}
+
+func shouldRestartWhatsAppSession(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "restart the session") {
+		return true
+	}
+	if strings.Contains(errStr, "status\":\"starting\"") || strings.Contains(errStr, "status: starting") {
+		return true
+	}
+	if strings.Contains(errStr, "did not become ready") {
+		return true
+	}
+	return false
+}
+
+func (b *bridge) restartWhatsAppSession(ctx context.Context, sessionName string) error {
+	if sessionName == "" {
+		sessionName = b.waClient.GetSessionName()
+	}
+
+	b.logger.WithField("sessionName", sessionName).Warn("Restarting WhatsApp session after retryable send failure")
+	if err := b.waClient.RestartSessionByName(ctx, sessionName); err != nil {
+		return err
+	}
+
+	waitTimeout := time.Duration(constants.DefaultSessionWaitTimeoutSec) * time.Second
+	if err := b.waClient.WaitForSessionReadyByName(ctx, sessionName, waitTimeout); err != nil {
+		return err
+	}
+
+	b.logger.WithField("sessionName", sessionName).Info("WhatsApp session recovered after restart")
+	return nil
 }
 
 // resolveMessageMapping finds the target WhatsApp chat for a Signal message.

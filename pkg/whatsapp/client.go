@@ -131,9 +131,17 @@ func (c *WhatsAppClient) StopSession(ctx context.Context) error {
 }
 
 func (c *WhatsAppClient) RestartSession(ctx context.Context) error {
+	return c.RestartSessionByName(ctx, c.sessionName)
+}
+
+func (c *WhatsAppClient) RestartSessionByName(ctx context.Context, sessionName string) error {
+	if sessionName == "" {
+		sessionName = c.sessionName
+	}
+
 	// Use WAHA's restart endpoint
-	url := fmt.Sprintf("%s/api/sessions/%s/restart", c.baseURL, c.sessionName)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+	reqURL := fmt.Sprintf("%s/api/sessions/%s/restart", c.baseURL, url.PathEscape(sessionName))
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create restart request: %w", err)
 	}
@@ -222,9 +230,9 @@ func (c *WhatsAppClient) validateSessionStatus(ctx context.Context, sessionName 
 		}).Info("Session not ready, waiting for WORKING status")
 	}
 
-	// Use existing WaitForSessionReady with a 30-second timeout
+	// Wait for the specific target session, not necessarily this client's default session.
 	waitTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
-	if err := c.WaitForSessionReady(ctx, waitTimeout); err != nil {
+	if err := c.WaitForSessionReadyByName(ctx, sessionName, waitTimeout); err != nil {
 		return fmt.Errorf("session '%s' did not become ready after waiting: %w", sessionName, err)
 	}
 
@@ -249,6 +257,15 @@ func (c *WhatsAppClient) isPermanentSessionError(status string) bool {
 
 // WaitForSessionReady waits for the WhatsApp session to be in WORKING status
 func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime time.Duration) error {
+	return c.WaitForSessionReadyByName(ctx, c.sessionName, maxWaitTime)
+}
+
+// WaitForSessionReadyByName waits for the named WhatsApp session to be in WORKING status.
+func (c *WhatsAppClient) WaitForSessionReadyByName(ctx context.Context, sessionName string, maxWaitTime time.Duration) error {
+	if sessionName == "" {
+		sessionName = c.sessionName
+	}
+
 	deadline := time.Now().Add(maxWaitTime)
 	backoff := time.Duration(constants.DefaultBackoffInitialMs) * time.Millisecond
 	maxBackoff := time.Duration(constants.DefaultBackoffMaxSec) * time.Second
@@ -277,16 +294,16 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 					c.logger.WithError(closeErr).Debug("Failed to close response body")
 				}
 
-				// Find our session
+				// Find the requested session
 				for _, session := range sessions {
-					if name, ok := session["name"].(string); ok && name == c.sessionName {
+					if name, ok := session["name"].(string); ok && name == sessionName {
 						if status, ok := session["status"].(string); ok {
 							if status == "WORKING" {
 								return nil // Session is ready
 							}
 							// Log current status for debugging
 							if c.logger != nil {
-								c.logger.WithFields(logrus.Fields{"session": c.sessionName, "status": status}).Debug("Session status; waiting")
+								c.logger.WithFields(logrus.Fields{"session": sessionName, "status": status}).Debug("Session status; waiting")
 							}
 						}
 						break
@@ -315,7 +332,7 @@ func (c *WhatsAppClient) WaitForSessionReady(ctx context.Context, maxWaitTime ti
 		}
 	}
 
-	return fmt.Errorf("timeout waiting for session to be ready after %v", maxWaitTime)
+	return fmt.Errorf("timeout waiting for session %q to be ready after %v", sessionName, maxWaitTime)
 }
 
 func (c *WhatsAppClient) AckMessage(ctx context.Context, chatID, sessionName string) error {

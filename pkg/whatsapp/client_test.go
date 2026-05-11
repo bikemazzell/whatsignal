@@ -1561,3 +1561,43 @@ func TestClient_RedirectBlocked(t *testing.T) {
 	_, err := client.SendTextWithSession(ctx, "123456789@c.us", "test", "", "default")
 	require.Error(t, err, "Should fail because redirects are disabled for API calls")
 }
+
+func TestClient_SendTextWithSessionWaitsForRequestedSession(t *testing.T) {
+	t.Setenv("WHATSIGNAL_TEST_MODE", "")
+
+	sendAttempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/sessions":
+			_ = json.NewEncoder(w).Encode([]types.Session{
+				{Name: "default", Status: "WORKING"},
+				{Name: "jo", Status: "STARTING"},
+			})
+		case testAPIBase + testEndpointSendText:
+			sendAttempts++
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":{"_serialized":"should_not_send"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-key",
+		SessionName: "default",
+		Timeout:     time.Second,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	resp, err := client.SendTextWithSession(ctx, "123456789@c.us", "test", "", "jo")
+
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "jo")
+	assert.Equal(t, 0, sendAttempts, "must not send to jo while jo is still STARTING")
+}

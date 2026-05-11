@@ -9,10 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
+	"whatsignal/pkg/whatsapp/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,6 +82,28 @@ func TestRunWithInvalidLogLevel(t *testing.T) {
 			"unexpected run error: %v", err,
 		)
 	}
+}
+
+func TestEnsureSessionReadyForStartup_RestartsTimedOutSessionWhenAutoRestartEnabled(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(os.Stderr)
+
+	client := &mockWAClient{}
+	client.On("WaitForSessionReady", mock.Anything, time.Duration(constants.DefaultSessionReadyTimeoutSec)*time.Second).
+		Return(fmt.Errorf("timeout waiting for session %q to be ready after 30s", "jo")).
+		Once()
+	client.On("RestartSessionByName", mock.Anything, "jo").Return(nil).Once()
+	client.On("WaitForSessionReadyByName", mock.Anything, "jo", time.Duration(constants.DefaultSessionWaitTimeoutSec)*time.Second).
+		Return(nil).
+		Once()
+	client.On("GetSessionStatus", mock.Anything).
+		Return(&types.Session{Name: "jo", Status: types.SessionStatus("WORKING")}, nil).
+		Once()
+
+	ready := ensureSessionReadyForStartup(context.Background(), client, "jo", "contact", true, logger)
+
+	assert.True(t, ready)
+	client.AssertExpectations(t)
 }
 
 func TestGracefulShutdown(t *testing.T) {

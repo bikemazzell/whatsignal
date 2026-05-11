@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -451,24 +452,7 @@ func syncSessionContacts(ctx context.Context, cfg *models.Config, db *database.D
 		RetryCount:  cfg.WhatsApp.RetryCount,
 	})
 
-	// Wait for session to be ready
-	sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
-	if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
-		sessionLogger.Warnf("Failed to wait for session ready: %v. Skipping contact sync.", err)
-		return
-	}
-
-	sessionLogger.Info("WhatsApp session is ready. Syncing contacts...")
-
-	// Check session status before attempting contact sync
-	sessionStatus, err := sessionClient.GetSessionStatus(ctx)
-	if err != nil {
-		sessionLogger.Warnf("Failed to get session status before contact sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping contact sync.", err)
-		return
-	}
-
-	if sessionStatus == nil || sessionStatus.Status != "WORKING" {
-		sessionLogger.Warnf("Session status is %v, not WORKING. Skipping contact sync.", sessionStatus)
+	if !ensureSessionReadyForStartup(ctx, sessionClient, sessionName, "contact", cfg.WhatsApp.SessionAutoRestart, logger) {
 		return
 	}
 
@@ -534,24 +518,7 @@ func syncSessionGroups(ctx context.Context, cfg *models.Config, db *database.Dat
 		RetryCount:  cfg.WhatsApp.RetryCount,
 	})
 
-	// Wait for session to be ready
-	sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
-	if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
-		sessionLogger.Warnf("Failed to wait for session ready: %v. Skipping group sync.", err)
-		return
-	}
-
-	sessionLogger.Info("WhatsApp session is ready. Syncing groups...")
-
-	// Check session status before attempting group sync
-	sessionStatus, err := sessionClient.GetSessionStatus(ctx)
-	if err != nil {
-		sessionLogger.Warnf("Failed to get session status before group sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping group sync.", err)
-		return
-	}
-
-	if sessionStatus == nil || sessionStatus.Status != "WORKING" {
-		sessionLogger.Warnf("Session status is %v, not WORKING. Skipping group sync.", sessionStatus)
+	if !ensureSessionReadyForStartup(ctx, sessionClient, sessionName, "group", cfg.WhatsApp.SessionAutoRestart, logger) {
 		return
 	}
 
@@ -562,4 +529,50 @@ func syncSessionGroups(ctx context.Context, cfg *models.Config, db *database.Dat
 	} else {
 		sessionLogger.Info("Group sync completed successfully")
 	}
+}
+
+func ensureSessionReadyForStartup(ctx context.Context, sessionClient types.WAClient, sessionName, syncType string, autoRestart bool, logger *logrus.Logger) bool {
+	if logger == nil {
+		logger = logrus.New()
+		logger.SetOutput(io.Discard)
+	}
+
+	sessionLogger := logger.WithField("session", sessionName)
+	sessionReadyTimeout := time.Duration(constants.DefaultSessionReadyTimeoutSec) * time.Second
+
+	if err := sessionClient.WaitForSessionReady(ctx, sessionReadyTimeout); err != nil {
+		if !autoRestart {
+			sessionLogger.Warnf("Failed to wait for session ready: %v. Skipping %s sync.", err, syncType)
+			return false
+		}
+
+		sessionLogger.WithError(err).Warn("Session did not become ready during startup sync, attempting restart")
+		if restartErr := sessionClient.RestartSessionByName(ctx, sessionName); restartErr != nil {
+			sessionLogger.Warnf("Failed to restart session after readiness timeout: %v. Skipping %s sync.", restartErr, syncType)
+			return false
+		}
+
+		waitTimeout := time.Duration(constants.DefaultSessionWaitTimeoutSec) * time.Second
+		if waitErr := sessionClient.WaitForSessionReadyByName(ctx, sessionName, waitTimeout); waitErr != nil {
+			sessionLogger.Warnf("Session restart did not recover readiness: %v. Skipping %s sync.", waitErr, syncType)
+			return false
+		}
+
+		sessionLogger.Info("Session restarted and is ready for startup sync")
+	}
+
+	sessionLogger.Infof("WhatsApp session is ready. Syncing %ss...", syncType)
+
+	sessionStatus, err := sessionClient.GetSessionStatus(ctx)
+	if err != nil {
+		sessionLogger.Warnf("Failed to get session status before %s sync: %v. This may indicate missing WHATSAPP_API_KEY or WAHA service issues. Skipping %s sync.", syncType, err, syncType)
+		return false
+	}
+
+	if sessionStatus == nil || sessionStatus.Status != "WORKING" {
+		sessionLogger.Warnf("Session status is %v, not WORKING. Skipping %s sync.", sessionStatus, syncType)
+		return false
+	}
+
+	return true
 }

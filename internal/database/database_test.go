@@ -1896,3 +1896,190 @@ func TestGetContactByName_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, notFound)
 }
+
+func TestSaveAndGetPendingMessages(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	messages := []models.PendingSignalMessage{
+		{MessageID: "msg1", Sender: "+1234567890", Message: "hello", Timestamp: 1700000000000, RawJSON: `{"test":"data"}`, Destination: "+9876543210"},
+		{MessageID: "msg2", Sender: "+1111111111", Message: "world", GroupID: "group1", Timestamp: 1700000001000, RawJSON: `{"test":"data2"}`, Destination: "+9876543210"},
+	}
+
+	err := db.SavePendingMessages(ctx, messages)
+	require.NoError(t, err)
+
+	retrieved, err := db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, retrieved, 2)
+
+	assert.Equal(t, "msg1", retrieved[0].MessageID)
+	assert.Equal(t, "+1234567890", retrieved[0].Sender)
+	assert.Equal(t, "hello", retrieved[0].Message)
+	assert.Equal(t, "+9876543210", retrieved[0].Destination)
+	assert.Equal(t, 0, retrieved[0].RetryCount)
+
+	assert.Equal(t, "msg2", retrieved[1].MessageID)
+	assert.Equal(t, "group1", retrieved[1].GroupID)
+}
+
+func TestSavePendingMessages_DuplicateIgnored(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	messages := []models.PendingSignalMessage{
+		{MessageID: "msg1", Sender: "+1234567890", Message: "hello", Timestamp: 1700000000000, RawJSON: `{"test":"data"}`, Destination: "+9876543210"},
+	}
+
+	err := db.SavePendingMessages(ctx, messages)
+	require.NoError(t, err)
+
+	err = db.SavePendingMessages(ctx, messages)
+	require.NoError(t, err)
+
+	retrieved, err := db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	assert.Len(t, retrieved, 1)
+}
+
+func TestDeletePendingMessage(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	messages := []models.PendingSignalMessage{
+		{MessageID: "msg1", Sender: "+1234567890", Message: "hello", Timestamp: 1700000000000, RawJSON: `{"test":"data"}`, Destination: "+9876543210"},
+	}
+
+	err := db.SavePendingMessages(ctx, messages)
+	require.NoError(t, err)
+
+	err = db.DeletePendingMessage(ctx, "msg1", "+9876543210")
+	require.NoError(t, err)
+
+	retrieved, err := db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	assert.Empty(t, retrieved)
+}
+
+func TestIncrementPendingRetryCount(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	messages := []models.PendingSignalMessage{
+		{MessageID: "msg1", Sender: "+1234567890", Message: "hello", Timestamp: 1700000000000, RawJSON: `{"test":"data"}`, Destination: "+9876543210"},
+	}
+
+	err := db.SavePendingMessages(ctx, messages)
+	require.NoError(t, err)
+
+	err = db.IncrementPendingRetryCount(ctx, "msg1", "+9876543210")
+	require.NoError(t, err)
+
+	err = db.IncrementPendingRetryCount(ctx, "msg1", "+9876543210")
+	require.NoError(t, err)
+
+	retrieved, err := db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, retrieved, 1)
+	assert.Equal(t, 2, retrieved[0].RetryCount)
+}
+
+func TestGetStaleMessageCount(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, err := db.db.ExecContext(ctx, `
+		INSERT INTO message_mappings (whatsapp_chat_id, whatsapp_msg_id, signal_msg_id, signal_timestamp, forwarded_at, delivery_status, session_name, chat_id_hash, whatsapp_msg_id_hash, signal_msg_id_hash)
+		VALUES ('chat1', 'wa-msg-1', 'sig-msg-1', datetime('now'), datetime('now', '-10 minutes'), 'sent', 'default', 'hash1', 'hash2', 'hash3')
+	`)
+	require.NoError(t, err)
+
+	count, err := db.GetStaleMessageCount(ctx, 5*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	count, err = db.GetStaleMessageCount(ctx, 15*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestGetLatestGroupMessageMappingBySession(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	err := db.SaveMessageMapping(ctx, &models.MessageMapping{
+		WhatsAppChatID:  "non-group@c.us",
+		WhatsAppMsgID:   "wa-1",
+		SignalMsgID:     "sig-1",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "default",
+	})
+	require.NoError(t, err)
+
+	err = db.SaveMessageMapping(ctx, &models.MessageMapping{
+		WhatsAppChatID:  "group123@g.us",
+		WhatsAppMsgID:   "wa-2",
+		SignalMsgID:     "sig-2",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "default",
+	})
+	require.NoError(t, err)
+
+	mapping, err := db.GetLatestGroupMessageMappingBySession(ctx, "default", 10)
+	require.NoError(t, err)
+	require.NotNil(t, mapping)
+	assert.Equal(t, "group123@g.us", mapping.WhatsAppChatID)
+
+	_, err = db.GetLatestGroupMessageMappingBySession(ctx, "", 10)
+	assert.Error(t, err)
+
+	mapping, err = db.GetLatestGroupMessageMappingBySession(ctx, "nonexistent", 10)
+	require.NoError(t, err)
+	assert.Nil(t, mapping)
+}
+
+func TestUpdateSignalIDByWhatsAppID(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	err := db.SaveMessageMapping(ctx, &models.MessageMapping{
+		WhatsAppChatID:  "chat123",
+		WhatsAppMsgID:   "wa-msg-1",
+		SignalMsgID:     "sig-msg-1",
+		SignalTimestamp: time.Now(),
+		ForwardedAt:     time.Now(),
+		DeliveryStatus:  models.DeliveryStatusSent,
+		SessionName:     "default",
+	})
+	require.NoError(t, err)
+
+	newTimestamp := time.Now().Add(time.Second)
+	err = db.UpdateSignalIDByWhatsAppID(ctx, "wa-msg-1", "sig-msg-updated", newTimestamp, "delivered")
+	require.NoError(t, err)
+
+	retrieved, err := db.GetMessageMappingByWhatsAppID(ctx, "wa-msg-1")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, "sig-msg-updated", retrieved.SignalMsgID)
+	assert.Equal(t, models.DeliveryStatus("delivered"), retrieved.DeliveryStatus)
+}
+
+func TestHealthCheck(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	err := db.HealthCheck(ctx)
+	assert.NoError(t, err)
+}

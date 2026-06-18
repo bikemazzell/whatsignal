@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -1400,4 +1401,230 @@ func TestMessageService_ConcurrentDuplicateWebhooks(t *testing.T) {
 
 	// Bridge should have been called exactly once
 	bridge.AssertExpectations(t)
+}
+
+func TestProcessPendingMessages(t *testing.T) {
+	ctx := context.Background()
+
+	makeRawJSON := func(msgID, sender, message string, ts int64) string {
+		b, _ := json.Marshal(signaltypes.SignalMessage{
+			MessageID: msgID,
+			Sender:    sender,
+			Message:   message,
+			Timestamp: ts,
+		})
+		return string(b)
+	}
+
+	tests := []struct {
+		name      string
+		setup     func(*mockDB, *mockBridge)
+		wantError bool
+	}{
+		{
+			name: "empty pending list",
+			setup: func(db *mockDB, bridge *mockBridge) {
+				db.On("GetPendingMessages", ctx, mock.Anything).Return([]models.PendingSignalMessage{}, nil)
+			},
+		},
+		{
+			name: "DB error on GetPendingMessages",
+			setup: func(db *mockDB, bridge *mockBridge) {
+				db.On("GetPendingMessages", ctx, mock.Anything).Return(nil, assert.AnError)
+			},
+			wantError: true,
+		},
+		{
+			name: "successful processing saves pending bridge succeeds deletes pending",
+			setup: func(db *mockDB, bridge *mockBridge) {
+				rawJSON := makeRawJSON("msg1", "+1234567890", "hello", time.Now().UnixMilli())
+				pending := []models.PendingSignalMessage{
+					{MessageID: "msg1", Sender: "+1234567890", Message: "hello", RawJSON: rawJSON, Destination: "+1234567890"},
+				}
+				db.On("GetPendingMessages", ctx, mock.Anything).Return(pending, nil)
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg1"
+				}), "+1234567890").Return(nil)
+				db.On("DeletePendingMessage", ctx, "msg1", "+1234567890").Return(nil)
+			},
+		},
+		{
+			name: "bridge failure increments retry count",
+			setup: func(db *mockDB, bridge *mockBridge) {
+				rawJSON := makeRawJSON("msg2", "+1234567890", "fail", time.Now().UnixMilli())
+				pending := []models.PendingSignalMessage{
+					{MessageID: "msg2", Sender: "+1234567890", Message: "fail", RawJSON: rawJSON, Destination: "+1234567890"},
+				}
+				db.On("GetPendingMessages", ctx, mock.Anything).Return(pending, nil)
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg2"
+				}), "+1234567890").Return(assert.AnError)
+				db.On("IncrementPendingRetryCount", ctx, "msg2", "+1234567890").Return(nil)
+			},
+		},
+		{
+			name: "invalid JSON deletes corrupt message",
+			setup: func(db *mockDB, bridge *mockBridge) {
+				pending := []models.PendingSignalMessage{
+					{MessageID: "msg3", Sender: "+1234567890", RawJSON: "not-valid-json", Destination: "+1234567890"},
+				}
+				db.On("GetPendingMessages", ctx, mock.Anything).Return(pending, nil)
+				db.On("DeletePendingMessage", ctx, "msg3", "+1234567890").Return(nil)
+			},
+		},
+		{
+			name: "mixed some succeed some fail",
+			setup: func(db *mockDB, bridge *mockBridge) {
+				rawOK := makeRawJSON("msg-ok", "+1111111111", "ok", time.Now().UnixMilli())
+				rawFail := makeRawJSON("msg-fail", "+2222222222", "fail", time.Now().UnixMilli())
+				pending := []models.PendingSignalMessage{
+					{MessageID: "msg-ok", Sender: "+1111111111", Message: "ok", RawJSON: rawOK, Destination: "+1111111111"},
+					{MessageID: "msg-fail", Sender: "+2222222222", Message: "fail", RawJSON: rawFail, Destination: "+2222222222"},
+				}
+				db.On("GetPendingMessages", ctx, mock.Anything).Return(pending, nil)
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg-ok"
+				}), "+1111111111").Return(nil)
+				db.On("DeletePendingMessage", ctx, "msg-ok", "+1111111111").Return(nil)
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg-fail"
+				}), "+2222222222").Return(assert.AnError)
+				db.On("IncrementPendingRetryCount", ctx, "msg-fail", "+2222222222").Return(nil)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge := new(mockBridge)
+			db := new(mockDB)
+			mediaCache := new(mockMediaCache)
+			service := createTestMessageService(bridge, db, mediaCache)
+
+			tt.setup(db, bridge)
+
+			err := service.ProcessPendingMessages(ctx)
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			bridge.AssertExpectations(t)
+			db.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDispatchSingleSignalMessage(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		msg        signaltypes.SignalMessage
+		channels   []models.Channel
+		setup      func(*mockDB, *mockBridge)
+		wantNilErr bool
+	}{
+		{
+			name: "single destination routes directly",
+			msg: signaltypes.SignalMessage{
+				MessageID: "msg2",
+				Sender:    "+9999999999",
+				Message:   "hello",
+				Timestamp: time.Now().UnixMilli(),
+			},
+			channels: []models.Channel{
+				{WhatsAppSessionName: "default", SignalDestinationPhoneNumber: "+1234567890"},
+			},
+			setup: func(db *mockDB, bridge *mockBridge) {
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg2"
+				}), "+1234567890").Return(nil)
+			},
+		},
+		{
+			name: "multi-channel sender match routes to matching destination",
+			msg: signaltypes.SignalMessage{
+				MessageID: "msg3",
+				Sender:    "+1111111111",
+				Message:   "hello",
+				Timestamp: time.Now().UnixMilli(),
+			},
+			channels: []models.Channel{
+				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+1111111111"},
+				{WhatsAppSessionName: "business", SignalDestinationPhoneNumber: "+2222222222"},
+			},
+			setup: func(db *mockDB, bridge *mockBridge) {
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg3"
+				}), "+1111111111").Return(nil)
+			},
+		},
+		{
+			name: "multi-channel history match routes via history",
+			msg: signaltypes.SignalMessage{
+				MessageID: "msg4",
+				Sender:    "+9999999999",
+				Message:   "hello",
+				Timestamp: time.Now().UnixMilli(),
+			},
+			channels: []models.Channel{
+				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+1111111111"},
+				{WhatsAppSessionName: "business", SignalDestinationPhoneNumber: "+2222222222"},
+			},
+			setup: func(db *mockDB, bridge *mockBridge) {
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+9999999999").Return(false, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+9999999999").Return(true, nil).Maybe()
+				bridge.On("HandleSignalMessageWithDestination", ctx, mock.MatchedBy(func(m *signaltypes.SignalMessage) bool {
+					return m.MessageID == "msg4"
+				}), "+2222222222").Return(nil)
+			},
+		},
+		{
+			name: "multi-channel no match returns nil",
+			msg: signaltypes.SignalMessage{
+				MessageID: "msg5",
+				Sender:    "+9999999999",
+				Message:   "hello",
+				Timestamp: time.Now().UnixMilli(),
+			},
+			channels: []models.Channel{
+				{WhatsAppSessionName: "personal", SignalDestinationPhoneNumber: "+1111111111"},
+				{WhatsAppSessionName: "business", SignalDestinationPhoneNumber: "+2222222222"},
+			},
+			setup: func(db *mockDB, bridge *mockBridge) {
+				db.On("HasMessageHistoryBetween", ctx, "personal", "+9999999999").Return(false, nil).Maybe()
+				db.On("HasMessageHistoryBetween", ctx, "business", "+9999999999").Return(false, nil).Maybe()
+			},
+			wantNilErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge := new(mockBridge)
+			db := new(mockDB)
+			mediaCache := new(mockMediaCache)
+			signalClient := &mockSignalClient{}
+			signalConfig := models.SignalConfig{PollIntervalSec: 5, PollTimeoutSec: 10}
+			channelManager, _ := NewChannelManager(tt.channels)
+			service := NewMessageService(bridge, db, mediaCache, signalClient, signalConfig, channelManager)
+
+			if tt.setup != nil {
+				tt.setup(db, bridge)
+			}
+
+			err := service.DispatchSingleSignalMessage(ctx, tt.msg)
+			if tt.wantNilErr {
+				assert.NoError(t, err)
+				bridge.AssertNotCalled(t, "HandleSignalMessageWithDestination", mock.Anything, mock.Anything, mock.Anything)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			bridge.AssertExpectations(t)
+			db.AssertExpectations(t)
+		})
+	}
 }

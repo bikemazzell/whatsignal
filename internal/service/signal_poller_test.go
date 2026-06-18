@@ -718,3 +718,53 @@ func TestSignalPoller_Stop_NoDeadlock(t *testing.T) {
 
 	assert.False(t, poller.IsRunning())
 }
+
+func TestSleepWithContext(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		cancelFn func(ctx context.Context, cancel context.CancelFunc)
+		maxTime  time.Duration
+	}{
+		{
+			name:     "Normal sleep completes",
+			duration: 10 * time.Millisecond,
+			cancelFn: func(_ context.Context, _ context.CancelFunc) {},
+			maxTime:  500 * time.Millisecond,
+		},
+		{
+			name:     "Context cancellation cuts sleep short",
+			duration: 5 * time.Second,
+			cancelFn: func(_ context.Context, cancel context.CancelFunc) {
+				time.Sleep(10 * time.Millisecond)
+				cancel()
+			},
+			maxTime: 1 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			go tt.cancelFn(ctx, cancel)
+
+			start := time.Now()
+			sleepWithContext(ctx, tt.duration)
+			elapsed := time.Since(start)
+
+			assert.LessOrEqual(t, elapsed, tt.maxTime)
+		})
+	}
+}
+
+func TestJitter(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		result := jitter(1 * time.Second)
+		assert.GreaterOrEqual(t, result, 750*time.Millisecond)
+		assert.LessOrEqual(t, result, 1250*time.Millisecond)
+	}
+
+	assert.Equal(t, time.Duration(0), jitter(0))
+}

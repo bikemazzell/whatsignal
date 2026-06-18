@@ -1601,3 +1601,112 @@ func TestClient_SendTextWithSessionWaitsForRequestedSession(t *testing.T) {
 	assert.Contains(t, err.Error(), "jo")
 	assert.Equal(t, 0, sendAttempts, "must not send to jo while jo is still STARTING")
 }
+
+func TestAckMessage(t *testing.T) {
+	client, server := setupTestClient(t)
+	defer server.Close()
+
+	ctx := context.Background()
+	err := client.AckMessage(ctx, "123456@c.us", "test-session")
+	require.NoError(t, err)
+}
+
+func TestAckMessage_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == testAPIBase+testEndpointSendSeen {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-key",
+		SessionName: "test-session",
+		Timeout:     5 * time.Second,
+	}).(*WhatsAppClient)
+
+	ctx := context.Background()
+	err := client.AckMessage(ctx, "123456@c.us", "test-session")
+	require.Error(t, err)
+}
+
+func TestSendText_Legacy(t *testing.T) {
+	var receivedPayload map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case testAPIBase + testEndpointStartTyping, testAPIBase + testEndpointStopTyping:
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+		case testAPIBase + testEndpointSendText:
+			_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
+			resp := types.WAHAMessageResponse{
+				ID: &struct {
+					FromMe     bool   `json:"fromMe"`
+					Remote     string `json:"remote"`
+					ID         string `json:"id"`
+					Serialized string `json:"_serialized"`
+				}{
+					FromMe:     true,
+					Remote:     "123456@c.us",
+					ID:         "legacy-msg-id",
+					Serialized: "legacy-msg-id",
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-key",
+		SessionName: "my-session",
+		Timeout:     5 * time.Second,
+	}).(*WhatsAppClient)
+
+	ctx := context.Background()
+	resp, err := client.SendText(ctx, "123456@c.us", "hello legacy")
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-msg-id", resp.MessageID)
+	assert.Equal(t, "123456@c.us", receivedPayload["chatId"])
+	assert.Equal(t, "hello legacy", receivedPayload["text"])
+	assert.Equal(t, "my-session", receivedPayload["session"])
+	_, hasReplyTo := receivedPayload["reply_to"]
+	assert.False(t, hasReplyTo)
+}
+
+func TestSendReaction_Legacy(t *testing.T) {
+	var receivedPayload types.ReactionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/reaction" {
+			_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
+			resp := types.SendMessageResponse{
+				MessageID: "reaction-legacy-id",
+				Status:    "sent",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(types.ClientConfig{
+		BaseURL:     server.URL,
+		APIKey:      "test-key",
+		SessionName: "my-session",
+		Timeout:     5 * time.Second,
+	}).(*WhatsAppClient)
+
+	ctx := context.Background()
+	resp, err := client.SendReaction(ctx, "chat@c.us", "msg123", "👍")
+	require.NoError(t, err)
+	assert.Equal(t, "reaction-legacy-id", resp.MessageID)
+	assert.Equal(t, "my-session", receivedPayload.Session)
+	assert.Equal(t, "msg123", receivedPayload.MessageID)
+	assert.Equal(t, "👍", receivedPayload.Reaction)
+}

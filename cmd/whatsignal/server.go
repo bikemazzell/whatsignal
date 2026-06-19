@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -76,6 +77,7 @@ type Server struct {
 	waClient       types.WAClient
 	channelManager *service.ChannelManager
 	rateLimiter    *RateLimiter
+	replayCache    *WebhookReplayCache
 	db             DatabaseInterface
 	sigClient      SignalClientInterface
 }
@@ -101,6 +103,7 @@ func NewServer(cfg *models.Config, msgService service.MessageService, logger *lo
 		waClient:       waClient,
 		channelManager: channelManager,
 		rateLimiter:    NewRateLimiter(rateLimit, time.Minute, time.Duration(cleanupMinutes)*time.Minute),
+		replayCache:    NewWebhookReplayCache(),
 		db:             db,
 		sigClient:      sigClient,
 	}
@@ -118,6 +121,8 @@ func (s *Server) setupRoutes() {
 	public := s.router.PathPrefix("").Subrouter()
 	public.Use(middleware.ObservabilityMiddleware(s.logger))
 	public.HandleFunc("/health", s.handleHealth()).Methods(http.MethodGet)
+	public.HandleFunc("/healthz", s.handleLiveness()).Methods(http.MethodGet)
+	public.HandleFunc("/readyz", s.handleHealth()).Methods(http.MethodGet)
 	public.HandleFunc("/session/status", s.handleSessionStatus()).Methods(http.MethodGet)
 	public.HandleFunc("/metrics", s.handleMetrics()).Methods(http.MethodGet)
 
@@ -137,11 +142,22 @@ func (s *Server) Start() error {
 		port = strconv.Itoa(constants.DefaultServerPort)
 	}
 
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		return err
+	}
+
+	s.logger.Infof("Starting server on port %s", port)
+	return s.Serve(listener)
+}
+
+func (s *Server) Serve(listener net.Listener) error {
 	// Use configured timeouts or defaults
 	readTimeout := time.Duration(s.cfg.Server.ReadTimeoutSec) * time.Second
 	if readTimeout <= 0 {
 		readTimeout = time.Duration(constants.DefaultServerReadTimeoutSec) * time.Second
 	}
+	readHeaderTimeout := time.Duration(constants.DefaultServerReadHeaderTimeoutSec) * time.Second
 
 	writeTimeout := time.Duration(s.cfg.Server.WriteTimeoutSec) * time.Second
 	if writeTimeout <= 0 {
@@ -155,16 +171,16 @@ func (s *Server) Start() error {
 
 	s.serverMu.Lock()
 	s.server = &http.Server{
-		Addr:         fmt.Sprintf(":%s", port),
-		Handler:      s.router,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		IdleTimeout:  idleTimeout,
+		Addr:              listener.Addr().String(),
+		Handler:           s.router,
+		ReadTimeout:       readTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 	s.serverMu.Unlock()
 
-	s.logger.Infof("Starting server on port %s", port)
-	return s.server.ListenAndServe()
+	return s.server.Serve(listener)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
@@ -186,7 +202,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Rate limiting
-		clientIP := GetClientIP(r)
+		clientIP := GetClientIP(r, s.cfg.Server.TrustedProxies...)
 		rateLimitInfo := s.rateLimiter.AllowWithInfo(clientIP)
 
 		// Add rate limit headers
@@ -325,13 +341,26 @@ func (s *Server) handleHealth() http.HandlerFunc {
 		case "healthy":
 			w.WriteHeader(http.StatusOK)
 		case "degraded":
-			w.WriteHeader(http.StatusOK) // 200 but with warnings
+			w.WriteHeader(http.StatusServiceUnavailable)
 		case "unhealthy":
 			w.WriteHeader(http.StatusServiceUnavailable) // 503
 		}
 
 		if err := json.NewEncoder(w).Encode(health); err != nil {
 			s.logger.WithError(err).Error("Failed to write health check response")
+		}
+	}
+}
+
+func (s *Server) handleLiveness() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "alive",
+			"version": Version,
+		}); err != nil {
+			s.logger.WithError(err).Error("Failed to write liveness response")
 		}
 	}
 }
@@ -398,6 +427,14 @@ func (s *Server) handleWhatsAppWebhook() http.HandlerFunc {
 			s.logger.WithError(err).Error("WhatsApp webhook signature verification failed")
 			http.Error(w, "Signature verification failed", http.StatusUnauthorized)
 			return
+		}
+		if timestamp := r.Header.Get("X-Webhook-Timestamp"); timestamp != "" {
+			replayTTL := maxSkew + time.Duration(constants.DefaultWebhookReplayBufferSec)*time.Second
+			if s.replayCache.CheckAndStore(bodyBytes, timestamp, replayTTL) {
+				s.logger.Warn("WhatsApp webhook replay rejected")
+				http.Error(w, "Webhook replay detected", http.StatusConflict)
+				return
+			}
 		}
 
 		var payload models.WhatsAppWebhookPayload

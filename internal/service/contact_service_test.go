@@ -11,6 +11,7 @@ import (
 	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -223,6 +224,18 @@ func TestNewContactServiceWithConfig(t *testing.T) {
 			assert.Equal(t, tt.expectedCacheHours, service.cacheValidHours)
 		})
 	}
+}
+
+func TestNewContactServiceWithConfigAndLoggerUsesProvidedLogger(t *testing.T) {
+	mockDB := &mockContactDatabaseService{}
+	mockWA := &mockWAClient{}
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	service := NewContactServiceWithConfigAndLogger(mockDB, mockWA, 24, logger)
+
+	assert.Same(t, logger, service.logger.Logger)
+	assert.Same(t, logger, service.circuitBreaker.logger())
 }
 
 func TestContactService_GetContactDisplayName(t *testing.T) {

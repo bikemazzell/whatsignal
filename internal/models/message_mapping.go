@@ -6,6 +6,7 @@ type DeliveryStatus string
 
 const (
 	DeliveryStatusPending   DeliveryStatus = "pending"
+	DeliveryStatusReceived  DeliveryStatus = "received"
 	DeliveryStatusSent      DeliveryStatus = "sent"
 	DeliveryStatusDelivered DeliveryStatus = "delivered"
 	DeliveryStatusRead      DeliveryStatus = "read"
@@ -26,14 +27,4 @@ type MessageMapping struct {
 	SessionName     string         `json:"sessionName"` // WhatsApp session name for multi-channel support
 	CreatedAt       time.Time      `json:"createdAt"`
 	UpdatedAt       time.Time      `json:"updatedAt"`
-}
-
-// MessageMetadata contains metadata about a message that needs to be preserved
-// when bridging between platforms
-type MessageMetadata struct {
-	Sender   string    `json:"sender"`
-	Chat     string    `json:"chat"`
-	Time     time.Time `json:"time"`
-	MsgID    string    `json:"msgId"`
-	ThreadID string    `json:"threadId"`
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/pkg/whatsapp/types"
 
 	"github.com/stretchr/testify/assert"
@@ -157,11 +159,13 @@ func createLargeTestFile(t *testing.T) string {
 	tmpDir := t.TempDir()
 	filepath := filepath.Join(tmpDir, "large_test.jpg")
 
-	// Create a file larger than 5MB
-	largeContent := make([]byte, 6*1024*1024) // 6MB
-
-	err := os.WriteFile(filepath, largeContent, 0644)
+	file, err := os.Create(filepath)
 	require.NoError(t, err)
+	_, err = file.Seek(int64(constants.MaxRecommendedFileSizeBytes), io.SeekStart)
+	require.NoError(t, err)
+	_, err = file.Write([]byte{0})
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
 
 	return filepath
 }
@@ -220,14 +224,14 @@ func TestSendImageWithSession(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid media path")
 	})
 
-	t.Run("large file warning", func(t *testing.T) {
+	t.Run("large file rejected", func(t *testing.T) {
 		largePath := createLargeTestFile(t)
 
 		resp, err := client.SendImageWithSession(ctx, chatID, largePath, "", "", sessionName)
 
-		// Should succeed but trigger warning (test passes if no error)
-		assert.NoError(t, err)
-		assert.NotNil(t, resp)
+		require.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "media file exceeds maximum size")
 	})
 
 	t.Run("context timeout", func(t *testing.T) {

@@ -110,8 +110,7 @@ END;`
 // TestDatabase_ConcurrentOperations tests concurrent database access
 func TestDatabase_ConcurrentOperations(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -215,8 +214,7 @@ func makeConcurrentID(prefix string, id, j int) string {
 // TestDatabase_TransactionRollback tests transaction rollback behavior
 func TestDatabase_TransactionRollback(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -264,8 +262,7 @@ func TestDatabase_LargeDataSet(t *testing.T) {
 	}
 
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -324,8 +321,7 @@ func makeID(prefix string, num int) string {
 // TestDatabase_SQLInjectionAttempts tests SQL injection protection
 func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -379,8 +375,7 @@ func TestDatabase_SQLInjectionAttempts(t *testing.T) {
 // TestDatabase_FilePermissions tests database file permissions
 func TestDatabase_FilePermissions(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -418,8 +413,7 @@ func TestDatabase_CorruptedDatabase(t *testing.T) {
 // TestDatabase_VeryLongIDs tests handling of very long IDs
 func TestDatabase_VeryLongIDs(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -461,8 +455,7 @@ func TestDatabase_VeryLongIDs(t *testing.T) {
 // TestDatabase_ContactEdgeCases tests edge cases for contact operations
 func TestDatabase_ContactEdgeCases(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -506,8 +499,7 @@ func TestDatabase_ContactEdgeCases(t *testing.T) {
 // TestDatabase_EncryptionToggle validates that encryption persists across restarts
 func TestDatabase_EncryptionToggle(t *testing.T) {
 	// Always-on encryption: set secret before first open
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -569,8 +561,7 @@ func TestDatabase_EncryptionToggle(t *testing.T) {
 // Test decrypt errors for specific query paths to increase coverage of error branches
 func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
 	// Always-on encryption: set a test secret
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -621,8 +612,7 @@ func TestDatabase_GetMessageMappingBySignalID_DecryptErrors(t *testing.T) {
 }
 
 func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()
@@ -741,8 +731,7 @@ func TestDatabase_GetLatestMessageMappingByWhatsAppChatID_DecryptErrors(t *testi
 }
 
 func TestDatabase_GetLatestMessageMapping_DecryptErrors(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	cleanup := setupTestMigrationsForEdgeCases(t)
 	defer cleanup()

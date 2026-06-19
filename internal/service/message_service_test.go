@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
 	signaltypes "whatsignal/pkg/signal/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -19,6 +21,8 @@ import (
 type mockBridge struct {
 	mock.Mock
 }
+
+var _ MessageService = (*messageService)(nil)
 
 func (m *mockBridge) SendMessage(ctx context.Context, msg *models.Message) error {
 	args := m.Called(ctx, msg)
@@ -186,6 +190,28 @@ func TestNewMessageService(t *testing.T) {
 	assert.NotNil(t, service)
 }
 
+func TestNewMessageServiceWithLoggerUsesProvidedLogger(t *testing.T) {
+	bridge := &mockBridge{}
+	db := &mockDB{}
+	mediaCache := &mockMediaCache{}
+	signalClient := &mockSignalClient{}
+	channelManager, err := NewChannelManager([]models.Channel{
+		{
+			WhatsAppSessionName:          "default",
+			SignalDestinationPhoneNumber: "+1234567890",
+		},
+	})
+	require.NoError(t, err)
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	service := NewMessageServiceWithLogger(bridge, db, mediaCache, signalClient, models.SignalConfig{}, channelManager, logger)
+
+	require.IsType(t, &messageService{}, service)
+	assert.Same(t, logger, service.(*messageService).logger)
+}
+
 func TestSendMessage(t *testing.T) {
 	ctx := context.Background()
 
@@ -268,6 +294,29 @@ func TestSendMessage(t *testing.T) {
 			mediaCache.AssertExpectations(t)
 		})
 	}
+}
+
+func TestSendMessageRejectsLocalPathInMediaURL(t *testing.T) {
+	ctx := context.Background()
+	bridge := new(mockBridge)
+	db := new(mockDB)
+	mediaCache := new(mockMediaCache)
+	service := createTestMessageService(bridge, db, mediaCache)
+
+	err := service.SendMessage(ctx, &models.Message{
+		ID:       "msg-local-media-url",
+		ChatID:   "chat1",
+		Content:  "local path should not be treated as a URL",
+		Platform: "whatsapp",
+		Type:     models.ImageMessage,
+		MediaURL: "/etc/passwd",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid media URL")
+	mediaCache.AssertNotCalled(t, "ProcessMedia", mock.Anything)
+	bridge.AssertNotCalled(t, "SendMessage", mock.Anything, mock.Anything)
+	db.AssertNotCalled(t, "SaveMessageMapping", mock.Anything, mock.Anything)
 }
 
 func TestReceiveMessage(t *testing.T) {
@@ -458,14 +507,6 @@ func TestMarkMessageDelivered(t *testing.T) {
 			db.AssertExpectations(t)
 		})
 	}
-}
-
-func TestDeleteMessage(t *testing.T) {
-	service, ctx := setupTestService(t)
-
-	// Test deleting message
-	err := service.DeleteMessage(ctx, "msg1")
-	assert.NoError(t, err)
 }
 
 func TestMessageService_HandleWhatsAppMessageWithSession(t *testing.T) {
@@ -688,6 +729,18 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 				}, nil).Once()
 			},
 		},
+		{
+			name:   "received status progresses to delivered",
+			msgID:  "msg127",
+			status: "delivered",
+			setup: func() {
+				db.On("GetMessageMappingByWhatsAppID", ctx, "msg127").Return(&models.MessageMapping{
+					WhatsAppMsgID:  "msg127",
+					DeliveryStatus: models.DeliveryStatusReceived,
+				}, nil).Once()
+				db.On("UpdateDeliveryStatus", ctx, "msg127", "delivered").Return(nil).Once()
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -704,6 +757,23 @@ func TestMessageService_UpdateDeliveryStatusDetailed(t *testing.T) {
 			db.AssertExpectations(t)
 		})
 	}
+}
+
+func TestDeliveryStatusRankCoversStoredStatuses(t *testing.T) {
+	statuses := []models.DeliveryStatus{
+		models.DeliveryStatusPending,
+		models.DeliveryStatusReceived,
+		models.DeliveryStatusSent,
+		models.DeliveryStatusDelivered,
+		models.DeliveryStatusRead,
+		models.DeliveryStatusFailed,
+	}
+
+	for _, status := range statuses {
+		assert.NotEqual(t, -1, deliveryStatusRank(string(status)), "status %q should have an explicit rank", status)
+	}
+	assert.Less(t, deliveryStatusRank("received"), deliveryStatusRank(string(models.DeliveryStatusDelivered)))
+	assert.Less(t, deliveryStatusRank("received"), deliveryStatusRank(string(models.DeliveryStatusRead)))
 }
 
 func TestProcessIncomingSignalMessage(t *testing.T) {
@@ -1250,6 +1320,25 @@ func TestChatLockManager_CleanupBelowThreshold(t *testing.T) {
 	clm.cleanup()
 
 	assert.Equal(t, 100, len(clm.locks), "Cleanup should not reset locks map when below threshold")
+}
+
+func TestChatLockManager_CleanupDoesNotEvictHeldLock(t *testing.T) {
+	clm := newChatLockManager()
+	heldLock := clm.getLock("held-chat")
+	heldLock.Lock()
+	defer heldLock.Unlock()
+
+	staleTime := time.Now().Add(-10 * time.Minute)
+	clm.locks["held-chat"].lastUsed = staleTime
+	for i := 0; i < constants.MaxChatLocks; i++ {
+		chatID := fmt.Sprintf("stale-chat-%d", i)
+		clm.getLock(chatID)
+		clm.locks[chatID].lastUsed = staleTime
+	}
+
+	clm.cleanup()
+
+	assert.Contains(t, clm.locks, "held-chat", "Cleanup must not evict a lock while it is held")
 }
 
 func TestChatLockManager_MessageOrdering(t *testing.T) {

@@ -8,11 +8,11 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -316,6 +316,8 @@ func (m *mockMessageService) ProcessPendingMessages(ctx context.Context) error {
 }
 
 func TestVerifySignature(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "development")
+
 	secretKey := "test-secret-key"
 	payload := []byte(`{"test": "data"}`)
 
@@ -496,16 +498,46 @@ func TestVerifySignatureWithSkew_WAHA(t *testing.T) {
 		assert.Equal(t, payload, body)
 	})
 
-	t.Run("legacy timestamp-bound signature is still accepted during rollout", func(t *testing.T) {
+	t.Run("legacy timestamp-bound signature is rejected", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
 		timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
 		req.Header.Set(XWahaSignatureHeader, signLegacyWahaTestPayload(secretKey, timestamp, payload))
 		req.Header.Set("X-Webhook-Timestamp", timestamp)
 
 		body, err := verifySignatureWithSkew(req, secretKey, XWahaSignatureHeader, time.Duration(constants.DefaultWebhookMaxSkewSec)*time.Second)
-		assert.NoError(t, err)
-		assert.Equal(t, payload, body)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "signature mismatch")
+		assert.Nil(t, body)
 	})
+}
+
+func TestDefaultWebhookMaxSkewSecIsTwoMinutes(t *testing.T) {
+	assert.Equal(t, 120, constants.DefaultWebhookMaxSkewSec)
+}
+
+func TestVerifySignatureWithSkewRequiresSecretWhenEnvUnset(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "")
+
+	payload := []byte(`{"event":"message.any"}`)
+	req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+
+	body, err := verifySignatureWithSkew(req, "", XWahaSignatureHeader, 5*time.Minute)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "webhook secret is required")
+	assert.Nil(t, body)
+}
+
+func TestVerifySignatureWithSkewAllowsMissingSecretOnlyInDevelopment(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "development")
+
+	payload := []byte(`{"event":"message.any"}`)
+	req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(payload))
+
+	body, err := verifySignatureWithSkew(req, "", XWahaSignatureHeader, 5*time.Minute)
+
+	require.NoError(t, err)
+	assert.Equal(t, payload, body)
 }
 
 func TestServer_Health(t *testing.T) {
@@ -534,7 +566,60 @@ func TestServer_Health(t *testing.T) {
 	mockWAClient.AssertExpectations(t)
 }
 
+func TestServer_ReadinessReturnsUnavailableWhenDegraded(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	mockDB := &mockDatabase{}
+
+	mockDB.On("HealthCheck", mock.Anything).Return(nil).Twice()
+	mockWAClient.On("HealthCheck", mock.Anything).Return(errors.New("whatsapp unavailable")).Twice()
+
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
+
+	for _, path := range []string{"/health", "/readyz"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+
+			server.router.ServeHTTP(w, req)
+
+			resp := w.Result()
+			require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		})
+	}
+
+	mockDB.AssertExpectations(t)
+	mockWAClient.AssertExpectations(t)
+}
+
+func TestServer_LivenessDoesNotCheckDependencies(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	mockDB := &mockDatabase{}
+
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+
+	server.router.ServeHTTP(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	mockDB.AssertNotCalled(t, "HealthCheck", mock.Anything)
+	mockWAClient.AssertNotCalled(t, "HealthCheck", mock.Anything)
+}
+
 func TestServer_SessionStatus(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
+
 	tests := []struct {
 		name           string
 		sessionStatus  *types.Session
@@ -629,23 +714,8 @@ func TestServer_SessionStatus(t *testing.T) {
 }
 
 func TestServer_ProductionDiagnosticsRequireAdminToken(t *testing.T) {
-	originalEnv := os.Getenv("WHATSIGNAL_ENV")
-	originalToken := os.Getenv("WHATSIGNAL_ADMIN_TOKEN")
-	defer func() {
-		if originalEnv != "" {
-			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENV")
-		}
-		if originalToken != "" {
-			_ = os.Setenv("WHATSIGNAL_ADMIN_TOKEN", originalToken)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ADMIN_TOKEN")
-		}
-	}()
-
-	_ = os.Setenv("WHATSIGNAL_ENV", "production")
-	_ = os.Setenv("WHATSIGNAL_ADMIN_TOKEN", "admin-token-with-enough-entropy")
+	t.Setenv("WHATSIGNAL_ENV", "production")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "admin-token-with-enough-entropy")
 
 	msgService := &mockMessageService{}
 	logger := logrus.New()
@@ -711,24 +781,31 @@ func TestServer_ProductionDiagnosticsRequireAdminToken(t *testing.T) {
 	}
 }
 
-func TestServer_ProductionDiagnosticsAcceptAdminToken(t *testing.T) {
-	originalEnv := os.Getenv("WHATSIGNAL_ENV")
-	originalToken := os.Getenv("WHATSIGNAL_ADMIN_TOKEN")
-	defer func() {
-		if originalEnv != "" {
-			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENV")
-		}
-		if originalToken != "" {
-			_ = os.Setenv("WHATSIGNAL_ADMIN_TOKEN", originalToken)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ADMIN_TOKEN")
-		}
-	}()
+func TestServer_DiagnosticsRequireAdminTokenWhenEnvUnset(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
 
-	_ = os.Setenv("WHATSIGNAL_ENV", "production")
-	_ = os.Setenv("WHATSIGNAL_ADMIN_TOKEN", "admin-token-with-enough-entropy")
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	w := httptest.NewRecorder()
+
+	require.False(t, requireProductionAdminToken(w, req))
+	assert.Equal(t, http.StatusUnauthorized, w.Result().StatusCode)
+	assert.Contains(t, w.Body.String(), "Unauthorized")
+}
+
+func TestServer_DevelopmentDiagnosticsAllowMissingAdminToken(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	w := httptest.NewRecorder()
+
+	require.True(t, requireProductionAdminToken(w, req))
+}
+
+func TestServer_ProductionDiagnosticsAcceptAdminToken(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "production")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "admin-token-with-enough-entropy")
 
 	msgService := &mockMessageService{}
 	logger := logrus.New()
@@ -1099,6 +1176,66 @@ func TestWebhookProcessingDetachedContext(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		msgService.AssertExpectations(t)
 	})
+}
+
+func TestWhatsAppWebhookRejectsReplay(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "production")
+
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "test-secret",
+		},
+	}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	mockDB := &mockDatabase{}
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
+
+	payload := map[string]interface{}{
+		"event":   "message",
+		"session": "default",
+		"payload": map[string]interface{}{
+			"id":       "msg-replay",
+			"from":     "+1234567890",
+			"fromMe":   false,
+			"body":     "Replay me",
+			"hasMedia": false,
+		},
+	}
+	bodyBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	msgService.On("HandleWhatsAppMessageWithSession",
+		mock.Anything,
+		"default",
+		"+1234567890",
+		"msg-replay",
+		"+1234567890",
+		"",
+		"Replay me",
+		"",
+	).Return(nil).Once()
+
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+	signature := signWahaTestPayload(cfg.WhatsApp.WebhookSecret, bodyBytes)
+	newRequest := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/webhook/whatsapp", bytes.NewReader(bodyBytes))
+		req.Header.Set(XWahaSignatureHeader, signature)
+		req.Header.Set("X-Webhook-Timestamp", timestamp)
+		req.Header.Set("Content-Type", "application/json")
+		return req
+	}
+
+	first := httptest.NewRecorder()
+	server.handleWhatsAppWebhook()(first, newRequest())
+	require.Equal(t, http.StatusOK, first.Result().StatusCode)
+
+	second := httptest.NewRecorder()
+	server.handleWhatsAppWebhook()(second, newRequest())
+	assert.Equal(t, http.StatusConflict, second.Result().StatusCode)
+	msgService.AssertExpectations(t)
 }
 
 func TestServer_SignalWebhook(t *testing.T) {
@@ -1688,6 +1825,130 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 	}
 }
 
+func TestHandleWhatsAppReaction_Direct(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutate      func(*models.WhatsAppWebhookPayload)
+		setupMocks  func(*mockMessageService)
+		expectError string
+	}{
+		{
+			name: "valid reaction sends signal notification",
+			setupMocks: func(ms *mockMessageService) {
+				ms.On("GetMessageMappingByWhatsAppID", mock.Anything, "wa-original").
+					Return(&models.MessageMapping{
+						WhatsAppMsgID:  "wa-original",
+						SignalMsgID:    "sig-original",
+						WhatsAppChatID: "+15551234567@c.us",
+						SessionName:    "default",
+					}, nil).Once()
+				ms.On("SendSignalNotification", mock.Anything, "default", "+15551234567 reacted with 👍").Return(nil).Once()
+			},
+		},
+		{
+			name: "missing reaction is validation error",
+			mutate: func(payload *models.WhatsAppWebhookPayload) {
+				payload.Payload.Reaction = nil
+			},
+			expectError: "missing reaction data",
+		},
+		{
+			name: "missing from is validation error",
+			mutate: func(payload *models.WhatsAppWebhookPayload) {
+				payload.Payload.From = ""
+			},
+			expectError: "missing required field: Payload.From",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgService := &mockMessageService{}
+			logger := logrus.New()
+			logger.SetLevel(logrus.ErrorLevel)
+			server := NewServer(&models.Config{}, msgService, logger, nil, createTestChannelManager(), nil, nil)
+			payload := &models.WhatsAppWebhookPayload{
+				Event:   models.EventMessageReaction,
+				Session: "default",
+			}
+			payload.Payload.From = "+15551234567"
+			payload.Payload.Reaction = &struct {
+				Text      string `json:"text"`
+				MessageID string `json:"messageId"`
+			}{
+				Text:      "👍",
+				MessageID: "wa-original",
+			}
+			if tt.mutate != nil {
+				tt.mutate(payload)
+			}
+			if tt.setupMocks != nil {
+				tt.setupMocks(msgService)
+			}
+
+			err := server.handleWhatsAppReaction(context.Background(), payload)
+
+			if tt.expectError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectError)
+			} else {
+				require.NoError(t, err)
+			}
+			msgService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestHandleWhatsAppWaitingMessage_Direct(t *testing.T) {
+	tests := []struct {
+		name        string
+		session     string
+		setupMocks  func(*mockMessageService)
+		expectError string
+	}{
+		{
+			name:    "valid waiting event sends signal notification",
+			session: "default",
+			setupMocks: func(ms *mockMessageService) {
+				ms.On("SendSignalNotification", mock.Anything, "default", "⏳ WhatsApp is waiting for a message").Return(nil).Once()
+			},
+		},
+		{
+			name:        "missing session is validation error",
+			session:     "",
+			expectError: "session name is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgService := &mockMessageService{}
+			logger := logrus.New()
+			logger.SetLevel(logrus.ErrorLevel)
+			server := NewServer(&models.Config{}, msgService, logger, nil, createTestChannelManager(), nil, nil)
+			payload := &models.WhatsAppWebhookPayload{
+				Event:   models.EventMessageWaiting,
+				Session: tt.session,
+			}
+			payload.Payload.ID = "waiting-1"
+			payload.Payload.From = "+15551234567"
+			if tt.setupMocks != nil {
+				tt.setupMocks(msgService)
+			}
+
+			err := server.handleWhatsAppWaitingMessage(context.Background(), payload)
+
+			if tt.expectError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectError)
+			} else {
+				require.NoError(t, err)
+			}
+			msgService.AssertExpectations(t)
+		})
+	}
+}
+
 func TestServer_StartAndShutdown(t *testing.T) {
 	msgService := &mockMessageService{}
 	logger := logrus.New()
@@ -1702,7 +1963,7 @@ func TestServer_StartAndShutdown(t *testing.T) {
 
 	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
 
-	// Find an available port
+	// Own the ephemeral listener until Server serves it to avoid close-then-rebind races.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		if strings.Contains(err.Error(), "operation not permitted") {
@@ -1711,27 +1972,24 @@ func TestServer_StartAndShutdown(t *testing.T) {
 		require.NoError(t, err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	if err := listener.Close(); err != nil {
-		t.Logf("Warning: failed to close listener: %v", err)
-	}
-
-	// Override port for test
-	_ = os.Setenv("PORT", fmt.Sprintf("%d", port))
-	defer func() { _ = os.Unsetenv("PORT") }()
 
 	// Start server in a goroutine
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- server.Start()
+		errCh <- server.Serve(listener)
 	}()
 
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Test health endpoint
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", port))
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Eventually(t, func() bool {
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", port))
+		if err != nil {
+			return false
+		}
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+		return resp.StatusCode == http.StatusOK
+	}, time.Second, 10*time.Millisecond)
 
 	// Shutdown server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1748,6 +2006,50 @@ func TestServer_StartAndShutdown(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Server did not shut down within timeout")
+	}
+}
+
+func TestServer_ServeSetsReadHeaderTimeout(t *testing.T) {
+	msgService := &mockMessageService{}
+	logger := logrus.New()
+	cfg := &models.Config{}
+	mockWAClient := &mockWAClient{}
+	channelManager := createTestChannelManager()
+	mockDB := &mockDatabase{}
+
+	server := NewServer(cfg, msgService, logger, mockWAClient, channelManager, mockDB, nil)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		if strings.Contains(err.Error(), "operation not permitted") {
+			t.Skipf("sandbox denied ephemeral port bind: %v", err)
+		}
+		require.NoError(t, err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Serve(listener)
+	}()
+
+	require.Eventually(t, func() bool {
+		server.serverMu.RLock()
+		defer server.serverMu.RUnlock()
+		return server.server != nil
+	}, time.Second, 10*time.Millisecond)
+
+	server.serverMu.RLock()
+	readHeaderTimeout := server.server.ReadHeaderTimeout
+	server.serverMu.RUnlock()
+	assert.Equal(t, time.Duration(constants.DefaultServerReadHeaderTimeoutSec)*time.Second, readHeaderTimeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, server.Shutdown(ctx))
+
+	err = <-errCh
+	if err != nil && err != http.ErrServerClosed {
+		t.Fatalf("Received unexpected error: %v", err)
 	}
 }
 

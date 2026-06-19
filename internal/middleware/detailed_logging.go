@@ -180,6 +180,8 @@ type responseCaptureWrapper struct {
 	statusCode int
 }
 
+var _ http.Flusher = (*responseCaptureWrapper)(nil)
+
 func (rc *responseCaptureWrapper) Write(data []byte) (int, error) {
 	// Write to both the actual response and our capture buffer
 	n, err := rc.ResponseWriter.Write(data)
@@ -200,6 +202,12 @@ func (rc *responseCaptureWrapper) WriteHeader(statusCode int) {
 
 func (rc *responseCaptureWrapper) Header() http.Header {
 	return rc.ResponseWriter.Header()
+}
+
+func (rc *responseCaptureWrapper) Flush() {
+	if flusher, ok := rc.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // isSensitiveHeader checks if a header should be masked

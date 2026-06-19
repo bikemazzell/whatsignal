@@ -1,35 +1,70 @@
 package httputil
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 )
 
 // GetClientIP extracts the real client IP from the request.
-// It checks X-Forwarded-For first (taking the first IP in the chain),
-// then X-Real-IP, and finally falls back to RemoteAddr.
+// It honors X-Forwarded-For and X-Real-IP only when RemoteAddr belongs to a
+// configured trusted proxy CIDR. Otherwise, it falls back to RemoteAddr.
 // Properly handles IPv6 addresses including bracketed notation.
-func GetClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first
+func GetClientIP(r *http.Request, trustedProxyCIDRs ...string) string {
+	remoteIP := remoteAddrIP(r.RemoteAddr)
+	if !isTrustedProxy(remoteIP, trustedProxyCIDRs) {
+		return remoteIP
+	}
+
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the chain
-		if ips := strings.Split(xff, ","); len(ips) > 0 {
-			if ip := strings.TrimSpace(ips[0]); ip != "" {
+		for _, rawIP := range strings.Split(xff, ",") {
+			if ip := strings.TrimSpace(rawIP); ip != "" {
 				return ip
 			}
 		}
 	}
 
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
 		return xri
 	}
 
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	return remoteIP
+}
+
+// ValidateTrustedProxyCIDRs validates that every configured trusted proxy entry
+// is an explicit CIDR, such as 10.0.0.0/24 or 2001:db8::/32.
+func ValidateTrustedProxyCIDRs(cidrs []string) error {
+	for _, cidr := range cidrs {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("invalid trusted proxy CIDR %q: %w", cidr, err)
+		}
+	}
+	return nil
+}
+
+func remoteAddrIP(remoteAddr string) string {
+	ip, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return remoteAddr
 	}
 	return ip
+}
+
+func isTrustedProxy(remoteIP string, trustedProxyCIDRs []string) bool {
+	ip := net.ParseIP(remoteIP)
+	if ip == nil {
+		return false
+	}
+
+	for _, cidr := range trustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

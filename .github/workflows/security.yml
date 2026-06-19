@@ -13,6 +13,8 @@ on:
 # Required for uploading SARIF to the Code Scanning API
 env:
   GO_VERSION: '1.26.4'
+  GO_SCAN_PACKAGES: $(go list ./... | grep -v '/.worktrees/')
+  GO_TEST_PACKAGES: $(go list ./... | grep -v '/integration_test' | grep -v '/.worktrees/')
 
 permissions:
   contents: read
@@ -38,10 +40,10 @@ jobs:
         run: go build -v ./...
 
       - name: Run unit tests with race detector
-        run: go test -race -v $(go list ./... | grep -v '/integration_test')
+        run: go test -race -v ${{ env.GO_TEST_PACKAGES }}
 
       - name: Run unit tests with coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic $(go list ./... | grep -v '/integration_test')
+        run: go test -coverprofile=coverage.out -covermode=atomic ${{ env.GO_TEST_PACKAGES }}
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -63,7 +65,7 @@ jobs:
           cache: true
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet ${{ env.GO_SCAN_PACKAGES }}
 
       - name: Install and run golangci-lint
         run: |
@@ -74,7 +76,7 @@ jobs:
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
       - name: Run staticcheck
-        run: staticcheck ./...
+        run: staticcheck ${{ env.GO_SCAN_PACKAGES }}
 
   security-scan:
     runs-on: ubuntu-latest
@@ -93,8 +95,8 @@ jobs:
 
       - name: Run gosec
         run: |
-          gosec -fmt sarif -out gosec-results.sarif ./... || true
-          gosec ./...
+          gosec -exclude-dir=.worktrees -fmt sarif -out gosec-results.sarif ./... || true
+          gosec -exclude-dir=.worktrees ./...
 
       - name: Upload gosec results
         uses: github/codeql-action/upload-sarif@v3
@@ -106,7 +108,7 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: govulncheck ${{ env.GO_SCAN_PACKAGES }}
 
   dependency-check:
     runs-on: ubuntu-latest

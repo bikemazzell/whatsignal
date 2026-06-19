@@ -18,6 +18,7 @@ import (
 
 	"whatsignal/internal/constants"
 	"whatsignal/internal/httputil"
+	internalsecurity "whatsignal/internal/security"
 )
 
 func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderName string, maxSkew time.Duration) ([]byte, error) {
@@ -28,8 +29,8 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	if secretKey == "" {
-		if os.Getenv("WHATSIGNAL_ENV") == "production" {
-			return nil, fmt.Errorf("webhook secret is required in production mode")
+		if internalsecurity.IsSecureMode() {
+			return nil, fmt.Errorf("webhook secret is required in secure mode")
 		}
 		return body, nil
 	}
@@ -62,18 +63,7 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 		bodyMAC := hmac.New(sha512.New, []byte(secretKey))
 		bodyMAC.Write(body)
 		computedBodySignatureHex := hex.EncodeToString(bodyMAC.Sum(nil))
-		if hmac.Equal([]byte(computedBodySignatureHex), []byte(expectedSignatureHex)) {
-			return body, nil
-		}
-
-		// Temporary compatibility path for older deployments that signed
-		// "timestamp.body" instead of the documented raw-body WAHA format.
-		legacyMAC := hmac.New(sha512.New, []byte(secretKey))
-		legacyMAC.Write([]byte(timestampStr))
-		legacyMAC.Write([]byte("."))
-		legacyMAC.Write(body)
-		computedLegacySignatureHex := hex.EncodeToString(legacyMAC.Sum(nil))
-		if !hmac.Equal([]byte(computedLegacySignatureHex), []byte(expectedSignatureHex)) {
+		if !hmac.Equal([]byte(computedBodySignatureHex), []byte(expectedSignatureHex)) {
 			return nil, fmt.Errorf("signature mismatch")
 		}
 	} else {
@@ -96,12 +86,50 @@ func verifySignatureWithSkew(r *http.Request, secretKey string, signatureHeaderN
 	return body, nil
 }
 
+type WebhookReplayCache struct {
+	mu      sync.Mutex
+	entries map[string]time.Time
+}
+
+func NewWebhookReplayCache() *WebhookReplayCache {
+	return &WebhookReplayCache{
+		entries: make(map[string]time.Time),
+	}
+}
+
+func (c *WebhookReplayCache) CheckAndStore(body []byte, timestamp string, ttl time.Duration) bool {
+	if c == nil {
+		return false
+	}
+	now := time.Now()
+	key := webhookReplayKey(body, timestamp)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for entryKey, expiresAt := range c.entries {
+		if !expiresAt.After(now) {
+			delete(c.entries, entryKey)
+		}
+	}
+	if expiresAt, exists := c.entries[key]; exists && expiresAt.After(now) {
+		return true
+	}
+	c.entries[key] = now.Add(ttl)
+	return false
+}
+
+func webhookReplayKey(body []byte, timestamp string) string {
+	bodyHash := sha256.Sum256(body)
+	return hex.EncodeToString(bodyHash[:]) + ":" + timestamp
+}
+
 func requireProductionAdminToken(w http.ResponseWriter, r *http.Request) bool {
-	if os.Getenv("WHATSIGNAL_ENV") != "production" {
+	adminToken := os.Getenv("WHATSIGNAL_ADMIN_TOKEN")
+	if !internalsecurity.IsSecureMode() && adminToken == "" {
 		return true
 	}
 
-	adminToken := os.Getenv("WHATSIGNAL_ADMIN_TOKEN")
 	authHeader := r.Header.Get("Authorization")
 	const bearerPrefix = "Bearer "
 	if adminToken == "" || !strings.HasPrefix(authHeader, bearerPrefix) {
@@ -314,6 +342,6 @@ func (rl *RateLimiter) AllowWithInfo(ip string) RateLimitInfo {
 }
 
 // GetClientIP extracts the real client IP from the request
-func GetClientIP(r *http.Request) string {
-	return httputil.GetClientIP(r)
+func GetClientIP(r *http.Request, trustedProxyCIDRs ...string) string {
+	return httputil.GetClientIP(r, trustedProxyCIDRs...)
 }

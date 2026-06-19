@@ -52,12 +52,12 @@ func TestSanitizePhoneNumber(t *testing.T) {
 		{
 			name:     "valid phone number",
 			phone:    "+1234567890",
-			expected: "***7890",
+			expected: "+******7890",
 		},
 		{
 			name:     "short phone number",
 			phone:    "+123",
-			expected: "***",
+			expected: "+***",
 		},
 		{
 			name:     "empty phone number",
@@ -67,12 +67,12 @@ func TestSanitizePhoneNumber(t *testing.T) {
 		{
 			name:     "phone with @c.us suffix",
 			phone:    "1234567890@c.us",
-			expected: "***7890",
+			expected: "******7890@c.us",
 		},
 		{
 			name:     "exactly 4 chars after cleaning",
 			phone:    "1234@c.us",
-			expected: "***",
+			expected: "****@c.us",
 		},
 	}
 
@@ -129,17 +129,17 @@ func TestSanitizeWhatsAppMessageID(t *testing.T) {
 		{
 			name:     "full WhatsApp message ID",
 			msgID:    "false_555222777156@c.us_E8XYZ450FD81FABC9C5DA1",
-			expected: "false_***7156@c.us_E8XYZ450...",
+			expected: "false_********7156@c.us_E8XYZ450...",
 		},
 		{
 			name:     "WhatsApp message ID with short hash",
 			msgID:    "true_1234567890@c.us_ABC123",
-			expected: "true_***7890@c.us_ABC123",
+			expected: "true_******7890@c.us_ABC123",
 		},
 		{
 			name:     "WhatsApp group message ID",
 			msgID:    "false_120363044444444444@g.us_3EB0589C54321",
-			expected: "false_***4444@g.us_3EB0589C...",
+			expected: "false_**************4444@g.us_3EB0589C...",
 		},
 		{
 			name:     "invalid format - no underscores",

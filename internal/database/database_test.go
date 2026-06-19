@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/internal/migrations"
 	"whatsignal/internal/models"
 
@@ -160,8 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_contact_short_name_hash ON contacts(short_name_ha
 
 func setupTestDB(t *testing.T) (*Database, string, func()) {
 	// Set up encryption secret for tests
-	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
 
 	// Create a temporary directory for test database
 	tmpDir, err := os.MkdirTemp("", "whatsignal-db-test")
@@ -181,13 +181,7 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 	cleanup := func() {
 		_ = db.Close()
 		_ = os.RemoveAll(tmpDir)
-		// Restore original environment
 		migrations.MigrationsDir = originalMigrationsDir
-		if originalSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-		}
 	}
 
 	return db, tmpDir, cleanup
@@ -195,15 +189,7 @@ func setupTestDB(t *testing.T) (*Database, string, func()) {
 
 func TestNewDatabase(t *testing.T) {
 	// Set up encryption secret for tests
-	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
-	defer func() {
-		if originalSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-		}
-	}()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
 
 	tests := []struct {
 		name        string
@@ -290,12 +276,8 @@ func TestNewDatabase(t *testing.T) {
 
 func TestDatabaseEncryptionErrors(t *testing.T) {
 	// Test with encryption enabled but invalid secret
-	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short") // Too short secret
-	defer func() {
-		_ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION")
-		_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	}()
+	t.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short") // Too short secret
 
 	// Create a new encryptor with the invalid secret - this should fail
 	_, err := NewEncryptor()
@@ -545,6 +527,121 @@ func TestCleanupOldRecords(t *testing.T) {
 	assert.Equal(t, "msg124", retrieved.WhatsAppMsgID)
 }
 
+func TestCleanupOldRecordsPurgesExpiredPendingMessages(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	messages := []models.PendingSignalMessage{
+		{
+			MessageID:   "old-pending",
+			Sender:      "+1234567890",
+			Message:     "old",
+			Timestamp:   time.Now().UnixMilli(),
+			RawJSON:     `{"id":"old-pending"}`,
+			Destination: "+1098765432",
+		},
+		{
+			MessageID:   "exhausted-pending",
+			Sender:      "+1234567890",
+			Message:     "exhausted",
+			Timestamp:   time.Now().UnixMilli(),
+			RawJSON:     `{"id":"exhausted-pending"}`,
+			Destination: "+1098765432",
+		},
+		{
+			MessageID:   "fresh-pending",
+			Sender:      "+1234567890",
+			Message:     "fresh",
+			Timestamp:   time.Now().UnixMilli(),
+			RawJSON:     `{"id":"fresh-pending"}`,
+			Destination: "+1098765432",
+		},
+	}
+	require.NoError(t, db.SavePendingMessages(ctx, messages))
+
+	oldHash, err := db.encryptor.LookupHash("old-pending")
+	require.NoError(t, err)
+	exhaustedHash, err := db.encryptor.LookupHash("exhausted-pending")
+	require.NoError(t, err)
+
+	_, err = db.db.ExecContext(ctx, `
+		UPDATE pending_signal_messages
+		SET created_at = datetime('now', '-2 days')
+		WHERE message_id_hash = ?`,
+		oldHash,
+	)
+	require.NoError(t, err)
+	_, err = db.db.ExecContext(ctx, `
+		UPDATE pending_signal_messages
+		SET retry_count = ?
+		WHERE message_id_hash = ?`,
+		constants.DefaultMessageProcessRetryAttempts+1,
+		exhaustedHash,
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, db.CleanupOldRecords(ctx, 1))
+
+	pending, err := db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, "fresh-pending", pending[0].MessageID)
+}
+
+func TestPendingSignalMessagePersistenceRoundTrip(t *testing.T) {
+	db, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	messages := []models.PendingSignalMessage{
+		{
+			MessageID:   "pending-1",
+			Sender:      "+15551234567",
+			Message:     "first",
+			GroupID:     "group-1",
+			Timestamp:   1234567890,
+			RawJSON:     `{"id":"pending-1"}`,
+			Destination: "+15550000001",
+		},
+		{
+			MessageID:   "pending-2",
+			Sender:      "+15557654321",
+			Message:     "second",
+			Timestamp:   1234567891,
+			RawJSON:     `{"id":"pending-2"}`,
+			Destination: "+15550000002",
+		},
+	}
+
+	require.NoError(t, db.SavePendingMessages(ctx, messages))
+
+	pending, err := db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 2)
+	assert.Equal(t, "pending-1", pending[0].MessageID)
+	assert.Equal(t, "+15551234567", pending[0].Sender)
+	assert.Equal(t, "first", pending[0].Message)
+	assert.Equal(t, "group-1", pending[0].GroupID)
+	assert.Equal(t, int64(1234567890), pending[0].Timestamp)
+	assert.Equal(t, `{"id":"pending-1"}`, pending[0].RawJSON)
+	assert.Equal(t, "+15550000001", pending[0].Destination)
+	assert.Equal(t, 0, pending[0].RetryCount)
+
+	require.NoError(t, db.IncrementPendingRetryCount(ctx, "pending-1", "+15550000001"))
+	pending, err = db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 2)
+	assert.Equal(t, 1, pending[0].RetryCount)
+	assert.Equal(t, 0, pending[1].RetryCount)
+
+	require.NoError(t, db.DeletePendingMessage(ctx, "pending-1", "+15550000001"))
+	pending, err = db.GetPendingMessages(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, "pending-2", pending[0].MessageID)
+}
+
 func TestGetMessageMapping(t *testing.T) {
 	db, _, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -643,8 +740,7 @@ func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with encryption enabled but corrupted encryptor
-	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION") }()
+	t.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
 
 	// Create a mapping that will trigger encryption
 	mapping := &models.MessageMapping{
@@ -663,10 +759,8 @@ func TestSaveMessageMappingEncryptionErrors(t *testing.T) {
 }
 
 func TestEncryptorNonceGeneration(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION") }()
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -751,8 +845,7 @@ func TestDatabaseWithCorruptedSchema(t *testing.T) {
 
 func TestEncryptorEdgeCases(t *testing.T) {
 	// Always-on encryption
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -777,10 +870,8 @@ func TestEncryptorEdgeCases(t *testing.T) {
 }
 
 func TestDecryptInvalidData(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENABLE_ENCRYPTION") }()
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENABLE_ENCRYPTION", "true")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -834,8 +925,7 @@ func TestDatabaseOperationsWithClosedDB(t *testing.T) {
 
 func TestNewEncryptorWithCustomSecret(t *testing.T) {
 	// Test with custom encryption secret (must be at least 32 characters)
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-custom-secret-key-for-testing-purposes")
 
 	encryptor, err := NewEncryptor()
 	assert.NoError(t, err)
@@ -873,10 +963,19 @@ func TestDatabase_SaveContact(t *testing.T) {
 	err := db.SaveContact(ctx, contact)
 	assert.NoError(t, err)
 
-	// Test updating existing contact (INSERT OR REPLACE)
+	var originalID int64
+	err = db.db.QueryRowContext(ctx, "SELECT id FROM contacts").Scan(&originalID)
+	require.NoError(t, err)
+
+	// Test updating existing contact without replacing the row
 	contact.Name = "John Updated"
 	err = db.SaveContact(ctx, contact)
 	assert.NoError(t, err)
+
+	var updatedID int64
+	err = db.db.QueryRowContext(ctx, "SELECT id FROM contacts").Scan(&updatedID)
+	require.NoError(t, err)
+	assert.Equal(t, originalID, updatedID)
 }
 
 func TestDatabase_GetContact(t *testing.T) {
@@ -1372,15 +1471,7 @@ func TestDatabase_HasMessageHistoryBetween(t *testing.T) {
 
 func TestDatabase_New_ErrorCases(t *testing.T) {
 	// Set up encryption secret for tests
-	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
-	defer func() {
-		if originalSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-		}
-	}()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-database-testing")
 
 	// Test with invalid database path
 	_, err := New("", nil)
@@ -1401,15 +1492,7 @@ func TestDatabase_New_ErrorCases(t *testing.T) {
 func TestDatabase_SchemaUpgrade(t *testing.T) {
 	ctx := context.Background()
 	// Setup encryption environment for test
-	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "test-secret-key-for-database-upgrade-test-32chars!")
-	t.Cleanup(func() {
-		if originalSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-		}
-	})
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "test-secret-key-for-database-upgrade-test-32chars!")
 
 	// Create temporary directory for test database
 	tmpDir := t.TempDir()
@@ -1678,11 +1761,25 @@ func TestDatabase_SaveGroup(t *testing.T) {
 	err := db.SaveGroup(ctx, group)
 	assert.NoError(t, err)
 
-	// Test updating existing group (INSERT OR REPLACE)
+	var originalID int64
+	err = db.db.QueryRowContext(ctx, "SELECT id FROM groups").Scan(&originalID)
+	require.NoError(t, err)
+
+	// Test updating existing group without replacing the row
 	group.Subject = "Updated Group"
 	group.ParticipantCount = 7
 	err = db.SaveGroup(ctx, group)
 	assert.NoError(t, err)
+
+	var updatedID int64
+	err = db.db.QueryRowContext(ctx, "SELECT id FROM groups").Scan(&updatedID)
+	require.NoError(t, err)
+	assert.Equal(t, originalID, updatedID)
+}
+
+func TestHasMessageHistoryBetweenUsesExistsQuery(t *testing.T) {
+	assert.Contains(t, HasMessageHistoryBetweenQuery, "SELECT EXISTS")
+	assert.NotContains(t, HasMessageHistoryBetweenQuery, "COUNT(*)")
 }
 
 func TestDatabase_GetGroup(t *testing.T) {

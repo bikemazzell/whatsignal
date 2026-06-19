@@ -188,8 +188,8 @@ func TestIsRetryableDBError(t *testing.T) {
 	}
 }
 
-func TestIsRetryableDBError_CaseSensitive(t *testing.T) {
-	// Test that error matching is case-sensitive (as implemented)
+func TestIsRetryableDBError_CaseInsensitive(t *testing.T) {
+	// Retry classification is centralized and case-insensitive for legacy error strings.
 	tests := []struct {
 		name     string
 		err      error
@@ -198,27 +198,27 @@ func TestIsRetryableDBError_CaseSensitive(t *testing.T) {
 		{
 			name:     "Database Is Locked (mixed case)",
 			err:      errors.New("Database Is Locked"),
-			expected: false, // Case sensitive - should not match
+			expected: true,
 		},
 		{
 			name:     "DATABASE IS LOCKED (uppercase)",
 			err:      errors.New("DATABASE IS LOCKED"),
-			expected: false, // Case sensitive - should not match
+			expected: true,
 		},
 		{
 			name:     "Disk I/O Error (mixed case)",
 			err:      errors.New("Disk I/O Error"),
-			expected: false, // Case sensitive - should not match
+			expected: true,
 		},
 		{
 			name:     "database is locked (lowercase)",
 			err:      errors.New("database is locked"),
-			expected: true, // Exact match
+			expected: true,
 		},
 		{
 			name:     "disk I/O error (lowercase)",
 			err:      errors.New("disk I/O error"),
-			expected: true, // Exact match
+			expected: true,
 		},
 		{
 			name:     "UNIQUE Constraint Failed (mixed case)",

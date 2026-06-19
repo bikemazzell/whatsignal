@@ -22,6 +22,12 @@ func (f writerFunc) Write(p []byte) (int, error) {
 	return f(p)
 }
 
+func allowDevelopmentModeForWatcherTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
+}
+
 func TestNewConfigWatcher(t *testing.T) {
 	logger := logrus.New()
 	configPath := "/path/to/config.json"
@@ -47,6 +53,8 @@ func TestConfigWatcher_Start_InvalidPath(t *testing.T) {
 }
 
 func TestConfigWatcher_Start_ValidConfig(t *testing.T) {
+	allowDevelopmentModeForWatcherTest(t)
+
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-test")
 	require.NoError(t, err)
@@ -156,6 +164,8 @@ func TestConfigWatcher_OnConfigChange(t *testing.T) {
 }
 
 func TestConfigWatcher_ReloadConfig_FileChanged(t *testing.T) {
+	allowDevelopmentModeForWatcherTest(t)
+
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-reload-test")
 	require.NoError(t, err)
@@ -238,6 +248,8 @@ func TestConfigWatcher_ReloadConfig_FileChanged(t *testing.T) {
 }
 
 func TestConfigWatcher_ReloadConfig_InvalidFile(t *testing.T) {
+	allowDevelopmentModeForWatcherTest(t)
+
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-invalid-test")
 	require.NoError(t, err)
@@ -300,6 +312,8 @@ func TestConfigWatcher_ReloadConfig_InvalidFile(t *testing.T) {
 }
 
 func TestConfigWatcher_CallbackPanic(t *testing.T) {
+	allowDevelopmentModeForWatcherTest(t)
+
 	// Create temporary directory and config file
 	tmpDir, err := os.MkdirTemp("", "watcher-panic-test")
 	require.NoError(t, err)
@@ -376,6 +390,108 @@ func TestConfigWatcher_CallbackPanic(t *testing.T) {
 	logStr := logOutput.String()
 	logMu.Unlock()
 	assert.Contains(t, logStr, "Config change callback panicked")
+}
+
+func TestConfigWatcher_ReloadRunsCallbacksSynchronously(t *testing.T) {
+	allowDevelopmentModeForWatcherTest(t)
+
+	tmpDir, err := os.MkdirTemp("", "watcher-sync-callback-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	validConfig := `{
+		"whatsapp": {
+			"api_base_url": "https://whatsapp.example.com",
+			"webhook_secret": "secret123"
+		},
+		"signal": {
+			"rpc_url": "https://signal.example.com"
+		},
+		"database": {
+			"path": "/path/to/db.sqlite"
+		},
+		"media": {
+			"cache_dir": "/path/to/cache"
+		},
+		"channels": [
+			{
+				"whatsappSessionName": "default",
+				"signalDestinationPhoneNumber": "+1234567890"
+			}
+		],
+		"retentionDays": 30
+	}`
+
+	configPath := filepath.Join(tmpDir, "config.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(validConfig), 0644))
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+	watcher := NewConfigWatcher(configPath, logger)
+
+	config, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	watcher.mu.Lock()
+	watcher.config = config
+	watcher.mu.Unlock()
+
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondCalled := make(chan struct{}, 1)
+	reloadDone := make(chan struct{})
+
+	watcher.OnConfigChange(func(*models.Config) {
+		close(firstStarted)
+		<-releaseFirst
+	})
+	watcher.OnConfigChange(func(*models.Config) {
+		secondCalled <- struct{}{}
+	})
+
+	go func() {
+		watcher.reloadConfig()
+		close(reloadDone)
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-firstStarted:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 5*time.Millisecond)
+
+	reloadCompletedEarly := false
+	secondCalledEarly := false
+	select {
+	case <-reloadDone:
+		reloadCompletedEarly = true
+	default:
+	}
+	select {
+	case <-secondCalled:
+		secondCalledEarly = true
+	default:
+	}
+
+	close(releaseFirst)
+
+	select {
+	case <-reloadDone:
+	case <-time.After(time.Second):
+		t.Fatal("reloadConfig did not complete after callback was released")
+	}
+	if !secondCalledEarly {
+		select {
+		case <-secondCalled:
+		case <-time.After(time.Second):
+			t.Fatal("second callback was not called after first callback completed")
+		}
+	}
+
+	assert.False(t, reloadCompletedEarly, "reloadConfig returned before the first callback completed")
+	assert.False(t, secondCalledEarly, "callbacks ran concurrently instead of sequentially")
 }
 
 func TestConfigWatcher_LogConfigChanges(t *testing.T) {

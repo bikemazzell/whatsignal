@@ -13,6 +13,9 @@ import (
 )
 
 func TestLoadConfig_MultiChannel(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
+
 	tests := []struct {
 		name           string
 		configContent  string

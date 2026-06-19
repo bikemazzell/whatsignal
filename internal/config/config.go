@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/httputil"
 	"whatsignal/internal/models"
 	"whatsignal/internal/security"
 	"whatsignal/internal/validation"
@@ -139,14 +141,16 @@ func validate(c *models.Config) error {
 	if c.Tracing.Environment == "" {
 		c.Tracing.Environment = constants.DefaultTracingEnvironment
 	}
+	hasCustomOTLPEndpoint := c.Tracing.OTLPEndpoint != "" && c.Tracing.OTLPEndpoint != constants.DefaultTracingOTLPEndpoint
 	if c.Tracing.OTLPEndpoint == "" {
 		c.Tracing.OTLPEndpoint = constants.DefaultTracingOTLPEndpoint
 	}
 	if c.Tracing.SampleRate == 0 {
 		c.Tracing.SampleRate = constants.DefaultTracingSampleRate
 	}
-	// UseStdout defaults to true if Jaeger endpoint is default and tracing is enabled
 	if !c.Tracing.Enabled {
+		c.Tracing.UseStdout = false
+	} else if !hasCustomOTLPEndpoint {
 		c.Tracing.UseStdout = true
 	}
 	// Set default timeout if not provided
@@ -192,17 +196,32 @@ func applyEnvironmentOverrides(c *models.Config) {
 	if dir := os.Getenv("MEDIA_DIR"); dir != "" {
 		c.Media.CacheDir = dir
 	}
+	if trustedProxies := os.Getenv("WHATSIGNAL_TRUSTED_PROXIES"); trustedProxies != "" {
+		c.Server.TrustedProxies = parseCSVEnv(trustedProxies)
+	}
 }
 
 // validateSecurity performs security-specific validation
 func validateSecurity(c *models.Config) error {
-	// Check if we're in production mode
-	isProduction := os.Getenv("WHATSIGNAL_ENV") == "production"
+	isSecureMode := security.IsSecureMode()
 
-	if isProduction {
-		// In production, webhook secrets are mandatory
+	if err := httputil.ValidateTrustedProxyCIDRs(c.Server.TrustedProxies); err != nil {
+		return models.ConfigError{Message: err.Error()}
+	}
+
+	adminToken := os.Getenv("WHATSIGNAL_ADMIN_TOKEN")
+	if adminToken != "" && len(adminToken) < constants.MinAdminTokenLength {
+		return models.ConfigError{Message: fmt.Sprintf("WHATSIGNAL_ADMIN_TOKEN must be at least %d characters long", constants.MinAdminTokenLength)}
+	}
+
+	if isSecureMode {
+		if adminToken == "" {
+			return models.ConfigError{Message: "WHATSIGNAL_ADMIN_TOKEN is required in secure mode"}
+		}
+
+		// In secure mode, webhook secrets are mandatory.
 		if c.WhatsApp.WebhookSecret == "" {
-			return models.ConfigError{Message: "WhatsApp webhook secret is required in production (set WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable)"}
+			return models.ConfigError{Message: "WhatsApp webhook secret is required in secure mode (set WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET environment variable)"}
 		}
 
 		// Validate webhook secret strength
@@ -211,13 +230,13 @@ func validateSecurity(c *models.Config) error {
 		}
 
 		if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT"); salt == "" {
-			return models.ConfigError{Message: "WHATSIGNAL_ENCRYPTION_SALT is required in production"}
+			return models.ConfigError{Message: "WHATSIGNAL_ENCRYPTION_SALT is required in secure mode"}
 		} else if len(salt) < models.SaltSize {
 			return models.ConfigError{Message: fmt.Sprintf("WHATSIGNAL_ENCRYPTION_SALT must be at least %d characters long", models.SaltSize)}
 		}
 
 		if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT"); salt == "" {
-			return models.ConfigError{Message: "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is required in production"}
+			return models.ConfigError{Message: "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is required in secure mode"}
 		} else if len(salt) < models.SaltSize {
 			return models.ConfigError{Message: fmt.Sprintf("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT must be at least %d characters long", models.SaltSize)}
 		}
@@ -241,10 +260,21 @@ func validateSecurity(c *models.Config) error {
 	return nil
 }
 
+func parseCSVEnv(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if item := strings.TrimSpace(part); item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 // validateBounds performs bounds checking on configuration values
 func validateBounds(c *models.Config) error {
-	// Validate timeout values
-	if err := validation.ValidateTimeout(c.WhatsApp.RetryCount, "WhatsApp retry count"); err != nil {
+	// Validate retry counts separately from timeout values.
+	if err := validation.ValidateNumericRange(c.WhatsApp.RetryCount, "WhatsApp retry count", 0, constants.MaxWhatsAppRetryCount); err != nil {
 		return models.ConfigError{Message: err.Error()}
 	}
 
@@ -473,7 +503,7 @@ func validateBounds(c *models.Config) error {
 			return models.ConfigError{Message: fmt.Sprintf("channel %d WhatsApp session name: %s", i, err.Error())}
 		}
 
-		if err := validation.ValidatePhoneNumber(channel.SignalDestinationPhoneNumber); err != nil {
+		if err := validation.ValidateE164PhoneNumber(channel.SignalDestinationPhoneNumber); err != nil {
 			return models.ConfigError{Message: fmt.Sprintf("channel %d Signal destination: %s", i, err.Error())}
 		}
 	}

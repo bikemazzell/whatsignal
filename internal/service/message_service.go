@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"whatsignal/internal/constants"
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
+	"whatsignal/internal/retry"
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
 
@@ -43,7 +45,6 @@ type MessageService interface {
 	GetMessageByID(ctx context.Context, id string) (*models.Message, error)
 	GetMessageThread(ctx context.Context, threadID string) ([]*models.Message, error)
 	MarkMessageDelivered(ctx context.Context, id string) error
-	DeleteMessage(ctx context.Context, id string) error
 	HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error
 	HandleSignalMessage(ctx context.Context, msg *models.Message) error
 	ProcessIncomingSignalMessage(ctx context.Context, rawSignalMsg *signaltypes.SignalMessage) error
@@ -91,12 +92,13 @@ func (m *chatLockManager) getLock(chatID string) *sync.Mutex {
 func (m *chatLockManager) cleanup() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.locks) <= constants.MaxChatLocks {
-		return
-	}
 	cutoff := time.Now().Add(-constants.ChatLockEvictionMinutes * time.Minute)
 	for chatID, cl := range m.locks {
 		if cl.lastUsed.Before(cutoff) {
+			if !cl.mu.TryLock() {
+				continue
+			}
+			cl.mu.Unlock()
 			delete(m.locks, chatID)
 		}
 	}
@@ -116,8 +118,15 @@ type messageService struct {
 }
 
 func NewMessageService(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig, channelManager *ChannelManager) MessageService {
+	return NewMessageServiceWithLogger(bridge, db, mediaCache, signalClient, signalConfig, channelManager, nil)
+}
+
+func NewMessageServiceWithLogger(bridge MessageBridge, db Database, mediaCache MediaCache, signalClient signal.Client, signalConfig models.SignalConfig, channelManager *ChannelManager, logger *logrus.Logger) MessageService {
+	if logger == nil {
+		logger = logrus.New()
+	}
 	return &messageService{
-		logger:          logrus.New(),
+		logger:          logger,
 		bridge:          bridge,
 		db:              db,
 		mediaCache:      mediaCache,
@@ -140,6 +149,9 @@ func generateUniqueID() string {
 
 func (s *messageService) SendMessage(ctx context.Context, msg *models.Message) error {
 	if msg.MediaURL != "" {
+		if err := validateRemoteMediaURL(msg.MediaURL); err != nil {
+			return err
+		}
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
 			return fmt.Errorf("failed to process media: %w", err)
@@ -186,6 +198,9 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 	}
 
 	if msg.MediaURL != "" {
+		if err := validateRemoteMediaURL(msg.MediaURL); err != nil {
+			return err
+		}
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
 			return err
@@ -206,7 +221,7 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 		SignalMsgID:     signalMsgID,
 		SignalTimestamp: msg.Timestamp,
 		ForwardedAt:     msg.Timestamp,
-		DeliveryStatus:  "received",
+		DeliveryStatus:  models.DeliveryStatusReceived,
 	}
 
 	if msg.MediaPath != "" {
@@ -218,6 +233,20 @@ func (s *messageService) ReceiveMessage(ctx context.Context, msg *models.Message
 	s.mu.Unlock()
 
 	return err
+}
+
+func validateRemoteMediaURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid media URL: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("invalid media URL: expected absolute http(s) URL")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("invalid media URL scheme: %s", u.Scheme)
+	}
+	return nil
 }
 
 func (s *messageService) GetMessageByID(ctx context.Context, id string) (*models.Message, error) {
@@ -280,13 +309,6 @@ func (s *messageService) MarkMessageDelivered(ctx context.Context, id string) er
 	return s.db.UpdateDeliveryStatus(ctx, id, "delivered")
 }
 
-func (s *messageService) DeleteMessage(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return nil
-}
-
 func (s *messageService) HandleWhatsAppMessageWithSession(ctx context.Context, sessionName, chatID, msgID, sender, senderDisplayName, content string, mediaPath string) error {
 	// Check if message is already being processed (in-flight deduplication)
 	if _, alreadyProcessing := s.inProgressMessages.LoadOrStore(msgID, true); alreadyProcessing {
@@ -321,6 +343,9 @@ func (s *messageService) HandleSignalMessage(ctx context.Context, msg *models.Me
 	}
 
 	if msg.MediaURL != "" && msg.MediaPath == "" {
+		if err := validateRemoteMediaURL(msg.MediaURL); err != nil {
+			return err
+		}
 		cachePath, err := s.mediaCache.ProcessMedia(msg.MediaURL)
 		if err != nil {
 			return fmt.Errorf("failed to process media for HandleSignalMessage: %w", err)
@@ -483,7 +508,13 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 
 			var lastErr error
 			maxAttempts := constants.DefaultMessageProcessRetryAttempts
-			backoff := time.Duration(constants.DefaultMessageProcessRetryBackoffMs) * time.Millisecond
+			messageBackoff := retry.NewBackoff(retry.BackoffConfig{
+				InitialDelay: time.Duration(constants.DefaultMessageProcessRetryBackoffMs) * time.Millisecond,
+				MaxDelay:     time.Duration(constants.DefaultMessageProcessRetryBackoffMs*(1<<(maxAttempts-1))) * time.Millisecond,
+				Multiplier:   2.0,
+				MaxAttempts:  maxAttempts,
+				Jitter:       false,
+			})
 
 			for attempt := 1; attempt <= maxAttempts; attempt++ {
 				if err := s.ProcessIncomingSignalMessageWithDestination(ctx, &m, dest); err != nil {
@@ -500,8 +531,7 @@ func (s *messageService) PollSignalMessages(ctx context.Context) error {
 								"reason": "context_cancelled",
 							}, "Signal message processing failures")
 							return
-						case <-time.After(backoff):
-							backoff *= 2
+						case <-time.After(messageBackoff.GetNextDelay(attempt)):
 						}
 					}
 				} else {
@@ -609,6 +639,8 @@ func deliveryStatusRank(status string) int {
 	switch status {
 	case string(models.DeliveryStatusPending):
 		return 0
+	case string(models.DeliveryStatusReceived):
+		return 1
 	case string(models.DeliveryStatusSent):
 		return 1
 	case string(models.DeliveryStatusDelivered):
@@ -616,7 +648,7 @@ func deliveryStatusRank(status string) int {
 	case string(models.DeliveryStatusRead):
 		return 3
 	case string(models.DeliveryStatusFailed):
-		return -1
+		return 4
 	default:
 		return -1
 	}

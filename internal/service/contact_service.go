@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"whatsignal/internal/constants"
@@ -38,33 +39,37 @@ type ContactService struct {
 	cacheValidHours int
 	logger          *errors.Logger
 	circuitBreaker  *CircuitBreaker
-	degradedMode    bool
+	degradedMode    atomic.Bool
 }
 
 // NewContactService creates a new contact service instance
 func NewContactService(db ContactDatabaseService, waClient types.WAClient) *ContactService {
-	return &ContactService{
-		db:              db,
-		waClient:        waClient,
-		cacheValidHours: constants.DefaultContactCacheHours,
-		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
-		degradedMode:    false,
-	}
+	return NewContactServiceWithConfigAndLogger(db, waClient, constants.DefaultContactCacheHours, nil)
 }
 
 // NewContactServiceWithConfig creates a new contact service instance with custom cache duration
 func NewContactServiceWithConfig(db ContactDatabaseService, waClient types.WAClient, cacheValidHours int) *ContactService {
+	return NewContactServiceWithConfigAndLogger(db, waClient, cacheValidHours, nil)
+}
+
+// NewContactServiceWithConfigAndLogger creates a contact service with custom cache duration and logger.
+func NewContactServiceWithConfigAndLogger(db ContactDatabaseService, waClient types.WAClient, cacheValidHours int, logger *logrus.Logger) *ContactService {
 	if cacheValidHours <= 0 {
 		cacheValidHours = constants.DefaultContactCacheHours
 	}
+	structuredLogger := errors.NewLogger()
+	if logger != nil {
+		structuredLogger = &errors.Logger{Logger: logger}
+	} else {
+		logger = structuredLogger.Logger
+	}
+
 	return &ContactService{
 		db:              db,
 		waClient:        waClient,
 		cacheValidHours: cacheValidHours,
-		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-contact-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
-		degradedMode:    false,
+		logger:          structuredLogger,
+		circuitBreaker:  NewCircuitBreakerWithLogger("whatsapp-contact-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second, logger),
 	}
 }
 
@@ -133,7 +138,7 @@ func (cs *ContactService) GetContactDisplayName(ctx context.Context, phoneNumber
 		// Check if this is a circuit breaker error (service degraded)
 		if errors.GetCode(err) == errors.ErrCodeInternalError &&
 			err.Error() == "circuit breaker is open" {
-			cs.degradedMode = true
+			cs.degradedMode.Store(true)
 			cs.logger.LogWarn(err, "WhatsApp API circuit breaker open, using degraded mode",
 				logrus.Fields{"contact_id": contactID, "phone_number": phoneNumber})
 		} else {

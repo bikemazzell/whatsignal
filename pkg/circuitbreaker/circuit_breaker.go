@@ -100,14 +100,18 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, fn func(ctx context.Conte
 
 // allowRequest determines if a request should be allowed
 func (cb *CircuitBreaker) allowRequest() bool {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
 	switch cb.state {
 	case StateClosed:
 		return true
 	case StateOpen:
-		return cb.shouldAttemptReset()
+		if cb.shouldAttemptReset() {
+			cb.transitionToHalfOpenLocked()
+			return true
+		}
+		return false
 	case StateHalfOpen:
 		return cb.halfOpenCalls < cb.halfOpenMaxCalls
 	default:
@@ -132,7 +136,7 @@ func (cb *CircuitBreaker) onSuccess() {
 
 		// If we have enough successful calls in half-open, close the circuit
 		if cb.successCount >= cb.halfOpenMaxCalls {
-			cb.reset()
+			cb.closeAfterRecovery()
 			cb.logger.WithFields(logrus.Fields{
 				"circuit_breaker": cb.name,
 				"state":           "CLOSED",
@@ -140,6 +144,7 @@ func (cb *CircuitBreaker) onSuccess() {
 		}
 	case StateClosed:
 		cb.successCount++
+		cb.failures = 0
 	}
 }
 
@@ -179,21 +184,37 @@ func (cb *CircuitBreaker) reset() {
 	cb.halfOpenCalls = 0
 }
 
+func (cb *CircuitBreaker) closeAfterRecovery() {
+	cb.state = StateClosed
+	cb.failures = 0
+	cb.halfOpenCalls = 0
+}
+
+func (cb *CircuitBreaker) transitionToHalfOpenLocked() {
+	cb.state = StateHalfOpen
+	cb.halfOpenCalls = 0
+	cb.successCount = 0
+	cb.logger.WithFields(logrus.Fields{
+		"circuit_breaker": cb.name,
+		"state":           "HALF_OPEN",
+	}).Info("Circuit breaker transitioned to half-open")
+}
+
 // GetState returns the current state of the circuit breaker.
-// This method may transition from OPEN to HALF_OPEN if the timeout has elapsed.
 func (cb *CircuitBreaker) GetState() State {
+	cb.mu.RLock()
+	defer cb.mu.RUnlock()
+
+	return cb.state
+}
+
+// MaybeTransition advances an OPEN circuit to HALF_OPEN after its timeout elapses.
+func (cb *CircuitBreaker) MaybeTransition() State {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	// Check if we should transition from open to half-open
 	if cb.state == StateOpen && cb.shouldAttemptReset() {
-		cb.state = StateHalfOpen
-		cb.halfOpenCalls = 0
-		cb.successCount = 0
-		cb.logger.WithFields(logrus.Fields{
-			"circuit_breaker": cb.name,
-			"state":           "HALF_OPEN",
-		}).Info("Circuit breaker transitioned to half-open")
+		cb.transitionToHalfOpenLocked()
 	}
 
 	return cb.state
@@ -212,6 +233,15 @@ func (cb *CircuitBreaker) GetStats() Stats {
 		Successes:       cb.successCount,
 		LastFailureTime: cb.lastFailureTime,
 	}
+}
+
+// Reset resets the circuit breaker to the closed state and clears all counters.
+func (cb *CircuitBreaker) Reset() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	cb.reset()
+	cb.requestCount = 0
 }
 
 // Stats represents circuit breaker statistics

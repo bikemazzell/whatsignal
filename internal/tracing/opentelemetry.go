@@ -28,6 +28,8 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -70,6 +72,7 @@ type TracingConfig struct {
 	SampleRate         float64 `json:"sample_rate" mapstructure:"sample_rate"`
 	Enabled            bool    `json:"enabled" mapstructure:"enabled"`
 	UseStdout          bool    `json:"use_stdout" mapstructure:"use_stdout"`
+	OTLPInsecure       bool    `json:"otlp_insecure" mapstructure:"otlp_insecure"`
 	ShutdownTimeoutSec int     `json:"shutdown_timeout_sec" mapstructure:"shutdown_timeout_sec"`
 }
 
@@ -83,6 +86,7 @@ func DefaultTracingConfig() TracingConfig {
 		SampleRate:         0.1, // 10% sampling
 		Enabled:            false,
 		UseStdout:          true,
+		OTLPInsecure:       false,
 		ShutdownTimeoutSec: 5, // 5 seconds
 	}
 }
@@ -105,6 +109,9 @@ func (c *TracingConfig) Validate() error {
 	if !c.UseStdout && c.OTLPEndpoint == "" {
 		return fmt.Errorf("otlp_endpoint is required when use_stdout is false")
 	}
+	if !c.UseStdout && strings.HasPrefix(strings.ToLower(c.OTLPEndpoint), "http://") && !c.OTLPInsecure {
+		return fmt.Errorf("otlp_insecure must be true when otlp_endpoint uses http")
+	}
 
 	return nil
 }
@@ -113,6 +120,7 @@ func (c *TracingConfig) Validate() error {
 type TracingManager struct {
 	config         TracingConfig
 	logger         *logrus.Logger
+	mu             sync.RWMutex
 	tracerProvider *trace.TracerProvider
 }
 
@@ -180,10 +188,13 @@ func (tm *TracingManager) Initialize(ctx context.Context) error {
 			"exporter": "stdout",
 		}).Info("Using stdout trace exporter")
 	} else {
-		exporter, err = otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpoint(tm.config.OTLPEndpoint),
-			otlptracehttp.WithInsecure(), // Use HTTP instead of HTTPS for local development
-		)
+		options := []otlptracehttp.Option{
+			otlptracehttp.WithEndpointURL(tm.config.OTLPEndpoint),
+		}
+		if tm.config.OTLPInsecure {
+			options = append(options, otlptracehttp.WithInsecure())
+		}
+		exporter, err = otlptracehttp.New(ctx, options...)
 		if err != nil {
 			return fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
 		}
@@ -203,14 +214,17 @@ func (tm *TracingManager) Initialize(ctx context.Context) error {
 	}()
 
 	// Create tracer provider
-	tm.tracerProvider = trace.NewTracerProvider(
+	provider := trace.NewTracerProvider(
 		trace.WithBatcher(exporter),
 		trace.WithResource(res),
 		trace.WithSampler(trace.TraceIDRatioBased(tm.config.SampleRate)),
 	)
+	tm.mu.Lock()
+	tm.tracerProvider = provider
+	tm.mu.Unlock()
 
 	// Set global provider and propagator
-	otel.SetTracerProvider(tm.tracerProvider)
+	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	tm.logger.WithFields(logrus.Fields{
@@ -228,9 +242,14 @@ func (tm *TracingManager) Initialize(ctx context.Context) error {
 // The context is used to control the shutdown timeout. If the context is cancelled
 // or the configured timeout expires, shutdown may be incomplete.
 func (tm *TracingManager) Shutdown(ctx context.Context) error {
-	if tm.tracerProvider == nil {
+	tm.mu.Lock()
+	provider := tm.tracerProvider
+	if provider == nil {
+		tm.mu.Unlock()
 		return nil
 	}
+	tm.tracerProvider = nil
+	tm.mu.Unlock()
 
 	// Determine shutdown timeout
 	timeout := time.Duration(tm.config.ShutdownTimeoutSec) * time.Second
@@ -241,12 +260,9 @@ func (tm *TracingManager) Shutdown(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if err := tm.tracerProvider.Shutdown(shutdownCtx); err != nil {
+	if err := provider.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("failed to shutdown tracer provider: %w", err)
 	}
-
-	// Mark as shutdown to make this method idempotent
-	tm.tracerProvider = nil
 
 	tm.logger.WithFields(logrus.Fields{
 		"service": tm.config.ServiceName,

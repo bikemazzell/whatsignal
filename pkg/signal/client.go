@@ -13,9 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/httputil"
 	"whatsignal/internal/metrics"
+	"whatsignal/internal/privacy"
 	"whatsignal/internal/security"
 	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/signal/types"
@@ -34,10 +37,7 @@ type Client interface {
 
 // maskPhone masks a phone number for logging, showing only the last 4 digits.
 func maskPhone(phone string) string {
-	if len(phone) <= 4 {
-		return "***"
-	}
-	return "***" + phone[len(phone)-4:]
+	return privacy.MaskPhoneNumber(phone)
 }
 
 type SignalClient struct {
@@ -49,6 +49,7 @@ type SignalClient struct {
 	logger             *logrus.Logger
 	sendCircuitBreaker *circuitbreaker.CircuitBreaker
 	pollCircuitBreaker *circuitbreaker.CircuitBreaker
+	initMu             sync.RWMutex
 	initialized        bool   // Tracks whether InitializeDevice succeeded
 	initError          string // Stores initialization error message if any
 	detectedMode       string // Mode reported by signal-cli /v1/about ("native", "json-rpc", etc.)
@@ -245,7 +246,7 @@ func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) 
 		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, bodyStr)
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -617,6 +618,7 @@ func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments [
 				c.logger.WithFields(logrus.Fields{
 					"attachmentID": att.ID,
 				}).Warn("Attachment download timed out or cancelled, skipping")
+				cleanupTimedOutAttachmentDownload(downloadChan)
 				// downloadCancel already called by context timeout, but calling again is safe
 				downloadCancel()
 			}
@@ -634,6 +636,14 @@ func (c *SignalClient) extractAttachmentPaths(ctx context.Context, attachments [
 		return []string{}
 	}
 	return paths
+}
+
+func cleanupTimedOutAttachmentDownload(downloadChan <-chan string) {
+	select {
+	case filePath := <-downloadChan:
+		_ = os.Remove(filePath)
+	default:
+	}
 }
 
 func (c *SignalClient) getDirectAttachmentPath(att types.RestMessageAttachment) string {
@@ -713,7 +723,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
-		c.initError = fmt.Sprintf("failed to create initialize device request: %v", err)
+		c.setInitializationError("failed to create initialize device request: %v", err)
 		return fmt.Errorf("failed to create initialize device request: %w", err)
 	}
 
@@ -721,7 +731,7 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
 	if err != nil {
-		c.initError = fmt.Sprintf("failed to send initialize device request: %v", err)
+		c.setInitializationError("failed to send initialize device request: %v", err)
 		return fmt.Errorf("failed to send initialize device request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -729,16 +739,16 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		if readErr != nil {
-			c.initError = fmt.Sprintf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
+			c.setInitializationError("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 			return fmt.Errorf("device initialization failed with status: %d (failed to read body: %v)", resp.StatusCode, readErr)
 		}
-		c.initError = fmt.Sprintf("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+		c.setInitializationError("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("device initialization failed with status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var aboutResponse types.AboutResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aboutResponse); err != nil {
-		c.initError = fmt.Sprintf("failed to decode about response: %v", err)
+		c.setInitializationError("failed to decode about response: %v", err)
 		return fmt.Errorf("failed to decode about response: %w", err)
 	}
 
@@ -755,24 +765,39 @@ func (c *SignalClient) InitializeDevice(ctx context.Context) error {
 
 	if !hasV1 || !hasV2 {
 		initErr := fmt.Errorf("signal-cli-rest-api service does not support required API versions (v1, v2)")
-		c.initError = initErr.Error()
+		c.setInitializationError("%s", initErr.Error())
 		return initErr
 	}
 
-	c.initialized = true
-	c.initError = ""
-	c.detectedMode = aboutResponse.Mode
+	c.setInitialized(aboutResponse.Mode)
 
 	if c.logger != nil {
-		c.logger.WithField("mode", c.detectedMode).Info("Signal CLI mode detected")
+		c.logger.WithField("mode", aboutResponse.Mode).Info("Signal CLI mode detected")
 	}
 
 	return nil
 }
 
+func (c *SignalClient) setInitializationError(format string, args ...interface{}) {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
+	c.initialized = false
+	c.initError = fmt.Sprintf(format, args...)
+}
+
+func (c *SignalClient) setInitialized(mode string) {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
+	c.initialized = true
+	c.initError = ""
+	c.detectedMode = mode
+}
+
 // DetectedMode returns the mode reported by signal-cli's /v1/about endpoint.
 // Returns "" if InitializeDevice has not been called yet.
 func (c *SignalClient) DetectedMode() string {
+	c.initMu.RLock()
+	defer c.initMu.RUnlock()
 	return c.detectedMode
 }
 
@@ -872,9 +897,15 @@ func (c *SignalClient) DownloadAttachmentToFile(ctx context.Context, attachmentI
 	}
 	defer func() { _ = file.Close() }()
 
-	if _, err := io.Copy(file, resp.Body); err != nil {
+	maxSize := int64(constants.MaxRecommendedFileSizeBytes)
+	written, err := io.Copy(file, io.LimitReader(resp.Body, maxSize+1))
+	if err != nil {
 		_ = os.Remove(destPath)
 		return fmt.Errorf("failed to write attachment data: %w", err)
+	}
+	if written > maxSize {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("attachment exceeds maximum size (%d bytes)", maxSize)
 	}
 
 	return nil
@@ -889,6 +920,14 @@ func (c *SignalClient) encodeAttachment(filePath string) (string, string, string
 	// Validate file path to prevent directory traversal
 	if err := security.ValidateFilePath(filePath); err != nil {
 		return "", "", "", fmt.Errorf("invalid attachment path: %w", err)
+	}
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to stat attachment file: %w", err)
+	}
+	if fileInfo.Size() > constants.MaxRecommendedFileSizeBytes {
+		return "", "", "", fmt.Errorf("attachment exceeds maximum size (%d bytes)", constants.MaxRecommendedFileSizeBytes)
 	}
 
 	// Read the file
@@ -988,10 +1027,14 @@ func (c *SignalClient) HealthCheck(ctx context.Context) error {
 
 // IsInitialized returns whether the Signal client was successfully initialized
 func (c *SignalClient) IsInitialized() bool {
+	c.initMu.RLock()
+	defer c.initMu.RUnlock()
 	return c.initialized
 }
 
 // InitializationError returns the initialization error message, if any
 func (c *SignalClient) InitializationError() string {
+	c.initMu.RLock()
+	defer c.initMu.RUnlock()
 	return c.initError
 }

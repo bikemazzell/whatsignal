@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"whatsignal/internal/constants"
@@ -15,6 +16,9 @@ type Scheduler struct {
 	intervalHours int
 	logger        *logrus.Logger
 	stopCh        chan struct{}
+	stopMu        sync.Mutex
+	stopOnce      sync.Once
+	stopWg        sync.WaitGroup
 }
 
 // NewScheduler creates a new cleanup scheduler.
@@ -33,6 +37,11 @@ func NewScheduler(cleaner RecordCleaner, retentionDays, intervalHours int, logge
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
+	s.stopMu.Lock()
+	s.stopWg.Add(1)
+	s.stopMu.Unlock()
+	defer s.stopWg.Done()
+
 	ticker := time.NewTicker(time.Duration(s.intervalHours) * time.Hour)
 	defer ticker.Stop()
 
@@ -55,7 +64,12 @@ func (s *Scheduler) Start(ctx context.Context) {
 }
 
 func (s *Scheduler) Stop() {
-	close(s.stopCh)
+	s.stopMu.Lock()
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+	})
+	s.stopMu.Unlock()
+	s.stopWg.Wait()
 }
 
 func (s *Scheduler) runCleanup(ctx context.Context) {

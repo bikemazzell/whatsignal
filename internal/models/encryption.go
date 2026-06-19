@@ -1,9 +1,6 @@
 package models
 
-import (
-	"crypto/cipher"
-	"whatsignal/internal/constants"
-)
+import "whatsignal/internal/constants"
 
 const (
 	KeySize    = 32                         // AES-256
@@ -11,7 +8,3 @@ const (
 	SaltSize   = 16                         // Salt size for PBKDF2
 	Iterations = constants.PBKDF2Iterations // PBKDF2 iterations
 )
-
-type Encryptor struct {
-	GCM cipher.AEAD
-}

@@ -10,16 +10,14 @@ import (
 	"whatsignal/internal/errors"
 )
 
-// ValidatePhoneNumber validates phone number format and length
-func ValidatePhoneNumber(phone string) error {
+// ValidateE164PhoneNumber validates a Signal/config phone number with optional + prefix.
+func ValidateE164PhoneNumber(phone string) error {
 	if phone == "" {
 		return errors.New(errors.ErrCodeInvalidInput, "phone number cannot be empty")
 	}
 
-	// Remove common prefixes and suffixes for validation
+	// Remove optional + prefix for validation.
 	cleaned := strings.TrimPrefix(phone, "+")
-	cleaned = strings.TrimSuffix(cleaned, "@c.us")
-	cleaned = strings.TrimSuffix(cleaned, "@g.us")
 
 	// Check length bounds
 	if len(cleaned) < constants.MinPhoneNumberLength {
@@ -27,13 +25,78 @@ func ValidatePhoneNumber(phone string) error {
 			fmt.Sprintf("phone number must be at least %d digits", constants.MinPhoneNumberLength))
 	}
 
-	if len(cleaned) > 20 { // Maximum international phone number length
-		return errors.New(errors.ErrCodeInvalidInput, "phone number too long (max 20 digits)")
+	if len(cleaned) > 15 {
+		return errors.New(errors.ErrCodeInvalidInput, "phone number too long (max 15 digits)")
 	}
 
 	// Check that it contains only digits
 	for _, char := range cleaned {
 		if !unicode.IsDigit(char) {
+			return errors.New(errors.ErrCodeInvalidInput, "phone number must contain only digits")
+		}
+	}
+
+	return nil
+}
+
+// ValidatePhoneNumber validates a Signal/config phone number.
+func ValidatePhoneNumber(phone string) error {
+	return ValidateE164PhoneNumber(phone)
+}
+
+// ValidateChatID validates WhatsApp chat IDs, group IDs, LIDs, and bare phone numbers.
+func ValidateChatID(chatID string) error {
+	if chatID == "" {
+		return errors.New(errors.ErrCodeInvalidInput, "phone number cannot be empty")
+	}
+
+	isGroup := strings.HasSuffix(chatID, "@g.us") || strings.Contains(chatID, "@g.us")
+	isLID := strings.HasSuffix(chatID, "@lid")
+
+	cleaned := strings.TrimSuffix(chatID, "@c.us")
+	cleaned = strings.TrimSuffix(cleaned, "@g.us")
+	cleaned = strings.TrimSuffix(cleaned, "@lid")
+
+	if strings.Contains(cleaned, "-") {
+		parts := strings.Split(cleaned, "-")
+		if len(parts) >= 2 && len(parts[0]) > 0 {
+			for _, char := range parts[0] {
+				if !unicode.IsDigit(char) {
+					return errors.New(errors.ErrCodeInvalidInput, "invalid group ID format: non-numeric characters")
+				}
+			}
+			return nil
+		}
+		return errors.New(errors.ErrCodeInvalidInput, "invalid group ID format")
+	}
+
+	digits := cleaned
+	digits = strings.TrimPrefix(digits, "+")
+
+	if len(digits) == 0 {
+		return errors.New(errors.ErrCodeInvalidInput, "phone number must contain digits")
+	}
+
+	maxLength := 20
+	if isGroup || isLID {
+		maxLength = 25
+	}
+
+	if len(digits) < 7 || len(digits) > maxLength {
+		if isGroup {
+			return errors.New(errors.ErrCodeInvalidInput, fmt.Sprintf("group ID must be between 7 and %d digits, got %d", maxLength, len(digits)))
+		}
+		if isLID {
+			return errors.New(errors.ErrCodeInvalidInput, fmt.Sprintf("linked ID must be between 7 and %d digits, got %d", maxLength, len(digits)))
+		}
+		return errors.New(errors.ErrCodeInvalidInput, fmt.Sprintf("phone number must be between 7 and %d digits, got %d", maxLength, len(digits)))
+	}
+
+	for _, char := range digits {
+		if !unicode.IsDigit(char) {
+			if isGroup {
+				return errors.New(errors.ErrCodeInvalidInput, "group ID must contain only digits")
+			}
 			return errors.New(errors.ErrCodeInvalidInput, "phone number must contain only digits")
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"whatsignal/internal/constants"
 	"whatsignal/internal/models"
+	internalsecurity "whatsignal/internal/security"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/pbkdf2"
@@ -56,9 +57,11 @@ func deriveHMACKey() ([]byte, error) {
 	if len(secret) < 32 {
 		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
 	}
-	// Use separate salt for HMAC key derivation to avoid key reuse
-	// Allow configurable salt via environment variable, fallback to default for compatibility
-	salt := getEncryptionLookupSalt()
+	// Use separate salt for HMAC key derivation to avoid key reuse.
+	salt, err := requireEncryptionLookupSalt()
+	if err != nil {
+		return nil, err
+	}
 	key := pbkdf2.Key([]byte(secret), salt, models.Iterations, models.KeySize, sha256.New)
 	return key, nil
 }
@@ -83,7 +86,7 @@ func (e *encryptor) Encrypt(plaintext string) (string, error) {
 		return "", fmt.Errorf("failed to generate nonce: %w", err)
 	}
 
-	ciphertext := e.gcm.Seal(nil, nonce, []byte(plaintext), nil) // #nosec G407 - Deterministic nonce required for searchable encryption
+	ciphertext := e.gcm.Seal(nil, nonce, []byte(plaintext), nil) // #nosec G407 - nonce is generated with crypto/rand above
 	// Prepend nonce to ciphertext for storage
 	result := append(nonce, ciphertext...)
 	return base64.StdEncoding.EncodeToString(result), nil
@@ -123,8 +126,10 @@ func deriveKey() ([]byte, error) {
 		return nil, fmt.Errorf("encryption secret must be at least 32 characters long")
 	}
 
-	// Allow configurable salt via environment variable, fallback to default for compatibility
-	salt := getEncryptionSalt()
+	salt, err := requireEncryptionSalt()
+	if err != nil {
+		return nil, err
+	}
 
 	key := pbkdf2.Key([]byte(secret), salt, models.Iterations, models.KeySize, sha256.New)
 	return key, nil
@@ -165,21 +170,51 @@ func (e *encryptor) DecryptAuto(value string) (string, error) { return e.Decrypt
 // getEncryptionSalt returns the encryption salt from environment or default.
 // Using the default salt is a security weakness: the salt is public in the
 // repository, so all default deployments share the same PBKDF2 parameters.
+//
+//lint:ignore U1000 legacy helper is exercised by package tests until the lookup migration removes it
 func getEncryptionSalt() []byte {
-	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT"); salt != "" && len(salt) >= 16 {
-		return []byte(salt)
+	salt, err := resolveEncryptionSalt("WHATSIGNAL_ENCRYPTION_SALT", constants.EncryptionSalt)
+	if err != nil {
+		logrus.Error(err)
+		return nil
 	}
-	logrus.Warn("WHATSIGNAL_ENCRYPTION_SALT is not set or too short (<16 chars). " +
-		"Using default salt from source code. Set a unique, random salt for production security.")
-	return []byte(constants.EncryptionSalt)
+	return salt
 }
 
 // getEncryptionLookupSalt returns the lookup salt from environment or default.
 func getEncryptionLookupSalt() []byte {
-	if salt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT"); salt != "" && len(salt) >= 16 {
-		return []byte(salt)
+	salt, err := resolveEncryptionSalt("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", constants.EncryptionLookupSalt)
+	if err != nil {
+		logrus.Error(err)
+		return nil
 	}
-	logrus.Warn("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is not set or too short (<16 chars). " +
-		"Using default lookup salt from source code. Set a unique, random salt for production security.")
-	return []byte(constants.EncryptionLookupSalt)
+	return salt
+}
+
+func requireEncryptionSalt() ([]byte, error) {
+	return resolveEncryptionSalt("WHATSIGNAL_ENCRYPTION_SALT", constants.EncryptionSalt)
+}
+
+func requireEncryptionLookupSalt() ([]byte, error) {
+	return resolveEncryptionSalt("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", constants.EncryptionLookupSalt)
+}
+
+func resolveEncryptionSalt(envName, defaultSalt string) ([]byte, error) {
+	if salt := os.Getenv(envName); salt != "" {
+		if len(salt) < models.SaltSize {
+			if internalsecurity.IsSecureMode() {
+				return nil, fmt.Errorf("%s must be at least %d characters long", envName, models.SaltSize)
+			}
+			logrus.Warnf("%s is too short (<%d chars). Using default salt from source code. Set a unique, random salt for production security.", envName, models.SaltSize)
+			return []byte(defaultSalt), nil
+		}
+		return []byte(salt), nil
+	}
+
+	if internalsecurity.IsSecureMode() {
+		return nil, fmt.Errorf("%s is required in secure mode", envName)
+	}
+
+	logrus.Warnf("%s is not set. Using default salt from source code. Set a unique, random salt for production security.", envName)
+	return []byte(defaultSalt), nil
 }

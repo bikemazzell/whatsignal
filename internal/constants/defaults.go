@@ -38,10 +38,12 @@ const (
 	DefaultContactSyncMaxConcurrency     = 5  // Maximum concurrent session syncs
 	DefaultContactSyncConcurrencyDivisor = 10 // Divisor for calculating concurrency from batch size
 	DefaultServerReadTimeoutSec          = 15
+	DefaultServerReadHeaderTimeoutSec    = 30
 	DefaultServerWriteTimeoutSec         = 15
 	DefaultServerIdleTimeoutSec          = 60
 	DefaultSessionStatusTimeoutSec       = 5
-	DefaultWebhookMaxSkewSec             = 600 // 10 minutes — must accommodate WAHA retry backoff + bridge processing timeout
+	DefaultWebhookMaxSkewSec             = 120
+	DefaultWebhookReplayBufferSec        = 30
 	DefaultWebhookMaxBytes               = 5 * 1024 * 1024
 	DefaultRateLimitPerMinute            = 100
 	DefaultRateLimitCleanupMinutes       = 5
@@ -66,6 +68,7 @@ const (
 	DefaultWhatsAppPollIntervalSec = 30
 	DefaultWhatsAppTimeoutMs       = 30000
 	DefaultWhatsAppRetryCount      = 3
+	MaxWhatsAppRetryCount          = 100
 	TypingDurationPerCharMs        = 50
 	MaxTypingDurationSec           = 3
 	CleanupSchedulerIntervalHours  = 24
@@ -174,6 +177,7 @@ const (
 // Security validation constants
 const (
 	MinWebhookSecretLength = 32 // Minimum webhook secret length for production
+	MinAdminTokenLength    = 32 // Minimum admin token length for diagnostics endpoints
 )
 
 // Channel and buffer sizes

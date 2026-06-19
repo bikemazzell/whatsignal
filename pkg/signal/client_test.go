@@ -245,6 +245,25 @@ func TestEncodeAttachmentErrors(t *testing.T) {
 	}
 }
 
+func TestEncodeAttachmentRejectsOversizedFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "oversized.jpg")
+	file, err := os.Create(filePath)
+	require.NoError(t, err)
+	_, err = file.Seek(int64(constants.MaxRecommendedFileSizeBytes), io.SeekStart)
+	require.NoError(t, err)
+	_, err = file.Write([]byte{0})
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+
+	client := &SignalClient{}
+
+	_, _, _, err = client.encodeAttachment(filePath)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "attachment exceeds maximum size")
+}
+
 func TestDetectContentType(t *testing.T) {
 	client := &SignalClient{}
 
@@ -592,6 +611,22 @@ func TestReceiveMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReceiveMessagesRejectsOversizedResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strings.Repeat("x", constants.DefaultWebhookMaxBytes+1)))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
+
+	messages, err := client.ReceiveMessages(context.Background(), 5)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response body exceeds maximum size")
+	assert.Nil(t, messages)
 }
 
 func TestReceiveMessages_PreservesQuotedMessageFromSyncEnvelope(t *testing.T) {
@@ -966,6 +1001,41 @@ func TestDownloadAttachmentToFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDownloadAttachmentToFileRejectsOversizedResponseAndRemovesPartialFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "signal-download-limit-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.CopyN(w, strings.NewReader(strings.Repeat("a", constants.MaxRecommendedFileSizeBytes+1)), constants.MaxRecommendedFileSizeBytes+1)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "+0987654321", "test-device", "", nil).(*SignalClient)
+	destPath := filepath.Join(tmpDir, "oversized.bin")
+
+	err = client.DownloadAttachmentToFile(context.Background(), "attachment123", destPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum size")
+
+	_, statErr := os.Stat(destPath)
+	assert.True(t, os.IsNotExist(statErr), "partial file should be removed on oversized response")
+}
+
+func TestCleanupTimedOutAttachmentDownloadRemovesCompletedFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "downloaded-attachment")
+	require.NoError(t, os.WriteFile(filePath, []byte("downloaded"), constants.DefaultFilePermissions))
+
+	downloadChan := make(chan string, 1)
+	downloadChan <- filePath
+
+	cleanupTimedOutAttachmentDownload(downloadChan)
+
+	assert.NoFileExists(t, filePath)
 }
 
 func TestListAttachments(t *testing.T) {

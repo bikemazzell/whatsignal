@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"whatsignal/internal/httputil"
@@ -16,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
+
+var activeHTTPRequests atomic.Int64
 
 // ObservabilityMiddleware adds metrics collection and tracing to HTTP requests
 func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Handler {
@@ -75,9 +78,9 @@ func ObservabilityMiddleware(logger *logrus.Logger) func(http.Handler) http.Hand
 			}, "Total HTTP requests")
 
 			// Track concurrent requests
-			metrics.IncrementCounter("http_requests_active", nil, "Currently active HTTP requests")
+			metrics.SetGauge("http_requests_active", float64(activeHTTPRequests.Add(1)), nil, "Currently active HTTP requests")
 			defer func() {
-				metrics.AddToCounter("http_requests_active", -1, nil, "Currently active HTTP requests")
+				metrics.SetGauge("http_requests_active", float64(activeHTTPRequests.Add(-1)), nil, "Currently active HTTP requests")
 			}()
 
 			// Process request

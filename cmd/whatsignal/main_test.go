@@ -69,7 +69,7 @@ func TestRunWithInvalidLogLevel(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Set invalid log level
-	_ = os.Setenv("LOG_LEVEL", "invalid")
+	t.Setenv("LOG_LEVEL", "invalid")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -129,7 +129,9 @@ func TestGracefulShutdown(t *testing.T) {
 	select {
 	case err := <-errCh:
 		assert.NoError(t, err)
-	case <-time.After(5 * time.Second):
+	case <-time.After(20 * time.Second):
+		// Race builds can spend several seconds in startup before run reaches
+		// the shutdown select; this test verifies eventual graceful shutdown.
 		t.Fatal("Shutdown timed out")
 	}
 }
@@ -271,8 +273,7 @@ func TestRunWithDatabaseRetries(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Use an invalid database path to trigger retries
-	_ = os.Setenv("DB_PATH", "/invalid/path/test.db")
-	defer func() { _ = os.Unsetenv("DB_PATH") }()
+	t.Setenv("DB_PATH", "/invalid/path/test.db")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -287,7 +288,7 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 	defer cleanupTestEnv(t)
 
 	// Unset MEDIA_DIR to prevent environment override
-	_ = os.Unsetenv("MEDIA_DIR")
+	t.Setenv("MEDIA_DIR", "")
 
 	// Create a file where the cache directory should be to cause mkdir to fail
 	tmpFile, err := os.CreateTemp("", "block-mkdir-*")
@@ -357,12 +358,18 @@ func TestRunWithMediaHandlerError(t *testing.T) {
 	}
 }
 
+func TestSetupTestEnvUsesEphemeralServerPort(t *testing.T) {
+	setupTestEnv(t)
+	defer cleanupTestEnv(t)
+
+	require.Equal(t, "0", os.Getenv("PORT"))
+}
+
 func setupTestEnv(t *testing.T) {
 	t.Helper()
 
 	// Create temporary directories
-	tmpDir, err := os.MkdirTemp("", "whatsignal-test-*")
-	require.NoError(t, err)
+	tmpDir := t.TempDir()
 
 	// Create test config.json
 	configContent := `{
@@ -401,21 +408,24 @@ func setupTestEnv(t *testing.T) {
 		"log_level": "info"
 	}`
 
-	err = os.WriteFile("config.json", []byte(configContent), 0644)
+	err := os.WriteFile("config.json", []byte(configContent), 0644)
 	require.NoError(t, err)
 
 	// Set required environment variables
-	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
-	_ = os.Setenv("WHATSAPP_API_URL", "http://localhost:8080")
-	_ = os.Setenv("SIGNAL_CLI_PATH", "/usr/local/bin/signal-cli")
-	_ = os.Setenv("SIGNAL_PHONE_NUMBER", "+1234567890")
-	_ = os.Setenv("SIGNAL_CONFIG_PATH", tmpDir+"/signal")
-	_ = os.Setenv("WEBHOOK_PORT", "8081")
-	_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "test-secret")
-	_ = os.Setenv("DB_PATH", tmpDir+"/whatsignal.db")
-	_ = os.Setenv("MEDIA_DIR", tmpDir+"/media")
-	_ = os.Setenv("MEDIA_RETENTION_DAYS", "7")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-main-testing-purposes")
+	t.Setenv("WHATSAPP_API_KEY", "test-key")
+	t.Setenv("WHATSAPP_API_URL", "http://localhost:8080")
+	t.Setenv("SIGNAL_CLI_PATH", "/usr/local/bin/signal-cli")
+	t.Setenv("SIGNAL_PHONE_NUMBER", "+1234567890")
+	t.Setenv("SIGNAL_CONFIG_PATH", tmpDir+"/signal")
+	t.Setenv("WEBHOOK_PORT", "8081")
+	t.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "test-secret")
+	t.Setenv("DB_PATH", tmpDir+"/whatsignal.db")
+	t.Setenv("MEDIA_DIR", tmpDir+"/media")
+	t.Setenv("MEDIA_RETENTION_DAYS", "7")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-main-testing-purposes")
+	t.Setenv("PORT", "0")
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
 
 	// Set up test migrations
 	setupTestMigrations(t, tmpDir)
@@ -618,15 +628,7 @@ func TestContactSyncDisabled(t *testing.T) {
 	defer cancel()
 
 	// Ensure server binds to an ephemeral port to avoid conflicts
-	oldPort := os.Getenv("PORT")
-	require.NoError(t, os.Setenv("PORT", "0"))
-	defer func() {
-		if oldPort == "" {
-			_ = os.Unsetenv("PORT")
-		} else {
-			_ = os.Setenv("PORT", oldPort)
-		}
-	}()
+	t.Setenv("PORT", "0")
 
 	err = run(ctx)
 	// Graceful shutdown on context timeout should not be treated as an error
@@ -646,27 +648,5 @@ func cleanupTestEnv(t *testing.T) {
 	// Remove test config file
 	_ = os.Remove("config.json")
 
-	vars := []string{
-		"WHATSAPP_API_KEY",
-		"WHATSAPP_API_URL",
-		"SIGNAL_CLI_PATH",
-		"SIGNAL_PHONE_NUMBER",
-		"SIGNAL_CONFIG_PATH",
-		"WEBHOOK_PORT",
-		"WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET",
-		"DB_PATH",
-		"MEDIA_DIR",
-		"MEDIA_RETENTION_DAYS",
-		"LOG_LEVEL",
-		"WHATSIGNAL_ENCRYPTION_SECRET",
-	}
-
-	for _, v := range vars {
-		_ = os.Unsetenv(v)
-	}
-
-	// Cleanup temporary directories
-	if path := os.Getenv("SIGNAL_CONFIG_PATH"); path != "" {
-		_ = os.RemoveAll(path[:len(path)-7]) // Remove the parent temp dir
-	}
+	// Environment and temporary directories are cleaned up by setupTestEnv's t.Setenv/t.TempDir calls.
 }

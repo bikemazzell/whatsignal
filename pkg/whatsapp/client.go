@@ -6,15 +6,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/httputil"
 	"whatsignal/internal/security"
 	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/whatsapp/types"
@@ -34,18 +35,27 @@ const (
 )
 
 type WhatsAppClient struct {
-	baseURL        string
-	apiKey         string
-	sessionName    string
-	client         *http.Client
-	sessionMgr     types.SessionManager
-	supportsVideo  *bool // Cached video support status
-	logger         *logrus.Logger
-	circuitBreaker *circuitbreaker.CircuitBreaker
-	testMode       bool
+	baseURL         string
+	apiKey          string
+	sessionName     string
+	client          *http.Client
+	sessionMgr      types.SessionManager
+	supportsVideoMu sync.RWMutex
+	supportsVideo   *bool // Cached video support status
+	logger          *logrus.Logger
+	circuitBreaker  *circuitbreaker.CircuitBreaker
+	testMode        bool
 }
 
 func NewClient(config types.ClientConfig) types.WAClient {
+	return NewClientWithLogger(config, nil)
+}
+
+func NewClientWithLogger(config types.ClientConfig, logger *logrus.Logger) types.WAClient {
+	if logger == nil {
+		logger = logrus.New()
+	}
+
 	client := &WhatsAppClient{
 		baseURL:     config.BaseURL,
 		apiKey:      config.APIKey,
@@ -57,8 +67,8 @@ func NewClient(config types.ClientConfig) types.WAClient {
 			},
 		},
 		sessionMgr:     NewSessionManager(config.BaseURL, config.APIKey, config.Timeout),
-		logger:         logrus.New(),
-		circuitBreaker: circuitbreaker.New("whatsapp-api", constants.WhatsAppCBMaxFailures, time.Duration(constants.WhatsAppCBResetTimeoutSec)*time.Second),
+		logger:         logger,
+		circuitBreaker: circuitbreaker.NewWithLogger("whatsapp-api", constants.WhatsAppCBMaxFailures, time.Duration(constants.WhatsAppCBResetTimeoutSec)*time.Second, logger),
 		testMode:       os.Getenv("WHATSIGNAL_TEST_MODE") == "true",
 	}
 	return client
@@ -400,10 +410,6 @@ func (c *WhatsAppClient) SendTextWithSession(ctx context.Context, chatID, text, 
 	return c.sendRequest(ctx, types.APIBase+types.EndpointSendText, payload)
 }
 
-func (c *WhatsAppClient) SendMedia(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType) (*types.SendMessageResponse, error) {
-	return c.SendMediaWithSession(ctx, chatID, mediaPath, caption, mediaType, "", c.sessionName)
-}
-
 func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, mediaPath, caption string, mediaType types.MediaType, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	if !c.testMode {
 		if err := c.validateSessionStatus(ctx, sessionName); err != nil {
@@ -421,9 +427,7 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 	}
 
 	if fileInfo.Size() > constants.MaxRecommendedFileSizeBytes {
-		if c.logger != nil {
-			c.logger.WithField("size_mb", fileInfo.Size()/constants.BytesPerMegabyte).Warn("Large file detected; may cause performance issues")
-		}
+		return nil, fmt.Errorf("media file exceeds maximum size (%d bytes)", constants.MaxRecommendedFileSizeBytes)
 	}
 
 	if mediaType == types.MediaTypeVideo && !c.checkVideoSupport(ctx) {
@@ -485,36 +489,16 @@ func (c *WhatsAppClient) SendMediaWithSession(ctx context.Context, chatID, media
 	return c.sendRequest(ctx, endpoint, payload)
 }
 
-func (c *WhatsAppClient) SendImage(ctx context.Context, chatID, imagePath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, imagePath, caption, types.MediaTypeImage)
-}
-
 func (c *WhatsAppClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return c.SendMediaWithSession(ctx, chatID, imagePath, caption, types.MediaTypeImage, replyTo, sessionName)
-}
-
-func (c *WhatsAppClient) SendFile(ctx context.Context, chatID, filePath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, filePath, caption, types.MediaTypeFile)
-}
-
-func (c *WhatsAppClient) SendVoice(ctx context.Context, chatID, voicePath string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, voicePath, "", types.MediaTypeVoice)
 }
 
 func (c *WhatsAppClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return c.SendMediaWithSession(ctx, chatID, voicePath, "", types.MediaTypeVoice, replyTo, sessionName)
 }
 
-func (c *WhatsAppClient) SendVideo(ctx context.Context, chatID, videoPath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, videoPath, caption, types.MediaTypeVideo)
-}
-
 func (c *WhatsAppClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
 	return c.SendMediaWithSession(ctx, chatID, videoPath, caption, types.MediaTypeVideo, replyTo, sessionName)
-}
-
-func (c *WhatsAppClient) SendDocument(ctx context.Context, chatID, docPath, caption string) (*types.SendMessageResponse, error) {
-	return c.SendMedia(ctx, chatID, docPath, caption, types.MediaTypeFile)
 }
 
 func (c *WhatsAppClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
@@ -617,7 +601,7 @@ func (c *WhatsAppClient) sendReactionRequest(ctx context.Context, endpoint strin
 	}
 
 	// Read response body
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -661,7 +645,7 @@ func (c *WhatsAppClient) sendRequest(ctx context.Context, endpoint string, paylo
 	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body for debugging
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -798,7 +782,7 @@ func (c *WhatsAppClient) GetAllContacts(ctx context.Context, limit, offset int) 
 
 	if resp.StatusCode != http.StatusOK {
 		// Read response body for better error diagnostics
-		bodyBytes, err := io.ReadAll(resp.Body)
+		bodyBytes, err := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
 		if err != nil {
 			return nil, fmt.Errorf("request failed with status %d (failed to read error response: %w)", resp.StatusCode, err)
 		}
@@ -859,7 +843,7 @@ func (c *WhatsAppClient) GetAllGroups(ctx context.Context, limit, offset int) ([
 
 	if resp.StatusCode != http.StatusOK {
 		// Read response body for better error diagnostics
-		bodyBytes, err := io.ReadAll(resp.Body)
+		bodyBytes, err := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
 		if err != nil {
 			return nil, fmt.Errorf("request failed with status %d (failed to read error response: %w)", resp.StatusCode, err)
 		}
@@ -897,9 +881,13 @@ func (c *WhatsAppClient) getServerVersion(ctx context.Context) (*types.ServerVer
 // checkVideoSupport checks if the WAHA server supports video sending
 func (c *WhatsAppClient) checkVideoSupport(ctx context.Context) bool {
 	// Return cached value if already checked
+	c.supportsVideoMu.RLock()
 	if c.supportsVideo != nil {
-		return *c.supportsVideo
+		supportsVideo := *c.supportsVideo
+		c.supportsVideoMu.RUnlock()
+		return supportsVideo
 	}
+	c.supportsVideoMu.RUnlock()
 
 	// Default to false
 	supportsVideo := false
@@ -911,7 +899,9 @@ func (c *WhatsAppClient) checkVideoSupport(ctx context.Context) bool {
 		if c.logger != nil {
 			c.logger.WithError(err).Warn("Failed to check WAHA version for video support")
 		}
+		c.supportsVideoMu.Lock()
 		c.supportsVideo = &supportsVideo
+		c.supportsVideoMu.Unlock()
 		return supportsVideo
 	}
 
@@ -928,7 +918,9 @@ func (c *WhatsAppClient) checkVideoSupport(ctx context.Context) bool {
 	}
 
 	// Cache the result
+	c.supportsVideoMu.Lock()
 	c.supportsVideo = &supportsVideo
+	c.supportsVideoMu.Unlock()
 	return supportsVideo
 }
 
@@ -964,7 +956,7 @@ func (c *WhatsAppClient) HealthCheck(ctx context.Context) error {
 	}
 
 	// Read the response body for error details
-	body, readErr := io.ReadAll(resp.Body)
+	body, readErr := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
 	if readErr != nil {
 		return fmt.Errorf("WhatsApp API health check returned status %d (failed to read body: %v)", resp.StatusCode, readErr)
 	}

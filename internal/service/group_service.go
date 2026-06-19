@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"whatsignal/internal/constants"
@@ -37,33 +38,37 @@ type GroupService struct {
 	cacheValidHours int
 	logger          *errors.Logger
 	circuitBreaker  *CircuitBreaker
-	degradedMode    bool
+	degradedMode    atomic.Bool
 }
 
 // NewGroupService creates a new group service instance
 func NewGroupService(db GroupDatabaseService, waClient types.WAClient) *GroupService {
-	return &GroupService{
-		db:              db,
-		waClient:        waClient,
-		cacheValidHours: constants.DefaultGroupCacheHours,
-		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-groups-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
-		degradedMode:    false,
-	}
+	return NewGroupServiceWithConfigAndLogger(db, waClient, constants.DefaultGroupCacheHours, nil)
 }
 
 // NewGroupServiceWithConfig creates a new group service instance with custom cache duration
 func NewGroupServiceWithConfig(db GroupDatabaseService, waClient types.WAClient, cacheValidHours int) *GroupService {
+	return NewGroupServiceWithConfigAndLogger(db, waClient, cacheValidHours, nil)
+}
+
+// NewGroupServiceWithConfigAndLogger creates a group service with custom cache duration and logger.
+func NewGroupServiceWithConfigAndLogger(db GroupDatabaseService, waClient types.WAClient, cacheValidHours int, logger *logrus.Logger) *GroupService {
 	if cacheValidHours <= 0 {
 		cacheValidHours = constants.DefaultGroupCacheHours
 	}
+	structuredLogger := errors.NewLogger()
+	if logger != nil {
+		structuredLogger = &errors.Logger{Logger: logger}
+	} else {
+		logger = structuredLogger.Logger
+	}
+
 	return &GroupService{
 		db:              db,
 		waClient:        waClient,
 		cacheValidHours: cacheValidHours,
-		logger:          errors.NewLogger(),
-		circuitBreaker:  NewCircuitBreaker("whatsapp-groups-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second),
-		degradedMode:    false,
+		logger:          structuredLogger,
+		circuitBreaker:  NewCircuitBreakerWithLogger("whatsapp-groups-api", constants.ContactCBMaxFailures, time.Duration(constants.ContactCBResetTimeoutSec)*time.Second, logger),
 	}
 }
 
@@ -112,7 +117,7 @@ func (gs *GroupService) GetGroupName(ctx context.Context, groupID, sessionName s
 		// Check if this is a circuit breaker error (service degraded)
 		if errors.GetCode(err) == errors.ErrCodeInternalError &&
 			err.Error() == "circuit breaker is open" {
-			gs.degradedMode = true
+			gs.degradedMode.Store(true)
 			gs.logger.LogWarn(err, "WhatsApp Groups API circuit breaker open, using degraded mode",
 				logrus.Fields{"group_id": groupID, "session": sessionName})
 		} else {

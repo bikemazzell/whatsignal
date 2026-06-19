@@ -265,14 +265,10 @@ func BenchmarkDatabase_ConcurrentRead(b *testing.B) {
 // Helper function to set up an in-memory database for benchmarking
 func setupInMemoryDB(b *testing.B) (*Database, func()) {
 	// Set up encryption secret for benchmarks
-	originalSecret := os.Getenv("WHATSIGNAL_ENCRYPTION_SECRET")
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-benchmark-secret-key-for-database-testing")
+	b.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-benchmark-secret-key-for-database-testing")
 
 	// Create a temporary directory for migrations
-	tmpDir, err := os.MkdirTemp("", "whatsignal-bench-test")
-	if err != nil {
-		b.Fatalf("Failed to create temp dir: %v", err)
-	}
+	tmpDir := b.TempDir()
 
 	// Set up test migrations
 	migrationsPath := setupBenchmarkMigrations(b, tmpDir)
@@ -290,14 +286,7 @@ func setupInMemoryDB(b *testing.B) (*Database, func()) {
 		if db != nil {
 			_ = db.Close()
 		}
-		// Restore original values
 		migrations.MigrationsDir = originalMigrationsDir
-		if originalSecret == "" {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET")
-		} else {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", originalSecret)
-		}
-		_ = os.RemoveAll(tmpDir)
 	}
 
 	return db, cleanup

@@ -159,7 +159,7 @@ func applyMigration(ctx context.Context, db *sql.DB, migrationFile string) error
 		return fmt.Errorf("failed to begin migration transaction: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, string(content)); err != nil {
+	if err := executeMigrationSQL(ctx, tx, filename, string(content)); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
@@ -174,4 +174,53 @@ func applyMigration(ctx context.Context, db *sql.DB, migrationFile string) error
 	}
 
 	return nil
+}
+
+func executeMigrationSQL(ctx context.Context, tx *sql.Tx, filename, content string) error {
+	if filename == "004_add_contact_name_hashes.sql" {
+		return applyContactNameHashMigration(ctx, tx)
+	}
+
+	_, err := tx.ExecContext(ctx, content)
+	return err
+}
+
+func applyContactNameHashMigration(ctx context.Context, tx *sql.Tx) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{name: "name_hash", ddl: "ALTER TABLE contacts ADD COLUMN name_hash TEXT"},
+		{name: "push_name_hash", ddl: "ALTER TABLE contacts ADD COLUMN push_name_hash TEXT"},
+		{name: "short_name_hash", ddl: "ALTER TABLE contacts ADD COLUMN short_name_hash TEXT"},
+	}
+
+	for _, column := range columns {
+		exists, err := contactColumnExists(ctx, tx, column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, column.ddl); err != nil {
+			return err
+		}
+	}
+
+	_, err := tx.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_contact_name_hash ON contacts(name_hash);
+		CREATE INDEX IF NOT EXISTS idx_contact_push_name_hash ON contacts(push_name_hash);
+		CREATE INDEX IF NOT EXISTS idx_contact_short_name_hash ON contacts(short_name_hash);
+	`)
+	return err
+}
+
+func contactColumnExists(ctx context.Context, tx *sql.Tx, columnName string) (bool, error) {
+	var exists int
+	err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_table_info('contacts') WHERE name = ?)", columnName).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
 }

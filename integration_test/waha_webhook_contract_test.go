@@ -160,10 +160,13 @@ func TestWAHAWebhookHMACContract_E2E(t *testing.T) {
 		}
 	})
 
-	// Wait for /health to come up.
-	healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", port)
+	// Wait for the process to be live. This contract test only exercises webhook
+	// HMAC verification, so it gates on /healthz (liveness, 200 once the HTTP
+	// server is listening) rather than /health (readiness, which correctly stays
+	// 503 here because WhatsApp/Signal are intentionally unreachable).
+	healthURL := fmt.Sprintf("http://127.0.0.1:%d/healthz", port)
 	if !waitForHTTP200(healthURL, 30*time.Second) {
-		t.Fatalf("whatsignal did not become healthy in time. logs:\n%s", logBuf.String())
+		t.Fatalf("whatsignal did not become live in time. logs:\n%s", logBuf.String())
 	}
 
 	// Send a webhook signed with the canonical WAHA contract.

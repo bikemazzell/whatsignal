@@ -24,10 +24,8 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +33,7 @@ import (
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/models"
 	"whatsignal/internal/privacy"
+	"whatsignal/internal/retry"
 	"whatsignal/pkg/signal"
 	signaltypes "whatsignal/pkg/signal/types"
 
@@ -269,48 +268,7 @@ func (sp *SignalPoller) pollLoop() {
 // It returns false for context errors, authentication errors, and validation errors.
 // It returns true for network errors and other transient failures.
 func isRetryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Treat context.Canceled as non-retryable (shutdown), but retry context.DeadlineExceeded (HTTP/client timeout)
-	if errors.Is(err, context.Canceled) {
-		return false
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	errStr := strings.ToLower(err.Error())
-
-	// Retry network errors and transient failures
-	if strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "connection reset") ||
-		strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "temporary failure") ||
-		strings.Contains(errStr, "eof") ||
-		strings.Contains(errStr, "broken pipe") ||
-		strings.Contains(errStr, "no route to host") {
-		return true
-	}
-
-	// Don't retry authentication/authorization errors
-	if strings.Contains(errStr, "unauthorized") ||
-		strings.Contains(errStr, "forbidden") ||
-		strings.Contains(errStr, "authentication") ||
-		strings.Contains(errStr, "not authorized") {
-		return false
-	}
-
-	// Don't retry validation errors
-	if strings.Contains(errStr, "invalid") ||
-		strings.Contains(errStr, "malformed") ||
-		strings.Contains(errStr, "bad request") {
-		return false
-	}
-
-	// Default to retrying unknown errors (conservative approach)
-	return true
+	return retry.IsRetryablePollError(err)
 }
 
 // pollWithRetry executes a single poll attempt with exponential backoff on failure.
@@ -337,8 +295,13 @@ func (sp *SignalPoller) pollWithRetry() {
 	// Record polling attempt
 	metrics.IncrementCounter("signal_poll_attempts_total", nil, "Total Signal polling attempts")
 
-	backoff := time.Duration(sp.retryConfig.InitialBackoffMs) * time.Millisecond
-	maxBackoff := time.Duration(sp.retryConfig.MaxBackoffMs) * time.Millisecond
+	pollBackoff := retry.NewBackoff(retry.BackoffConfig{
+		InitialDelay: time.Duration(sp.retryConfig.InitialBackoffMs) * time.Millisecond,
+		MaxDelay:     time.Duration(sp.retryConfig.MaxBackoffMs) * time.Millisecond,
+		Multiplier:   2.0,
+		MaxAttempts:  sp.retryConfig.MaxAttempts,
+		Jitter:       true,
+	})
 
 	for attempt := 0; attempt < sp.retryConfig.MaxAttempts; attempt++ {
 		// Check context before each attempt
@@ -395,6 +358,11 @@ func (sp *SignalPoller) pollWithRetry() {
 			metricsLabelAttempt: fmt.Sprintf("%d", attempt+1),
 		}, "Failed Signal polling attempts")
 
+		var backoff time.Duration
+		if attempt < sp.retryConfig.MaxAttempts-1 {
+			backoff = pollBackoff.GetNextDelay(attempt + 1)
+		}
+
 		// Log failure with appropriate detail level
 		if verbose {
 			sp.logger.WithFields(logrus.Fields{
@@ -409,22 +377,12 @@ func (sp *SignalPoller) pollWithRetry() {
 
 		// Don't sleep on the last attempt
 		if attempt < sp.retryConfig.MaxAttempts-1 {
-			// Add jitter to backoff (±25% randomization)
-			// #nosec G404 - Using math/rand for backoff jitter, not cryptographic purposes
-			jitter := time.Duration(rand.Int63n(int64(backoff) / 2))
-			backoffWithJitter := backoff - backoff/4 + jitter
-
 			select {
 			case <-ctx.Done():
 				sp.logger.WithFields(sp.logFields()).Debug("Context cancelled during backoff, stopping retry attempts")
 				metrics.IncrementCounter("signal_poll_cancelled_total", nil, "Cancelled Signal polling operations")
 				return
-			case <-time.After(backoffWithJitter):
-				// Exponential backoff
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
+			case <-time.After(backoff):
 			}
 		}
 	}

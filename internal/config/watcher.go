@@ -111,7 +111,7 @@ func (cw *ConfigWatcher) reloadConfig() {
 
 	// Notify all registered callbacks
 	for _, callback := range callbacks {
-		go func(cb func(*models.Config)) {
+		func(cb func(*models.Config)) {
 			defer func() {
 				if r := recover(); r != nil {
 					cw.logger.WithField("panic", r).Error("Config change callback panicked")

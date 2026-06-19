@@ -125,19 +125,15 @@ func TestRun_MissingWhatsAppAPIKey(t *testing.T) {
 
 	// Save original values
 	originalConfigPath := *configPath
-	originalAPIKey := os.Getenv("WHATSAPP_API_KEY")
 	defer func() {
 		*configPath = originalConfigPath
-		if originalAPIKey != "" {
-			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
-		} else {
-			_ = os.Unsetenv("WHATSAPP_API_KEY")
-		}
 	}()
 
 	// Set test config path and remove API key
 	*configPath = testConfigPath
-	_ = os.Unsetenv("WHATSAPP_API_KEY")
+	t.Setenv("WHATSAPP_API_KEY", "")
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -233,19 +229,13 @@ func TestRun_InvalidLogLevel(t *testing.T) {
 
 	// Save original values
 	originalConfigPath := *configPath
-	originalAPIKey := os.Getenv("WHATSAPP_API_KEY")
 	defer func() {
 		*configPath = originalConfigPath
-		if originalAPIKey != "" {
-			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
-		} else {
-			_ = os.Unsetenv("WHATSAPP_API_KEY")
-		}
 	}()
 
 	// Set test config path and API key
 	*configPath = testConfigPath
-	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
+	t.Setenv("WHATSAPP_API_KEY", "test-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -285,19 +275,13 @@ func TestRun_NoChannelsConfigured(t *testing.T) {
 
 	// Save original values
 	originalConfigPath := *configPath
-	originalAPIKey := os.Getenv("WHATSAPP_API_KEY")
 	defer func() {
 		*configPath = originalConfigPath
-		if originalAPIKey != "" {
-			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
-		} else {
-			_ = os.Unsetenv("WHATSAPP_API_KEY")
-		}
 	}()
 
 	// Set test config path and API key
 	*configPath = testConfigPath
-	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
+	t.Setenv("WHATSAPP_API_KEY", "test-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -389,19 +373,13 @@ func TestVerboseFlag(t *testing.T) {
 
 	// Save original values
 	originalConfigPath := *configPath
-	originalAPIKey := os.Getenv("WHATSAPP_API_KEY")
 	defer func() {
 		*configPath = originalConfigPath
-		if originalAPIKey != "" {
-			_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
-		} else {
-			_ = os.Unsetenv("WHATSAPP_API_KEY")
-		}
 	}()
 
 	// Set test config path and API key
 	*configPath = testConfigPath
-	_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
+	t.Setenv("WHATSAPP_API_KEY", "test-key")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -481,21 +459,15 @@ func TestLogLevelConfiguration(t *testing.T) {
 			// Save original values
 			originalConfigPath := *configPath
 			originalVerbose := *verbose
-			originalAPIKey := os.Getenv("WHATSAPP_API_KEY")
 			defer func() {
 				*configPath = originalConfigPath
 				*verbose = originalVerbose
-				if originalAPIKey != "" {
-					_ = os.Setenv("WHATSAPP_API_KEY", originalAPIKey)
-				} else {
-					_ = os.Unsetenv("WHATSAPP_API_KEY")
-				}
 			}()
 
 			// Set test values
 			*configPath = testConfigPath
 			*verbose = tt.verbose
-			_ = os.Setenv("WHATSAPP_API_KEY", "test-key")
+			t.Setenv("WHATSAPP_API_KEY", "test-key")
 
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
@@ -503,6 +475,32 @@ func TestLogLevelConfiguration(t *testing.T) {
 			err = run(ctx)
 			// Should fail with timeout, but log level should be processed correctly
 			assert.Error(t, err)
+		})
+	}
+}
+
+func TestSetLogLevelRespectsConfiguredLevel(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    string
+		wantLevel logrus.Level
+	}{
+		{name: "debug", config: "debug", wantLevel: logrus.DebugLevel},
+		{name: "info", config: "info", wantLevel: logrus.InfoLevel},
+		{name: "warn", config: "warn", wantLevel: logrus.WarnLevel},
+		{name: "error", config: "error", wantLevel: logrus.ErrorLevel},
+		{name: "invalid defaults to info", config: "definitely-not-a-level", wantLevel: logrus.InfoLevel},
+		{name: "empty defaults to info", config: "", wantLevel: logrus.InfoLevel},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := logrus.New()
+			logger.SetOutput(io.Discard)
+
+			setLogLevel(logger, tt.config)
+
+			assert.Equal(t, tt.wantLevel, logger.GetLevel())
 		})
 	}
 }
@@ -628,7 +626,7 @@ func TestGetClientIP_EdgeCases(t *testing.T) {
 			}
 			req.RemoteAddr = tt.remoteAddr
 
-			ip := GetClientIP(req)
+			ip := GetClientIP(req, "10.0.0.0/24")
 			assert.Equal(t, tt.expected, ip)
 		})
 	}

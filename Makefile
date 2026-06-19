@@ -12,6 +12,8 @@ RELEASE_DIR := $(BUILD_DIR)/release
 # Source files
 MAIN_PACKAGE := ./cmd/whatsignal
 GO_FILES := $(shell find . -name "*.go" -type f)
+GO_PACKAGES = $$(go list ./... | grep -v '/integration_test' | grep -v '/.worktrees/')
+GO_SCAN_PACKAGES = $$(go list ./... | grep -v '/.worktrees/')
 
 # Version information
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.50.0")
@@ -153,19 +155,19 @@ clean:
 .PHONY: test
 test:
 	@echo "Running unit tests..."
-	CGO_ENABLED=$(CGO_ENABLED) go test -v $$(go list ./... | grep -v '/integration_test')
+	CGO_ENABLED=$(CGO_ENABLED) go test -v $(GO_PACKAGES)
 
 # Run unit tests with race detection
 .PHONY: test-race
 test-race:
 	@echo "Running unit tests with race detection..."
-	CGO_ENABLED=$(CGO_ENABLED) go test -race -v $$(go list ./... | grep -v '/integration_test')
+	CGO_ENABLED=$(CGO_ENABLED) go test -race -v $(GO_PACKAGES)
 
 # Run unit tests with coverage
 .PHONY: coverage
 coverage:
 	@echo "Running unit tests with coverage..."
-	@CGO_ENABLED=$(CGO_ENABLED) go test -coverprofile=coverage.out -covermode=atomic $$(go list ./... | grep -v '/integration_test')
+	@CGO_ENABLED=$(CGO_ENABLED) go test -coverprofile=coverage.out -covermode=atomic $(GO_PACKAGES)
 	@echo "Coverage report:"
 	@go tool cover -func=coverage.out
 	@echo "To view HTML coverage report, run: go tool cover -html=coverage.out"
@@ -289,7 +291,7 @@ format-check:
 .PHONY: vet
 vet:
 	@echo "Running go vet..."
-	@go vet ./...
+	@go vet $(GO_SCAN_PACKAGES)
 
 # Security scans
 .PHONY: security
@@ -297,9 +299,9 @@ security:
 	@echo "Running security scans..."
 	@echo "Running gosec..."
 	@if [ -x "$$(go env GOPATH)/bin/gosec" ]; then \
-		$$(go env GOPATH)/bin/gosec -quiet ./...; \
+		$$(go env GOPATH)/bin/gosec -quiet -exclude-dir=.worktrees ./...; \
 	elif command -v gosec >/dev/null 2>&1; then \
-		gosec -quiet ./...; \
+		gosec -quiet -exclude-dir=.worktrees ./...; \
 	else \
 		echo "gosec not installed. Install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"; \
 		exit 1; \
@@ -323,9 +325,9 @@ install-tools:
 staticcheck:
 	@echo "Running staticcheck..."
 	@if [ -x "$$(go env GOPATH)/bin/staticcheck" ]; then \
-		PATH="$$(go env GOPATH)/bin:$$PATH" staticcheck ./...; \
+		PATH="$$(go env GOPATH)/bin:$$PATH" staticcheck $(GO_SCAN_PACKAGES); \
 	elif command -v staticcheck >/dev/null 2>&1; then \
-		staticcheck ./...; \
+		staticcheck $(GO_SCAN_PACKAGES); \
 	else \
 		echo "staticcheck not installed. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"; \
 		exit 1; \
@@ -518,9 +520,9 @@ pre-commit:
 pre-push:
 	@echo "Pre-push: running CI vulnerability gate..."
 	@if command -v govulncheck >/dev/null 2>&1; then \
-		govulncheck ./...; \
+		govulncheck $(GO_SCAN_PACKAGES); \
 	else \
-		go run golang.org/x/vuln/cmd/govulncheck@latest ./...; \
+		go run golang.org/x/vuln/cmd/govulncheck@latest $(GO_SCAN_PACKAGES); \
 	fi
 	@echo "All pre-push checks passed."
 

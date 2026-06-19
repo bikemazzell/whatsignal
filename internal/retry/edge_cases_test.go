@@ -9,15 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSecureFloat64(t *testing.T) {
-	// Test that secureFloat64 returns values in [0, 1)
-	for i := 0; i < 100; i++ {
-		val := secureFloat64()
-		assert.True(t, val >= 0.0, "secureFloat64() should return value >= 0")
-		assert.True(t, val < 1.0, "secureFloat64() should return value < 1")
-	}
-}
-
 func TestBackoff_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name   string

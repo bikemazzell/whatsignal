@@ -24,107 +24,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// nonRetryableSignalErrors contains error substrings that indicate non-retryable Signal errors.
-// These errors require manual intervention and should not be retried.
-var nonRetryableSignalErrors = []string{
-	"Untrusted Identity",   // Identity key changed, requires trust command
-	"Unregistered user",    // User not on Signal
-	"Invalid registration", // Registration issue
-	"Rate limit",           // Rate limited - could be retryable but with longer delays
-	"Invalid phone number", // Bad phone number format
-	"Forbidden",            // Permission denied
-	"Not found",            // User/resource not found
-}
-
-// nonRetryableWhatsAppErrors contains error substrings that indicate non-retryable WAHA/WhatsApp errors.
-// These errors require manual intervention and should not be retried.
-// Note: "session is not ready" errors are now retryable (session status validation with backoff)
-var nonRetryableWhatsAppErrors = []string{
-	"status 400",        // Bad request - invalid parameters
-	"status 401",        // Unauthorized - auth issue
-	"status 403",        // Forbidden - permission denied
-	"status 404",        // Not found - chat/resource doesn't exist
-	"invalid chat",      // Invalid chat ID format
-	"not registered",    // User not on WhatsApp
-	"blocked",           // User blocked
-	"session not found", // Session doesn't exist
-}
-
 // isRetryableSignalError determines if a Signal API error should be retried.
 // Returns false for errors that require manual intervention or cannot succeed with retries.
 func isRetryableSignalError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errStr := err.Error()
-	for _, nonRetryable := range nonRetryableSignalErrors {
-		if strings.Contains(errStr, nonRetryable) {
-			return false
-		}
-	}
-
-	// Default to retryable for unknown/network errors
-	return true
+	return retry.IsRetryableSignalError(err)
 }
 
 // isRetryableWhatsAppError determines if a WAHA/WhatsApp API error should be retried.
 // Returns true for transient errors like 500 (markedUnread, JS errors), network issues.
 // Returns false for errors that require manual intervention.
 func isRetryableWhatsAppError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errStr := strings.ToLower(err.Error())
-	for _, nonRetryable := range nonRetryableWhatsAppErrors {
-		if strings.Contains(errStr, strings.ToLower(nonRetryable)) {
-			return false
-		}
-	}
-
-	// Specifically retryable WAHA errors (500 with transient JS errors)
-	if strings.Contains(errStr, "status 500") {
-		return true
-	}
-	if strings.Contains(errStr, "status 502") || strings.Contains(errStr, "status 503") || strings.Contains(errStr, "status 504") {
-		return true
-	}
-	if strings.Contains(errStr, "markedunread") {
-		return true
-	}
-
-	// Retryable network and timeout errors
-	if strings.Contains(errStr, "timeout") {
-		return true
-	}
-	if strings.Contains(errStr, "network") {
-		return true
-	}
-	if strings.Contains(errStr, "connection refused") {
-		return true
-	}
-	if strings.Contains(errStr, "connection reset") {
-		return true
-	}
-	if strings.Contains(errStr, "connection timeout") {
-		return true
-	}
-	if strings.Contains(errStr, "temporary failure") {
-		return true
-	}
-	if strings.Contains(errStr, "temporary error") {
-		return true
-	}
-	if strings.Contains(errStr, "EOF") {
-		return true
-	}
-	if strings.Contains(errStr, "broken pipe") {
-		return true
-	}
-
-	// Default to retryable for unknown/network errors
-	return true
+	return retry.IsRetryableWhatsAppError(err)
 }
 
 // RecordCleaner provides cleanup operations for old records.
@@ -928,7 +838,7 @@ func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.Sig
 		"quotedMessageID": msg.QuotedMessage.ID,
 	}).Debug("No message mapping found in database, trying fallback")
 
-	mapping = b.extractMappingFromQuotedText(msg.QuotedMessage.Text)
+	mapping = b.extractMappingFromQuotedText(ctx, msg.QuotedMessage.Text)
 	if mapping == nil {
 		return nil, false, fmt.Errorf("no mapping found for quoted message: %s", msg.QuotedMessage.ID)
 	}
@@ -938,7 +848,7 @@ func (b *bridge) resolveMessageMapping(ctx context.Context, msg *signaltypes.Sig
 
 // extractMappingFromQuotedText attempts to extract a WhatsApp chat ID from quoted message text.
 // This is a fallback for when the message mapping is not found in the database.
-func (b *bridge) extractMappingFromQuotedText(quotedText string) *models.MessageMapping {
+func (b *bridge) extractMappingFromQuotedText(ctx context.Context, quotedText string) *models.MessageMapping {
 	if !strings.Contains(quotedText, ": ") {
 		return nil
 	}
@@ -987,7 +897,6 @@ func (b *bridge) extractMappingFromQuotedText(quotedText string) *models.Message
 		}
 	}
 	if hasLetter {
-		ctx := context.Background()
 		contact, err := b.db.GetContactByName(ctx, senderInfo)
 		if err != nil {
 			b.logger.WithError(err).Debug("Contact name lookup failed")
@@ -1322,11 +1231,6 @@ func (b *bridge) handleNewSignalThread(ctx context.Context, msg *signaltypes.Sig
 	return fmt.Errorf("cannot start new conversations from Signal to WhatsApp. Please send a message from WhatsApp first, or quote an existing message to reply to a specific conversation")
 }
 
-func (b *bridge) handleSignalReaction(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	// Legacy method - should not be used when sessions are configured
-	return fmt.Errorf("handleSignalReaction called without session context")
-}
-
 func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {
 	startTime := time.Now()
 
@@ -1360,19 +1264,11 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 	}
 
 	if mapping == nil {
-		// Target message mapping not found by Signal timestamp. The original forward may have
-		// timed out, leaving only a partial mapping. Fall back to the latest mapping for this
-		// session — the reaction goes to the right person even if we can't target the exact message.
-		b.logger.WithField("targetID", targetID).Debug("Reaction target not found by Signal ID, trying session fallback")
-		mapping, err = b.db.GetLatestMessageMappingBySession(ctx, sessionName)
-		if err != nil || mapping == nil {
-			b.logger.WithField("targetID", targetID).Debug("Skipping reaction — no mapping found for target message")
-			return nil
-		}
 		b.logger.WithFields(logrus.Fields{
-			"targetID":       targetID,
-			"fallbackChatID": SanitizePhoneNumber(mapping.WhatsAppChatID),
-		}).Debug("Using session fallback for reaction target")
+			"targetID": targetID,
+			"session":  sessionName,
+		}).Warn("Skipping reaction because target mapping is missing and session fallback is ambiguous")
+		return nil
 	}
 
 	// Send reaction to WhatsApp
@@ -1413,11 +1309,6 @@ func (b *bridge) handleSignalReactionWithSession(ctx context.Context, msg *signa
 	}).Info("Successfully forwarded reaction to WhatsApp")
 
 	return nil
-}
-
-func (b *bridge) handleSignalDeletion(ctx context.Context, msg *signaltypes.SignalMessage) error {
-	// Legacy method - should not be used when sessions are configured
-	return fmt.Errorf("handleSignalDeletion called without session context")
 }
 
 func (b *bridge) handleSignalDeletionWithSession(ctx context.Context, msg *signaltypes.SignalMessage, sessionName string) error {

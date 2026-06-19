@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 	"whatsignal/internal/constants"
+	internalmedia "whatsignal/internal/media"
 	"whatsignal/internal/models"
 
 	"github.com/stretchr/testify/assert"
@@ -463,8 +465,9 @@ func TestIsURL(t *testing.T) {
 }
 
 func TestProcessMediaFromURL(t *testing.T) {
-	handler, _, cleanup := setupTestHandler(t)
+	handlerInterface, _, cleanup := setupTestHandler(t)
 	defer cleanup()
+	h := handlerInterface.(*handler)
 
 	// Create test server
 	testContent := []byte("test image content")
@@ -476,9 +479,10 @@ func TestProcessMediaFromURL(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	h.wahaBaseURL = server.URL
 
 	// Test successful URL processing
-	cachedPath, err := handler.ProcessMedia(server.URL + "/image.jpg")
+	cachedPath, err := handlerInterface.ProcessMedia(server.URL + "/image.jpg")
 	require.NoError(t, err)
 	assert.NotEmpty(t, cachedPath)
 
@@ -488,14 +492,15 @@ func TestProcessMediaFromURL(t *testing.T) {
 	assert.Equal(t, testContent, cachedContent)
 
 	// Test processing same URL again (should return same cached path)
-	cachedPath2, err := handler.ProcessMedia(server.URL + "/image.jpg")
+	cachedPath2, err := handlerInterface.ProcessMedia(server.URL + "/image.jpg")
 	require.NoError(t, err)
 	assert.Equal(t, cachedPath, cachedPath2)
 }
 
 func TestProcessMediaFromURLErrors(t *testing.T) {
-	handler, _, cleanup := setupTestHandler(t)
+	handlerInterface, _, cleanup := setupTestHandler(t)
 	defer cleanup()
+	h := handlerInterface.(*handler)
 
 	tests := []struct {
 		name          string
@@ -541,8 +546,9 @@ func TestProcessMediaFromURLErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := tt.setupServer()
 			defer server.Close()
+			h.wahaBaseURL = server.URL
 
-			_, err := handler.ProcessMedia(server.URL + "/file")
+			_, err := handlerInterface.ProcessMedia(server.URL + "/file")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedError)
 		})
@@ -550,8 +556,9 @@ func TestProcessMediaFromURLErrors(t *testing.T) {
 }
 
 func TestProcessMediaFromURLWithLargeFile(t *testing.T) {
-	handler, _, cleanup := setupTestHandler(t)
+	handlerInterface, _, cleanup := setupTestHandler(t)
 	defer cleanup()
+	h := handlerInterface.(*handler)
 
 	// Create server that returns a file larger than the limit
 	config := getTestMediaConfig()
@@ -566,8 +573,9 @@ func TestProcessMediaFromURLWithLargeFile(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	h.wahaBaseURL = server.URL
 
-	_, err := handler.ProcessMedia(server.URL + "/large.jpg")
+	_, err := handlerInterface.ProcessMedia(server.URL + "/large.jpg")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "image too large")
 }
@@ -650,7 +658,8 @@ func TestProcessMediaFromURLTimeout(t *testing.T) {
 	handler := &handler{
 		cacheDir:    cacheDir,
 		config:      config,
-		httpClient:  &http.Client{Timeout: 2 * time.Second}, // Short timeout
+		mediaRouter: internalmedia.NewRouter(config),
+		httpClient:  &http.Client{Timeout: 50 * time.Millisecond}, // Short timeout
 		wahaBaseURL: "",
 		wahaAPIKey:  "",
 	}
@@ -661,11 +670,11 @@ func TestProcessMediaFromURLTimeout(t *testing.T) {
 
 	// Create server that delays response
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Sleep longer than client timeout
-		time.Sleep(3 * time.Second)
+		<-r.Context().Done()
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
+	handler.wahaBaseURL = server.URL
 
 	_, err = handler.ProcessMedia(server.URL + "/slow.jpg")
 	require.Error(t, err)
@@ -673,18 +682,30 @@ func TestProcessMediaFromURLTimeout(t *testing.T) {
 }
 
 func TestProcessMediaFromURLInvalidURL(t *testing.T) {
-	handler, _, cleanup := setupTestHandler(t)
+	handlerInterface, _, cleanup := setupTestHandler(t)
 	defer cleanup()
+	h := handlerInterface.(*handler)
+	h.wahaBaseURL = "http://invalid-domain-that-does-not-exist.com"
 
 	// Test with invalid URL
-	_, err := handler.ProcessMedia("http://invalid-domain-that-does-not-exist.com/image.jpg")
+	_, err := handlerInterface.ProcessMedia("http://invalid-domain-that-does-not-exist.com/image.jpg")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to download media from URL")
 }
 
-func TestProcessMediaMixedTypes(t *testing.T) {
-	handler, tmpDir, cleanup := setupTestHandler(t)
+func TestProcessMediaRejectsSchemeWithoutHost(t *testing.T) {
+	handlerInterface, _, cleanup := setupTestHandler(t)
 	defer cleanup()
+
+	_, err := handlerInterface.ProcessMedia("file:///etc/passwd")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported media URL scheme")
+}
+
+func TestProcessMediaMixedTypes(t *testing.T) {
+	handlerInterface, tmpDir, cleanup := setupTestHandler(t)
+	defer cleanup()
+	h := handlerInterface.(*handler)
 
 	// Test local file
 	localContent := []byte("local file content")
@@ -692,7 +713,7 @@ func TestProcessMediaMixedTypes(t *testing.T) {
 	err := os.WriteFile(localPath, localContent, 0644)
 	require.NoError(t, err)
 
-	cachedLocalPath, err := handler.ProcessMedia(localPath)
+	cachedLocalPath, err := handlerInterface.ProcessMedia(localPath)
 	require.NoError(t, err)
 	assert.NotEmpty(t, cachedLocalPath)
 
@@ -706,8 +727,9 @@ func TestProcessMediaMixedTypes(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	h.wahaBaseURL = server.URL
 
-	cachedURLPath, err := handler.ProcessMedia(server.URL + "/remote.jpg")
+	cachedURLPath, err := handlerInterface.ProcessMedia(server.URL + "/remote.jpg")
 	require.NoError(t, err)
 	assert.NotEmpty(t, cachedURLPath)
 
@@ -1003,7 +1025,7 @@ func TestProcessMediaFromURLWithAPIKey(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
-	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), "", apiKey)
+	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), server.URL, apiKey)
 	require.NoError(t, err)
 
 	// Test URL processing
@@ -1042,7 +1064,7 @@ func TestProcessMediaFromURLWithoutAPIKey(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cacheDir := filepath.Join(tmpDir, "cache")
-	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), "", "")
+	handler, err := NewHandlerWithWAHA(cacheDir, getTestMediaConfig(), server.URL, "")
 	require.NoError(t, err)
 
 	// Test URL processing
@@ -1232,7 +1254,7 @@ func TestDownloadFromURLEdgeCases(t *testing.T) {
 				return nil // No server needed for invalid URL test
 			},
 			expectError: true,
-			errorMsg:    "failed to create request",
+			errorMsg:    "invalid media URL",
 		},
 		{
 			name: "server returns 404",
@@ -1287,10 +1309,12 @@ func TestDownloadFromURLEdgeCases(t *testing.T) {
 			var server *httptest.Server
 
 			if tt.name == "invalid URL" {
+				h.wahaBaseURL = "http://127.0.0.1"
 				testURL = "://invalid-url"
 			} else {
 				server = tt.setupServer()
 				defer server.Close()
+				h.wahaBaseURL = server.URL
 				testURL = server.URL + "/test.jpg"
 			}
 
@@ -1312,6 +1336,38 @@ func TestDownloadFromURLEdgeCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDownloadFromURLRejectsOversizedResponseAndRemovesTempFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "whatsignal-media-download-limit")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	config := getTestMediaConfig()
+	config.MaxSizeMB.Image = 1
+
+	handlerInterface, err := NewHandlerWithWAHA(filepath.Join(tmpDir, "cache"), config, "http://127.0.0.1", "test-api-key")
+	require.NoError(t, err)
+	h := handlerInterface.(*handler)
+
+	maxBytes := int64(config.MaxSizeMB.Image) * constants.BytesPerMegabyte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.CopyN(w, strings.NewReader(strings.Repeat("a", int(maxBytes)+1)), maxBytes+1)
+	}))
+	defer server.Close()
+	h.wahaBaseURL = server.URL
+
+	tempPath, ext, err := h.downloadFromURL(server.URL + "/oversized.jpg")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too large")
+	assert.Empty(t, tempPath)
+	assert.Empty(t, ext)
+
+	matches, globErr := filepath.Glob(filepath.Join(h.cacheDir, "download_*"))
+	require.NoError(t, globErr)
+	assert.Empty(t, matches)
 }
 
 func TestRewriteMediaURLEdgeCases(t *testing.T) {

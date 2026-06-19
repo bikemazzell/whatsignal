@@ -10,8 +10,8 @@ import (
 )
 
 func (h *handler) validateDownloadURL(rawURL string) error {
-	if h.wahaBaseURL == "" {
-		return nil
+	if h.wahaBaseURL == "" && h.signalRPCURL == "" {
+		return fmt.Errorf("download service URL not configured")
 	}
 
 	u, err := url.Parse(rawURL)
@@ -22,9 +22,12 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 		return fmt.Errorf("unsupported URL scheme: %s", u.Scheme)
 	}
 
-	waha, err := url.Parse(h.wahaBaseURL)
-	if err != nil {
-		return fmt.Errorf("invalid WAHA base URL: %w", err)
+	var waha *url.URL
+	if h.wahaBaseURL != "" {
+		waha, err = url.Parse(h.wahaBaseURL)
+		if err != nil {
+			return fmt.Errorf("invalid WAHA base URL: %w", err)
+		}
 	}
 
 	var signal *url.URL
@@ -35,24 +38,37 @@ func (h *handler) validateDownloadURL(rawURL string) error {
 		}
 	}
 
-	if endpointMatches(u, waha) || (signal != nil && endpointMatches(u, signal)) {
+	if (waha != nil && endpointMatches(u, waha)) || (signal != nil && endpointMatches(u, signal)) {
 		return nil
 	}
 
-	if err := rejectDisallowedResolvedIP(u.Hostname()); err != nil {
-		return err
+	if ip := parseLegacyIPv4(u.Hostname()); ip != nil && isBlockedIP(ip) {
+		return fmt.Errorf("hostname %q resolves to disallowed IP %s", u.Hostname(), ip.String())
 	}
 
-	if ip := net.ParseIP(u.Hostname()); ip != nil && isDockerInternalIP(ip) {
-		wahaIP := net.ParseIP(waha.Hostname())
-		if wahaIP != nil && !wahaIP.IsLoopback() && u.Port() == waha.Port() {
-			return nil
+	if strings.EqualFold(u.Hostname(), "localhost") {
+		if err := rejectDisallowedResolvedIP(u.Hostname()); err != nil {
+			return err
 		}
 	}
 
-	if isDockerInternalHost(waha.Hostname()) && u.Port() == waha.Port() {
-		if net.ParseIP(u.Hostname()) != nil {
-			return nil
+	if ip := net.ParseIP(u.Hostname()); ip != nil && isDockerInternalIP(ip) {
+		if err := rejectDisallowedResolvedIP(u.Hostname()); err != nil {
+			return err
+		}
+		if waha != nil {
+			wahaIP := net.ParseIP(waha.Hostname())
+			if wahaIP != nil && !wahaIP.IsLoopback() && u.Port() == waha.Port() {
+				return nil
+			}
+		}
+	}
+
+	if waha != nil {
+		if isDockerInternalHost(waha.Hostname()) && u.Port() == waha.Port() {
+			if net.ParseIP(u.Hostname()) != nil {
+				return nil
+			}
 		}
 	}
 
@@ -80,7 +96,7 @@ func rejectDisallowedResolvedIP(hostname string) error {
 
 	addrs, err := net.LookupHost(hostname) // #nosec G704 -- Defensive SSRF check; every resolved IP is rejected if blocked before any fetch.
 	if err != nil {
-		return nil
+		return fmt.Errorf("failed to resolve download host %q: %w", hostname, err)
 	}
 	for _, addr := range addrs {
 		ip := net.ParseIP(addr)

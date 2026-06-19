@@ -1136,11 +1136,6 @@ func TestHandleSignalReaction(t *testing.T) {
 			mockDB := bridge.db.(*mockDatabaseService)
 			mockDB.On("GetMessageMapping", ctx, targetID).Return(tt.mapping, tt.mappingError).Once()
 
-			// When mapping is nil and no error, the handler tries session fallback
-			if tt.mapping == nil && tt.mappingError == nil {
-				mockDB.On("GetLatestMessageMappingBySession", ctx, "default").Return(nil, nil).Once()
-			}
-
 			// Setup WhatsApp client mock if needed
 			if tt.mapping != nil && tt.mappingError == nil {
 				mockWA := bridge.waClient.(*mockWhatsAppClient)
@@ -1166,6 +1161,10 @@ func TestHandleSignalReaction(t *testing.T) {
 			}
 
 			mockDB.AssertExpectations(t)
+			if tt.mapping == nil && tt.mappingError == nil {
+				mockDB.AssertNotCalled(t, "GetLatestMessageMappingBySession", ctx, "default")
+				bridge.waClient.(*mockWhatsAppClient).AssertNotCalled(t, "SendReactionWithSession", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			}
 			if tt.mapping != nil && tt.mappingError == nil {
 				bridge.waClient.(*mockWhatsAppClient).AssertExpectations(t)
 			}
@@ -1485,40 +1484,6 @@ func TestHandleSignalDeletion(t *testing.T) {
 	bridge.waClient.(*mockWhatsAppClient).AssertCalled(t, "DeleteMessage", ctx, "+1234567890@c.us", "wa_msg_789")
 }
 
-func TestHandleSignalReactionLegacy(t *testing.T) {
-	bridge, _, cleanup := setupTestBridge(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	msg := &signaltypes.SignalMessage{
-		MessageID: "msg123",
-		Sender:    "sender123",
-		Reaction:  &signaltypes.SignalReaction{Emoji: "👍"},
-	}
-
-	err := bridge.handleSignalReaction(ctx, msg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "handleSignalReaction called without session context")
-}
-
-func TestHandleSignalDeletionLegacy(t *testing.T) {
-	bridge, _, cleanup := setupTestBridge(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	msg := &signaltypes.SignalMessage{
-		MessageID: "msg123",
-		Sender:    "sender123",
-		Deletion:  &signaltypes.SignalDeletion{TargetMessageID: "target123"},
-	}
-
-	err := bridge.handleSignalDeletion(ctx, msg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "handleSignalDeletion called without session context")
-}
-
 func TestSendSignalNotificationForSession(t *testing.T) {
 	// Test the method by testing its parts separately since we can't easily mock the ChannelManager
 	// This tests the behavior rather than the exact implementation
@@ -1741,7 +1706,7 @@ func TestExtractMappingFromQuotedText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := bridge.extractMappingFromQuotedText(tt.quotedText)
+			result := bridge.extractMappingFromQuotedText(context.Background(), tt.quotedText)
 			if tt.wantNil {
 				assert.Nil(t, result)
 			} else {
@@ -2321,6 +2286,41 @@ func TestResolveMessageMapping_TimestampPrecisionMismatch_ReturnsError(t *testin
 	assert.Error(t, err, "Mismatched timestamp precision should return error")
 	assert.Nil(t, mapping, "Should not return any mapping")
 	assert.False(t, usedFallback, "Should not use fallback routing")
+}
+
+func TestResolveMessageMapping_QuotedTextContactLookupUsesCallerContext(t *testing.T) {
+	b, _, cleanup := setupTestBridge(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	b.db.(*mockDatabaseService).On("GetMessageMapping", ctx, "missing_quote").Return(nil, nil).Once()
+	b.db.(*mockDatabaseService).On("GetContactByName", mock.MatchedBy(func(got context.Context) bool {
+		return got.Err() == context.Canceled
+	}), "Alice").Return(nil, context.Canceled).Once()
+
+	msg := &signaltypes.SignalMessage{
+		MessageID: "signal_context_1",
+		Sender:    "+1234567890",
+		Message:   "Reply to Alice",
+		QuotedMessage: &struct {
+			ID        string `json:"id"`
+			Author    string `json:"author"`
+			Text      string `json:"text"`
+			Timestamp int64  `json:"timestamp"`
+		}{
+			ID:   "missing_quote",
+			Text: "Alice: Hi there",
+		},
+	}
+
+	mapping, usedFallback, err := b.resolveMessageMapping(ctx, msg, "default")
+
+	assert.Error(t, err)
+	assert.Nil(t, mapping)
+	assert.False(t, usedFallback)
+	b.db.(*mockDatabaseService).AssertExpectations(t)
 }
 
 func TestResolveMessageMapping_TimestampMismatch_TextFallbackSucceeds(t *testing.T) {

@@ -50,13 +50,13 @@ func TestGetClientIP(t *testing.T) {
 			expectedIP: "203.0.113.10",
 		},
 		{
-			name: "X-Forwarded-For with empty first entry (returns empty)",
+			name: "X-Forwarded-For with empty first entry skips to first IP",
 			setupReq: func() *http.Request {
 				r, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 				r.Header.Set("X-Forwarded-For", ", 203.0.113.11")
 				return r
 			},
-			expectedIP: "",
+			expectedIP: "203.0.113.11",
 		},
 		{
 			name: "X-Real-IP takes effect when no XFF",
@@ -118,8 +118,20 @@ func TestGetClientIP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := tt.setupReq()
-			got := GetClientIP(req)
+			if req.RemoteAddr == "" {
+				req.RemoteAddr = "10.0.0.5:4321"
+			}
+			got := GetClientIP(req, "10.0.0.0/24")
 			assert.Equal(t, tt.expectedIP, got)
 		})
 	}
+}
+
+func TestGetClientIPRejectsSpoofedHeadersByDefault(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req.RemoteAddr = "10.0.0.5:4321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+	req.Header.Set("X-Real-IP", "198.51.100.20")
+
+	assert.Equal(t, "10.0.0.5", GetClientIP(req))
 }

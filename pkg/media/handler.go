@@ -80,6 +80,9 @@ func (h *handler) ProcessMedia(pathOrURL string) (string, error) {
 	if isURL(pathOrURL) {
 		return h.processMediaFromURL(pathOrURL)
 	}
+	if u, err := url.Parse(pathOrURL); err == nil && u.Scheme != "" {
+		return "", fmt.Errorf("unsupported media URL scheme: %s", u.Scheme)
+	}
 
 	// Process as local file path
 	return h.processMediaFromFile(pathOrURL)
@@ -219,6 +222,10 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	if err := h.validateDownloadURL(mediaURL); err != nil {
 		return "", "", err
 	}
+	resolvedIP, err := h.resolveDownloadIP(ctx, mediaURL)
+	if err != nil {
+		return "", "", err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", mediaURL, nil)
 	if err != nil {
@@ -230,7 +237,7 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 		req.Header.Set("X-Api-Key", h.wahaAPIKey)
 	}
 
-	resp, err := h.httpClient.Do(req) // #nosec G704 - URL validated by validateDownloadURL above
+	resp, err := h.httpClientForPinnedDownload(mediaURL, resolvedIP).Do(req) // #nosec G704 - URL validated by validateDownloadURL above
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download file: %w", err)
 	}
@@ -251,13 +258,74 @@ func (h *handler) downloadFromURL(mediaURL string) (string, string, error) {
 	defer func() { _ = tempFile.Close() }()
 
 	// Copy response body to temp file
-	_, err = io.Copy(tempFile, resp.Body)
+	mediaType := h.mediaRouter.GetMediaType("file." + strings.TrimPrefix(ext, "."))
+	maxSizeBytes := h.mediaRouter.GetMaxSizeForMediaType(mediaType)
+	written, err := io.Copy(tempFile, io.LimitReader(resp.Body, maxSizeBytes+1))
 	if err != nil {
 		_ = os.Remove(tempFile.Name()) // #nosec G703 - Best effort cleanup after copy failure; path from os.CreateTemp
 		return "", "", fmt.Errorf("failed to save downloaded file: %w", err)
 	}
+	if written > maxSizeBytes {
+		_ = os.Remove(tempFile.Name()) // #nosec G703 - Best effort cleanup after oversized download; path from os.CreateTemp
+		return "", "", fmt.Errorf("%s too large: %d > %d bytes", mediaType, written, maxSizeBytes)
+	}
 
 	return tempFile.Name(), strings.TrimPrefix(ext, "."), nil
+}
+
+func (h *handler) resolveDownloadIP(ctx context.Context, mediaURL string) (net.IP, error) {
+	u, err := url.Parse(mediaURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid media URL: %w", err)
+	}
+
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		return ip, nil
+	}
+
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, u.Hostname())
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve download host %q: %w", u.Hostname(), err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("failed to resolve download host %q: no addresses returned", u.Hostname())
+	}
+	return addrs[0].IP, nil
+}
+
+func (h *handler) httpClientForPinnedDownload(mediaURL string, resolvedIP net.IP) *http.Client {
+	base := h.httpClient
+	if base == nil {
+		base = http.DefaultClient
+	}
+
+	transport, ok := base.Transport.(*http.Transport)
+	if base.Transport == nil {
+		transport = http.DefaultTransport.(*http.Transport)
+		ok = true
+	}
+	if !ok {
+		return base
+	}
+
+	u, err := url.Parse(mediaURL)
+	if err != nil {
+		return base
+	}
+
+	pinnedTransport := transport.Clone()
+	dialer := &net.Dialer{}
+	pinnedTransport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err == nil && strings.EqualFold(host, u.Hostname()) {
+			address = net.JoinHostPort(resolvedIP.String(), port)
+		}
+		return dialer.DialContext(ctx, network, address)
+	}
+
+	pinnedClient := *base
+	pinnedClient.Transport = pinnedTransport
+	return &pinnedClient
 }
 
 func (h *handler) processDownloadedFile(tempPath, ext string) (string, error) {

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -109,6 +110,42 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	return db, cleanup
 }
 
+func columnExists(t *testing.T, db *sql.DB, tableName, columnName string) bool {
+	t.Helper()
+
+	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", tableName)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		if name == columnName {
+			return true
+		}
+	}
+	require.NoError(t, rows.Err())
+	return false
+}
+
+func explainQueryPlan(t *testing.T, db *sql.DB, query string, args ...interface{}) string {
+	t.Helper()
+
+	rows, err := db.Query("EXPLAIN QUERY PLAN "+query, args...)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+
+	var details []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		require.NoError(t, rows.Scan(&id, &parent, &notused, &detail))
+		details = append(details, detail)
+	}
+	require.NoError(t, rows.Err())
+	return strings.Join(details, "\n")
+}
+
 func TestRunMigrations(t *testing.T) {
 	tmpDir, cleanupMigrations := setupTestMigrations(t)
 	defer cleanupMigrations()
@@ -199,6 +236,100 @@ func TestRunMigrationsIdempotent(t *testing.T) {
 	err = db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+}
+
+func TestMigration004HandlesPartiallyAppliedColumns(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "whatsignal-migration-004-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	migrationsPath := filepath.Join(tmpDir, "migrations")
+	require.NoError(t, os.MkdirAll(migrationsPath, 0755))
+
+	migration004, err := os.ReadFile(filepath.Join("..", "..", "scripts", "migrations", "004_add_contact_name_hashes.sql"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(migrationsPath, "004_add_contact_name_hashes.sql"), migration004, 0644))
+
+	db, cleanupDB := setupTestDB(t)
+	defer cleanupDB()
+
+	_, err = db.Exec(`
+		CREATE TABLE contacts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			contact_id TEXT NOT NULL UNIQUE,
+			phone_number TEXT NOT NULL,
+			name TEXT,
+			push_name TEXT,
+			short_name TEXT,
+			name_hash TEXT,
+			cached_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	require.NoError(t, err)
+
+	originalDir := MigrationsDir
+	MigrationsDir = migrationsPath
+	defer func() { MigrationsDir = originalDir }()
+
+	err = RunMigrations(db)
+	require.NoError(t, err)
+
+	for _, column := range []string{"name_hash", "push_name_hash", "short_name_hash"} {
+		assert.True(t, columnExists(t, db, "contacts", column), "column %s should exist", column)
+	}
+
+	var recorded int
+	err = db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE filename='004_add_contact_name_hashes.sql'").Scan(&recorded)
+	require.NoError(t, err)
+	assert.Equal(t, 1, recorded)
+}
+
+func TestMigration006AddsHotQueryIndexes(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "whatsignal-migration-006-test")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	migrationsPath := filepath.Join(tmpDir, "migrations")
+	require.NoError(t, os.MkdirAll(migrationsPath, 0755))
+
+	migration006, err := os.ReadFile(filepath.Join("..", "..", "scripts", "migrations", "006_add_hot_query_indexes.sql"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(migrationsPath, "006_add_hot_query_indexes.sql"), migration006, 0644))
+
+	db, cleanupDB := setupTestDB(t)
+	defer cleanupDB()
+
+	_, err = db.Exec(`
+		CREATE TABLE message_mappings (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_name TEXT NOT NULL,
+			forwarded_at DATETIME NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	require.NoError(t, err)
+
+	originalDir := MigrationsDir
+	MigrationsDir = migrationsPath
+	defer func() { MigrationsDir = originalDir }()
+
+	require.NoError(t, RunMigrations(db))
+
+	recentBySessionPlan := explainQueryPlan(t, db, `
+		SELECT id
+		FROM message_mappings
+		WHERE session_name = ?
+		ORDER BY forwarded_at DESC
+		LIMIT ?
+	`, "default", 10)
+	assert.Contains(t, recentBySessionPlan, "idx_message_mappings_session_forwarded")
+
+	cleanupPlan := explainQueryPlan(t, db, `
+		DELETE FROM message_mappings
+		WHERE created_at < datetime('now', '-' || ? || ' days')
+	`, 30)
+	assert.Contains(t, cleanupPlan, "idx_message_mappings_created_at")
 }
 
 func TestRunMigrationsNoMigrationFiles(t *testing.T) {

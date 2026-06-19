@@ -735,7 +735,31 @@ func (d *Database) CleanupOldRecords(ctx context.Context, retentionDays int) err
 		return fmt.Errorf("failed to cleanup old records: %w", err)
 	}
 
+	hasPendingTable, err := d.tableExists(ctx, "pending_signal_messages")
+	if err != nil {
+		return fmt.Errorf("failed to check pending messages table: %w", err)
+	}
+	if hasPendingTable {
+		_, err = d.db.ExecContext(ctx, DeleteExpiredPendingSignalMessagesQuery, retentionDays, constants.DefaultMessageProcessRetryAttempts)
+		if err != nil {
+			return fmt.Errorf("failed to cleanup expired pending messages: %w", err)
+		}
+	}
+
 	return nil
+}
+
+func (d *Database) tableExists(ctx context.Context, tableName string) (bool, error) {
+	var count int
+	err := d.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'table' AND name = ?
+	`, tableName).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // Contact operations
@@ -1036,19 +1060,13 @@ func (d *Database) HasMessageHistoryBetween(ctx context.Context, sessionName, si
 		return false, fmt.Errorf("failed to compute chat ID hash: %w", err)
 	}
 
-	query := `
-		SELECT COUNT(*) FROM message_mappings
-		WHERE session_name = ? AND chat_id_hash = ?
-		LIMIT 1
-	`
-
-	var count int
-	err = d.db.QueryRowContext(ctx, query, sessionName, chatHash).Scan(&count)
+	var exists bool
+	err = d.db.QueryRowContext(ctx, HasMessageHistoryBetweenQuery, sessionName, chatHash).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to check message history: %w", err)
 	}
 
-	return count > 0, nil
+	return exists, nil
 }
 
 // HealthCheck performs a database health check by pinging the database connection

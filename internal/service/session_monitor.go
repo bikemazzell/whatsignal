@@ -23,6 +23,7 @@ type SessionMonitor struct {
 	mu                     sync.Mutex
 	running                bool
 	stopCh                 chan struct{}
+	monitorWg              sync.WaitGroup
 	unhealthyStatusSet     map[string]struct{} // Pre-computed set for O(1) lookup
 }
 
@@ -77,18 +78,23 @@ func (sm *SessionMonitor) Start(ctx context.Context) {
 	}
 
 	sm.running = true
+	sm.monitorWg.Add(1)
 	sm.mu.Unlock()
 
-	go sm.monitorLoop(ctx)
+	go func() {
+		defer sm.monitorWg.Done()
+		sm.monitorLoop(ctx)
+	}()
 	sm.logger.Info("Session monitor started")
 }
 
 // Stop stops monitoring the session
 func (sm *SessionMonitor) Stop() {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
 
 	if !sm.running {
+		sm.mu.Unlock()
+		sm.monitorWg.Wait()
 		return
 	}
 
@@ -98,6 +104,8 @@ func (sm *SessionMonitor) Stop() {
 	}
 	sm.running = false
 	sm.logger.Info("Session monitor stopped")
+	sm.mu.Unlock()
+	sm.monitorWg.Wait()
 }
 
 func (sm *SessionMonitor) monitorLoop(ctx context.Context) {

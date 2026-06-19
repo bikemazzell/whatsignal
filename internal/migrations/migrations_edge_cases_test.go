@@ -14,37 +14,17 @@ import (
 )
 
 func TestGetDefaultMigrationsDir_WithEnvVar(t *testing.T) {
-	// Save original environment
-	originalDir := os.Getenv("WHATSIGNAL_MIGRATIONS_DIR")
-	defer func() {
-		if originalDir != "" {
-			_ = os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", originalDir)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
-		}
-	}()
-
 	// Test with environment variable set
 	testDir := "/custom/migrations/path"
-	_ = os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", testDir)
+	t.Setenv("WHATSIGNAL_MIGRATIONS_DIR", testDir)
 
 	result := getDefaultMigrationsDir()
 	assert.Equal(t, testDir, result)
 }
 
 func TestGetDefaultMigrationsDir_WithoutEnvVar(t *testing.T) {
-	// Save original environment
-	originalDir := os.Getenv("WHATSIGNAL_MIGRATIONS_DIR")
-	defer func() {
-		if originalDir != "" {
-			_ = os.Setenv("WHATSIGNAL_MIGRATIONS_DIR", originalDir)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
-		}
-	}()
-
 	// Test without environment variable
-	_ = os.Unsetenv("WHATSIGNAL_MIGRATIONS_DIR")
+	t.Setenv("WHATSIGNAL_MIGRATIONS_DIR", "")
 
 	result := getDefaultMigrationsDir()
 	assert.Equal(t, "scripts/migrations", result)

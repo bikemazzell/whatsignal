@@ -98,16 +98,36 @@ const (
 		WHERE delivery_status = 'sent'
 		  AND forwarded_at < datetime('now', '-' || ? || ' seconds')
 	`
+
+	HasMessageHistoryBetweenQuery = `
+		SELECT EXISTS(
+			SELECT 1
+			FROM message_mappings
+			WHERE session_name = ? AND chat_id_hash = ?
+		)
+	`
 )
 
 // Contact queries
 const (
 	InsertOrReplaceContactQuery = `
-		INSERT OR REPLACE INTO contacts (
+		INSERT INTO contacts (
 			contact_id, phone_number, name, push_name, short_name,
 			is_blocked, is_group, is_my_contact, cached_at,
 			name_hash, push_name_hash, short_name_hash
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
+		ON CONFLICT(contact_id) DO UPDATE SET
+			phone_number = excluded.phone_number,
+			name = excluded.name,
+			push_name = excluded.push_name,
+			short_name = excluded.short_name,
+			is_blocked = excluded.is_blocked,
+			is_group = excluded.is_group,
+			is_my_contact = excluded.is_my_contact,
+			cached_at = CURRENT_TIMESTAMP,
+			name_hash = excluded.name_hash,
+			push_name_hash = excluded.push_name_hash,
+			short_name_hash = excluded.short_name_hash
 	`
 
 	SelectContactByIDQuery = `
@@ -134,9 +154,14 @@ const (
 // Group queries
 const (
 	InsertOrReplaceGroupQuery = `
-		INSERT OR REPLACE INTO groups (
+		INSERT INTO groups (
 			group_id, subject, description, participant_count, session_name, cached_at
 		) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(group_id, session_name) DO UPDATE SET
+			subject = excluded.subject,
+			description = excluded.description,
+			participant_count = excluded.participant_count,
+			cached_at = CURRENT_TIMESTAMP
 	`
 
 	SelectGroupByIDQuery = `
@@ -172,6 +197,12 @@ const (
 	DeletePendingSignalMessageQuery = `
 		DELETE FROM pending_signal_messages
 		WHERE message_id_hash = ? AND destination = ?
+	`
+
+	DeleteExpiredPendingSignalMessagesQuery = `
+		DELETE FROM pending_signal_messages
+		WHERE created_at < datetime('now', '-' || ? || ' days')
+		   OR retry_count > ?
 	`
 
 	IncrementPendingRetryCountQuery = `

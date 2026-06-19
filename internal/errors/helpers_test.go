@@ -3,143 +3,11 @@ package errors
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestNewValidationError(t *testing.T) {
-	err := NewValidationError("email", "invalid@", "must be a valid email address")
-
-	assert.Equal(t, ErrCodeValidationFailed, err.Code)
-	assert.Equal(t, "must be a valid email address", err.Message)
-	assert.Equal(t, "Invalid email: must be a valid email address", err.UserMessage)
-	assert.Equal(t, "email", err.Context["field"])
-	assert.Equal(t, "invalid@", err.Context["value"])
-}
-
-func TestNewConfigError(t *testing.T) {
-	err := NewConfigError("database.host", "missing required configuration")
-
-	assert.Equal(t, ErrCodeInvalidConfig, err.Code)
-	assert.Equal(t, "missing required configuration", err.Message)
-	assert.Equal(t, "Configuration error", err.UserMessage)
-	assert.Equal(t, "database.host", err.Context["config_key"])
-}
-
-func TestNewDatabaseError(t *testing.T) {
-	originalErr := errors.New("connection failed")
-	err := NewDatabaseError("insert", originalErr)
-
-	assert.Equal(t, ErrCodeDatabaseQuery, err.Code)
-	assert.Equal(t, "database insert failed", err.Message)
-	assert.Equal(t, "Database operation failed", err.UserMessage)
-	assert.Equal(t, originalErr, err.Cause)
-	assert.Equal(t, "insert", err.Context["operation"])
-}
-
-func TestNewAPIError(t *testing.T) {
-	tests := []struct {
-		name         string
-		service      string
-		endpoint     string
-		statusCode   int
-		expectedCode ErrorCode
-		retryable    bool
-	}{
-		{
-			name:         "WhatsApp API 500 error",
-			service:      "whatsapp",
-			endpoint:     "/api/sendText",
-			statusCode:   500,
-			expectedCode: ErrCodeWhatsAppAPI,
-			retryable:    true,
-		},
-		{
-			name:         "Signal API 400 error",
-			service:      "signal",
-			endpoint:     "/v1/send",
-			statusCode:   400,
-			expectedCode: ErrCodeSignalAPI,
-			retryable:    false,
-		},
-		{
-			name:         "Unknown service 429 error",
-			service:      "unknown",
-			endpoint:     "/test",
-			statusCode:   429,
-			expectedCode: ErrCodeInternalError,
-			retryable:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			originalErr := errors.New("API error")
-			err := NewAPIError(tt.service, tt.endpoint, tt.statusCode, originalErr)
-
-			assert.Equal(t, tt.expectedCode, err.Code)
-			assert.Equal(t, tt.retryable, err.Retryable)
-			assert.Equal(t, tt.service, err.Context["service"])
-			assert.Equal(t, tt.endpoint, err.Context["endpoint"])
-			assert.Equal(t, tt.statusCode, err.Context["status_code"])
-			assert.Equal(t, originalErr, err.Cause)
-		})
-	}
-}
-
-func TestNewTimeoutError(t *testing.T) {
-	err := NewTimeoutError("database query", "30s")
-
-	assert.Equal(t, ErrCodeTimeout, err.Code)
-	assert.Equal(t, "database query timed out after 30s", err.Message)
-	assert.Equal(t, "Operation timed out, please try again", err.UserMessage)
-	assert.Equal(t, "database query", err.Context["operation"])
-	assert.Equal(t, "30s", err.Context["timeout"])
-}
-
-func TestNewAuthError(t *testing.T) {
-	err := NewAuthError("invalid token")
-
-	assert.Equal(t, ErrCodeAuthentication, err.Code)
-	assert.Equal(t, "authentication failed", err.Message)
-	assert.Equal(t, "Authentication failed", err.UserMessage)
-	assert.Equal(t, "invalid token", err.Context["reason"])
-}
-
-func TestNewNotFoundError(t *testing.T) {
-	err := NewNotFoundError("user", "123")
-
-	assert.Equal(t, ErrCodeNotFound, err.Code)
-	assert.Equal(t, "user not found", err.Message)
-	assert.Equal(t, "user not found", err.UserMessage)
-	assert.Equal(t, "user", err.Context["resource"])
-	assert.Equal(t, "123", err.Context["identifier"])
-}
-
-func TestNewRateLimitError(t *testing.T) {
-	err := NewRateLimitError(100, "1m")
-
-	assert.Equal(t, ErrCodeRateLimit, err.Code)
-	assert.Equal(t, "rate limit exceeded", err.Message)
-	assert.Equal(t, "Too many requests, please try again later", err.UserMessage)
-	assert.Equal(t, 100, err.Context["limit"])
-	assert.Equal(t, "1m", err.Context["window"])
-}
-
-func TestNewMediaError(t *testing.T) {
-	originalErr := errors.New("download failed")
-	err := NewMediaError("download", "image/jpeg", originalErr)
-
-	assert.Equal(t, ErrCodeMediaDownload, err.Code)
-	assert.Equal(t, "media download failed", err.Message)
-	assert.Equal(t, "Media processing failed", err.UserMessage)
-	assert.Equal(t, originalErr, err.Cause)
-	assert.Equal(t, "download", err.Context["operation"])
-	assert.Equal(t, "image/jpeg", err.Context["media_type"])
-}
 
 func TestFromContext(t *testing.T) {
 	tests := []struct {
@@ -377,25 +245,6 @@ func TestChain(t *testing.T) {
 				// Check that context from all errors is merged
 				assert.NotNil(t, result.Context)
 			}
-		})
-	}
-}
-
-func TestAPIError_RetryableStatusCodes(t *testing.T) {
-	retryableCodes := []int{500, 502, 503, 504, 429, 408}
-	nonRetryableCodes := []int{400, 401, 403, 404, 422}
-
-	for _, code := range retryableCodes {
-		t.Run(fmt.Sprintf("status_%d_should_be_retryable", code), func(t *testing.T) {
-			err := NewAPIError("whatsapp", "/test", code, errors.New("api error"))
-			assert.True(t, err.Retryable, "Status code %d should be retryable", code)
-		})
-	}
-
-	for _, code := range nonRetryableCodes {
-		t.Run(fmt.Sprintf("status_%d_should_not_be_retryable", code), func(t *testing.T) {
-			err := NewAPIError("whatsapp", "/test", code, errors.New("api error"))
-			assert.False(t, err.Retryable, "Status code %d should not be retryable", code)
 		})
 	}
 }

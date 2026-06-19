@@ -6,8 +6,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestNewCircuitBreakerWithLoggerUsesProvidedLogger(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	cb := NewCircuitBreakerWithLogger("test", 1, time.Second, logger)
+
+	assert.Same(t, logger, cb.logger())
+}
 
 func TestCircuitBreaker_EdgeCases(t *testing.T) {
 	t.Run("circuit breaker opens after threshold failures", func(t *testing.T) {

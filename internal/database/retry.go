@@ -2,11 +2,10 @@ package database
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 	"whatsignal/internal/constants"
+	"whatsignal/internal/retry"
 )
 
 // retryableDBOperationNoReturn executes a database operation that returns only an error with retry logic
@@ -14,7 +13,13 @@ func retryableDBOperationNoReturn(ctx context.Context, operation func() error, o
 	var lastErr error
 
 	maxAttempts := constants.DefaultDatabaseRetryAttempts
-	initialBackoff := time.Duration(constants.DefaultRetryBackoffMs) * time.Millisecond
+	backoff := retry.NewBackoff(retry.BackoffConfig{
+		InitialDelay: time.Duration(constants.DefaultRetryBackoffMs) * time.Millisecond,
+		MaxDelay:     time.Duration(constants.DefaultMaxBackoffMs) * time.Millisecond,
+		Multiplier:   2.0,
+		MaxAttempts:  maxAttempts,
+		Jitter:       false,
+	})
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
@@ -40,16 +45,10 @@ func retryableDBOperationNoReturn(ctx context.Context, operation func() error, o
 			break
 		}
 
-		// Exponential backoff with jitter
-		backoff := time.Duration(attempt) * initialBackoff
-		if backoff > time.Duration(constants.DefaultMaxBackoffMs)*time.Millisecond {
-			backoff = time.Duration(constants.DefaultMaxBackoffMs) * time.Millisecond
-		}
-
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(backoff):
+		case <-time.After(backoff.GetNextDelay(attempt)):
 		}
 	}
 
@@ -58,43 +57,5 @@ func retryableDBOperationNoReturn(ctx context.Context, operation func() error, o
 
 // isRetryableDBError determines if a database error is worth retrying
 func isRetryableDBError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check for common retryable SQLite errors
-	errStr := err.Error()
-
-	// Database is locked errors are typically retryable
-	if strings.Contains(errStr, "database is locked") {
-		return true
-	}
-
-	// Disk I/O errors might be transient
-	if strings.Contains(errStr, "disk I/O error") {
-		return true
-	}
-
-	// Temporary network issues (for network-mounted databases)
-	if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "connection refused") {
-		return true
-	}
-
-	// Context timeout/cancellation are not retryable by us
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-
-	// SQL constraint violations are not retryable
-	if strings.Contains(errStr, "UNIQUE constraint") || strings.Contains(errStr, "FOREIGN KEY constraint") {
-		return false
-	}
-
-	// Schema errors are not retryable
-	if strings.Contains(errStr, "no such table") || strings.Contains(errStr, "no such column") {
-		return false
-	}
-
-	// For other errors, we'll be conservative and not retry
-	return false
+	return retry.IsRetryableDatabaseError(err)
 }

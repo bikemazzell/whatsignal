@@ -41,6 +41,25 @@ func (m *mockMessageService) GetPollCalls() int {
 	return m.pollCalls
 }
 
+func waitForSignalPollerContextCanceled(t *testing.T, poller *SignalPoller) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		poller.mu.RLock()
+		ctx := poller.ctx
+		poller.mu.RUnlock()
+		if ctx == nil {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}
+
 func (m *mockMessageService) SendMessage(ctx context.Context, msg *models.Message) error {
 	args := m.Called(ctx, msg)
 	return args.Error(0)
@@ -223,8 +242,9 @@ func TestSignalPoller_Start_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, poller.IsRunning())
 
-	// Intentional: waiting for 2+ poll cycles at 1s interval to confirm the poller runs repeatedly
-	time.Sleep(2500 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return mockMessageService.GetPollCalls() >= 1
+	}, 3*time.Second, 10*time.Millisecond)
 
 	poller.Stop()
 	assert.False(t, poller.IsRunning())
@@ -318,8 +338,9 @@ func TestSignalPoller_RetryLogic(t *testing.T) {
 	err := poller.Start(ctx)
 	assert.NoError(t, err)
 
-	// Intentional: waiting for retry backoff cycles to complete (2 failures + backoffs)
-	time.Sleep(1500 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return mockMessageService.GetPollCalls() >= 3
+	}, 2*time.Second, 10*time.Millisecond)
 	poller.Stop()
 
 	// Verify that retries happened
@@ -648,8 +669,9 @@ func TestSignalPoller_NonRetryableErrorStopsRetries(t *testing.T) {
 	err := poller.Start(ctx)
 	assert.NoError(t, err)
 
-	// Intentional: waiting for one full poll cycle (1s interval) to complete
-	time.Sleep(1500 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return mockMessageService.GetPollCalls() >= 1
+	}, 2*time.Second, 10*time.Millisecond)
 	poller.Stop()
 
 	// Should have been called only once (non-retryable error)
@@ -680,22 +702,41 @@ func TestSignalPoller_Stop_NoDeadlock(t *testing.T) {
 	// Gate that lets the test control when PollSignalMessages returns.
 	// The first call blocks until we release it, simulating a long-running poll
 	// that holds sp.mu briefly at the end of pollWithRetry.
+	enteredPoll := make(chan struct{})
 	unblock := make(chan struct{})
-	sigClient.On("InitializeDevice", mock.Anything).Return(nil)
-	msgSvc.On("ProcessPendingMessages", mock.Anything).Return(nil).Maybe()
+	var enteredOnce sync.Once
 	msgSvc.On("PollSignalMessages", mock.Anything).
-		Run(func(args mock.Arguments) { <-unblock }).
+		Run(func(args mock.Arguments) {
+			enteredOnce.Do(func() {
+				close(enteredPoll)
+			})
+			<-unblock
+		}).
 		Return(nil)
 
 	poller := NewSignalPoller(sigClient, msgSvc, signalConfig, retryConfig, logger)
 
-	ctx := context.Background()
-	if err := poller.Start(ctx); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	pollCtx, cancel := context.WithCancel(context.Background())
+	poller.mu.Lock()
+	poller.ctx = pollCtx
+	poller.cancel = cancel
+	poller.running = true
+	poller.mu.Unlock()
 
-	// Intentional: allow the poll goroutine to enter PollSignalMessages and block on the unblock channel
-	time.Sleep(50 * time.Millisecond)
+	poller.wg.Add(1)
+	go func() {
+		defer poller.wg.Done()
+		poller.pollWithRetry()
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-enteredPoll:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 
 	// Issue Stop() in a goroutine; capture completion via a channel.
 	stopped := make(chan struct{})
@@ -704,8 +745,7 @@ func TestSignalPoller_Stop_NoDeadlock(t *testing.T) {
 		poller.Stop()
 	}()
 
-	// Intentional: allow Stop() to reach wg.Wait() before unblocking the poll goroutine
-	time.Sleep(50 * time.Millisecond)
+	waitForSignalPollerContextCanceled(t, poller)
 	close(unblock)
 
 	// Stop() must return within 5 seconds; if it deadlocks, the test fails.

@@ -11,20 +11,11 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	// Save and restore environment variables that might interfere with tests
-	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-	defer func() {
-		if originalWebhookSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-		}
-	}()
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
 
 	// Create a temporary directory for test files
-	tmpDir, err := os.MkdirTemp("", "whatsignal-config-test")
-	require.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpDir := t.TempDir()
 
 	// Create a valid config file
 	validConfig := `{
@@ -57,7 +48,7 @@ func TestLoadConfig(t *testing.T) {
 	}`
 
 	validConfigPath := filepath.Join(tmpDir, "valid_config.json")
-	err = os.WriteFile(validConfigPath, []byte(validConfig), 0644)
+	err := os.WriteFile(validConfigPath, []byte(validConfig), 0644)
 	require.NoError(t, err)
 
 	// Create an invalid config file
@@ -106,6 +97,7 @@ func TestLoadConfig(t *testing.T) {
 				"SIGNAL_RPC_URL":                     "https://signal.override.com",
 				"DB_PATH":                            "/override/path/to/db.sqlite",
 				"MEDIA_DIR":                          "/override/path/to/cache",
+				"WHATSIGNAL_TRUSTED_PROXIES":         "10.0.0.0/24, 2001:db8::/32",
 			},
 			validate: func(t *testing.T, cfg interface{}) {
 				config := cfg.(*models.Config)
@@ -114,6 +106,7 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, "https://signal.override.com", config.Signal.RPCURL)
 				assert.Equal(t, "/override/path/to/db.sqlite", config.Database.Path)
 				assert.Equal(t, "/override/path/to/cache", config.Media.CacheDir)
+				assert.Equal(t, []string{"10.0.0.0/24", "2001:db8::/32"}, config.Server.TrustedProxies)
 			},
 		},
 		{
@@ -133,19 +126,14 @@ func TestLoadConfig(t *testing.T) {
 			// Clear environment variables that would override config file values
 			// unless the test explicitly sets them
 			if tt.setEnv == nil || tt.setEnv["WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET"] == "" {
-				_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
+				t.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "")
 			}
 
 			// Set environment variables
 			if tt.setEnv != nil {
 				for k, v := range tt.setEnv {
-					_ = os.Setenv(k, v)
+					t.Setenv(k, v)
 				}
-				defer func() {
-					for k := range tt.setEnv {
-						_ = os.Unsetenv(k)
-					}
-				}()
 			}
 
 			config, err := LoadConfig(tt.path)
@@ -238,6 +226,37 @@ func TestValidateBounds(t *testing.T) {
 				},
 			},
 			expectError: false,
+		},
+		{
+			name: "whatsapp retry count too large",
+			config: &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+					RetryCount: 101,
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Retry: models.RetryConfig{
+					InitialBackoffMs: 100,
+					MaxBackoffMs:     5000,
+					MaxAttempts:      3,
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "WhatsApp retry count too large",
 		},
 		{
 			name: "initial backoff too small",
@@ -530,8 +549,9 @@ func TestValidateBounds(t *testing.T) {
 			err = validateBounds(tt.config)
 
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
+				if assert.Error(t, err) {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -540,28 +560,6 @@ func TestValidateBounds(t *testing.T) {
 }
 
 func TestValidateSecurity(t *testing.T) {
-	// Store original environment value
-	originalEnv := os.Getenv("WHATSIGNAL_ENV")
-	originalSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT")
-	originalLookupSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
-	defer func() {
-		if originalEnv != "" {
-			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENV")
-		}
-		if originalSalt != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
-		}
-		if originalLookupSalt != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
-		}
-	}()
-
 	tests := []struct {
 		name        string
 		config      *models.Config
@@ -576,7 +574,7 @@ func TestValidateSecurity(t *testing.T) {
 					WebhookSecret: "",
 				},
 			},
-			environment: "",
+			environment: "development",
 			expectError: false,
 		},
 		{
@@ -586,7 +584,7 @@ func TestValidateSecurity(t *testing.T) {
 					WebhookSecret: "test-secret-123",
 				},
 			},
-			environment: "",
+			environment: "development",
 			expectError: false,
 		},
 		{
@@ -598,7 +596,7 @@ func TestValidateSecurity(t *testing.T) {
 			},
 			environment: "production",
 			expectError: true,
-			errorMsg:    "WhatsApp webhook secret is required in production",
+			errorMsg:    "WhatsApp webhook secret is required in secure mode",
 		},
 		{
 			name: "production environment - short webhook secret",
@@ -648,14 +646,15 @@ func TestValidateSecurity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "production-encryption-salt-value")
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "production-lookup-salt-value")
+			t.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "production-encryption-salt-value")
+			t.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "production-lookup-salt-value")
+			t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "this-is-a-very-long-admin-token-value")
 
 			// Set environment
 			if tt.environment != "" {
-				_ = os.Setenv("WHATSIGNAL_ENV", tt.environment)
+				t.Setenv("WHATSIGNAL_ENV", tt.environment)
 			} else {
-				_ = os.Unsetenv("WHATSIGNAL_ENV")
+				t.Setenv("WHATSIGNAL_ENV", "")
 			}
 
 			err := validateSecurity(tt.config)
@@ -671,28 +670,8 @@ func TestValidateSecurity(t *testing.T) {
 }
 
 func TestValidateSecurity_ProductionRequiresEncryptionSalts(t *testing.T) {
-	originalEnv := os.Getenv("WHATSIGNAL_ENV")
-	originalSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_SALT")
-	originalLookupSalt := os.Getenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
-	defer func() {
-		if originalEnv != "" {
-			_ = os.Setenv("WHATSIGNAL_ENV", originalEnv)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENV")
-		}
-		if originalSalt != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", originalSalt)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
-		}
-		if originalLookupSalt != "" {
-			_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", originalLookupSalt)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
-		}
-	}()
-
-	_ = os.Setenv("WHATSIGNAL_ENV", "production")
+	t.Setenv("WHATSIGNAL_ENV", "production")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "this-is-a-very-long-admin-token-value")
 
 	tests := []struct {
 		name       string
@@ -704,7 +683,7 @@ func TestValidateSecurity_ProductionRequiresEncryptionSalts(t *testing.T) {
 			name:       "missing encryption salt",
 			salt:       "",
 			lookupSalt: "production-lookup-salt-value",
-			errorMsg:   "WHATSIGNAL_ENCRYPTION_SALT is required in production",
+			errorMsg:   "WHATSIGNAL_ENCRYPTION_SALT is required in secure mode",
 		},
 		{
 			name:       "short encryption salt",
@@ -716,7 +695,7 @@ func TestValidateSecurity_ProductionRequiresEncryptionSalts(t *testing.T) {
 			name:       "missing lookup salt",
 			salt:       "production-encryption-salt-value",
 			lookupSalt: "",
-			errorMsg:   "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is required in production",
+			errorMsg:   "WHATSIGNAL_ENCRYPTION_LOOKUP_SALT is required in secure mode",
 		},
 		{
 			name:       "short lookup salt",
@@ -735,14 +714,14 @@ func TestValidateSecurity_ProductionRequiresEncryptionSalts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.salt != "" {
-				_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SALT", tt.salt)
+				t.Setenv("WHATSIGNAL_ENCRYPTION_SALT", tt.salt)
 			} else {
-				_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SALT")
+				t.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "")
 			}
 			if tt.lookupSalt != "" {
-				_ = os.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", tt.lookupSalt)
+				t.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", tt.lookupSalt)
 			} else {
-				_ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT")
+				t.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "")
 			}
 
 			cfg := &models.Config{
@@ -764,7 +743,87 @@ func TestValidateSecurity_ProductionRequiresEncryptionSalts(t *testing.T) {
 	}
 }
 
+func TestValidateSecurity_UnsetEnvIsSecureMode(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "production-encryption-salt-value")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "production-lookup-salt-value")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "this-is-a-very-long-admin-token-value")
+
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "",
+		},
+		LogLevel: "info",
+	}
+
+	err := validateSecurity(cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "WhatsApp webhook secret is required")
+}
+
+func TestValidateSecurity_UnsetEnvRequiresEncryptionSalts(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "production-lookup-salt-value")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "this-is-a-very-long-admin-token-value")
+
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "this-is-a-very-long-webhook-secret-that-meets-requirements",
+		},
+		LogLevel: "info",
+	}
+
+	err := validateSecurity(cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "WHATSIGNAL_ENCRYPTION_SALT is required")
+}
+
+func TestValidateSecurity_SecureModeRequiresStrongAdminToken(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SALT", "production-encryption-salt-value")
+	t.Setenv("WHATSIGNAL_ENCRYPTION_LOOKUP_SALT", "production-lookup-salt-value")
+
+	cfg := &models.Config{
+		WhatsApp: models.WhatsAppConfig{
+			WebhookSecret: "this-is-a-very-long-webhook-secret-that-meets-requirements",
+		},
+		LogLevel: "info",
+	}
+
+	t.Run("missing admin token", func(t *testing.T) {
+		t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
+
+		err := validateSecurity(cfg)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "WHATSIGNAL_ADMIN_TOKEN is required")
+	})
+
+	t.Run("short admin token", func(t *testing.T) {
+		t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "short")
+
+		err := validateSecurity(cfg)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "WHATSIGNAL_ADMIN_TOKEN must be at least 32 characters long")
+	})
+
+	t.Run("valid admin token", func(t *testing.T) {
+		t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "this-is-a-very-long-admin-token-value")
+
+		err := validateSecurity(cfg)
+
+		require.NoError(t, err)
+	})
+}
+
 func TestLoadConfig_EdgeCases(t *testing.T) {
+	t.Setenv("WHATSIGNAL_ENV", "development")
+	t.Setenv("WHATSIGNAL_ADMIN_TOKEN", "")
+
 	// Create a temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "whatsignal-config-edge-test")
 	require.NoError(t, err)
@@ -943,7 +1002,65 @@ func TestValidateAppliesDefaults(t *testing.T) {
 	assert.Equal(t, "dev", config.Tracing.ServiceVersion)
 	assert.Equal(t, "development", config.Tracing.Environment)
 	assert.Equal(t, 0.1, config.Tracing.SampleRate)
-	assert.True(t, config.Tracing.UseStdout)
+	assert.False(t, config.Tracing.UseStdout)
+}
+
+func TestValidateTracingUseStdoutDefaults(t *testing.T) {
+	tests := []struct {
+		name       string
+		tracing    models.TracingConfig
+		wantStdout bool
+	}{
+		{
+			name:       "disabled tracing does not enable stdout exporter",
+			tracing:    models.TracingConfig{Enabled: false},
+			wantStdout: false,
+		},
+		{
+			name:       "enabled tracing without exporter uses stdout",
+			tracing:    models.TracingConfig{Enabled: true},
+			wantStdout: true,
+		},
+		{
+			name: "enabled tracing with custom exporter does not force stdout",
+			tracing: models.TracingConfig{
+				Enabled:      true,
+				OTLPEndpoint: "https://otel.example.com/v1/traces",
+			},
+			wantStdout: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &models.Config{
+				WhatsApp: models.WhatsAppConfig{
+					APIBaseURL: "https://whatsapp.example.com",
+				},
+				Signal: models.SignalConfig{
+					RPCURL: "https://signal.example.com",
+				},
+				Database: models.DatabaseConfig{
+					Path: "/path/to/db.sqlite",
+				},
+				Media: models.MediaConfig{
+					CacheDir: "/path/to/cache",
+				},
+				Channels: []models.Channel{
+					{
+						WhatsAppSessionName:          "default",
+						SignalDestinationPhoneNumber: "+1234567890",
+					},
+				},
+				Tracing: tt.tracing,
+			}
+
+			err := validate(config)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStdout, config.Tracing.UseStdout)
+		})
+	}
 }
 
 func TestValidateDoesNotOverrideExisting(t *testing.T) {
@@ -1021,42 +1138,6 @@ func TestLoadConfig_FilePermissions(t *testing.T) {
 }
 
 func TestApplyEnvironmentOverrides(t *testing.T) {
-	// Store original environment values
-	originalWhatsAppURL := os.Getenv("WHATSAPP_API_URL")
-	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-	originalSignalURL := os.Getenv("SIGNAL_RPC_URL")
-	originalDBPath := os.Getenv("DB_PATH")
-	originalMediaDir := os.Getenv("MEDIA_DIR")
-
-	defer func() {
-		// Restore original environment
-		if originalWhatsAppURL != "" {
-			_ = os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
-		} else {
-			_ = os.Unsetenv("WHATSAPP_API_URL")
-		}
-		if originalWebhookSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-		}
-		if originalSignalURL != "" {
-			_ = os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
-		} else {
-			_ = os.Unsetenv("SIGNAL_RPC_URL")
-		}
-		if originalDBPath != "" {
-			_ = os.Setenv("DB_PATH", originalDBPath)
-		} else {
-			_ = os.Unsetenv("DB_PATH")
-		}
-		if originalMediaDir != "" {
-			_ = os.Setenv("MEDIA_DIR", originalMediaDir)
-		} else {
-			_ = os.Unsetenv("MEDIA_DIR")
-		}
-	}()
-
 	config := &models.Config{
 		WhatsApp: models.WhatsAppConfig{
 			APIBaseURL:    "https://original-whatsapp.com",
@@ -1074,11 +1155,11 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 	}
 
 	// Set environment variables
-	_ = os.Setenv("WHATSAPP_API_URL", "https://env-whatsapp.com")
-	_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "env-webhook-secret")
-	_ = os.Setenv("SIGNAL_RPC_URL", "https://env-signal.com")
-	_ = os.Setenv("DB_PATH", "/env/path/to/db.sqlite")
-	_ = os.Setenv("MEDIA_DIR", "/env/path/to/cache")
+	t.Setenv("WHATSAPP_API_URL", "https://env-whatsapp.com")
+	t.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "env-webhook-secret")
+	t.Setenv("SIGNAL_RPC_URL", "https://env-signal.com")
+	t.Setenv("DB_PATH", "/env/path/to/db.sqlite")
+	t.Setenv("MEDIA_DIR", "/env/path/to/cache")
 
 	applyEnvironmentOverrides(config)
 
@@ -1091,42 +1172,6 @@ func TestApplyEnvironmentOverrides(t *testing.T) {
 }
 
 func TestApplyEnvironmentOverrides_EmptyEnv(t *testing.T) {
-	// Store original environment values
-	originalWhatsAppURL := os.Getenv("WHATSAPP_API_URL")
-	originalWebhookSecret := os.Getenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-	originalSignalURL := os.Getenv("SIGNAL_RPC_URL")
-	originalDBPath := os.Getenv("DB_PATH")
-	originalMediaDir := os.Getenv("MEDIA_DIR")
-
-	defer func() {
-		// Restore original environment
-		if originalWhatsAppURL != "" {
-			_ = os.Setenv("WHATSAPP_API_URL", originalWhatsAppURL)
-		} else {
-			_ = os.Unsetenv("WHATSAPP_API_URL")
-		}
-		if originalWebhookSecret != "" {
-			_ = os.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", originalWebhookSecret)
-		} else {
-			_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-		}
-		if originalSignalURL != "" {
-			_ = os.Setenv("SIGNAL_RPC_URL", originalSignalURL)
-		} else {
-			_ = os.Unsetenv("SIGNAL_RPC_URL")
-		}
-		if originalDBPath != "" {
-			_ = os.Setenv("DB_PATH", originalDBPath)
-		} else {
-			_ = os.Unsetenv("DB_PATH")
-		}
-		if originalMediaDir != "" {
-			_ = os.Setenv("MEDIA_DIR", originalMediaDir)
-		} else {
-			_ = os.Unsetenv("MEDIA_DIR")
-		}
-	}()
-
 	config := &models.Config{
 		WhatsApp: models.WhatsAppConfig{
 			APIBaseURL:    "https://original-whatsapp.com",
@@ -1144,11 +1189,11 @@ func TestApplyEnvironmentOverrides_EmptyEnv(t *testing.T) {
 	}
 
 	// Unset all environment variables
-	_ = os.Unsetenv("WHATSAPP_API_URL")
-	_ = os.Unsetenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET")
-	_ = os.Unsetenv("SIGNAL_RPC_URL")
-	_ = os.Unsetenv("DB_PATH")
-	_ = os.Unsetenv("MEDIA_DIR")
+	t.Setenv("WHATSAPP_API_URL", "")
+	t.Setenv("WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET", "")
+	t.Setenv("SIGNAL_RPC_URL", "")
+	t.Setenv("DB_PATH", "")
+	t.Setenv("MEDIA_DIR", "")
 
 	applyEnvironmentOverrides(config)
 

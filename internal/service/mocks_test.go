@@ -34,19 +34,56 @@ func (m *mockWhatsAppClient) SendTextWithSession(ctx context.Context, chatID, te
 }
 
 func (m *mockWhatsAppClient) SendImageWithSession(ctx context.Context, chatID, imagePath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if m.hasExpectation("SendImageWithSession") {
+		args := m.Called(ctx, chatID, imagePath, caption, replyTo, sessionName)
+		if args.Get(0) == nil {
+			return nil, args.Error(1)
+		}
+		return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+	}
 	return m.sendImageResp, m.sendImageErr
 }
 
 func (m *mockWhatsAppClient) SendVideoWithSession(ctx context.Context, chatID, videoPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if m.hasExpectation("SendVideoWithSession") {
+		args := m.Called(ctx, chatID, videoPath, caption, replyTo, sessionName)
+		if args.Get(0) == nil {
+			return nil, args.Error(1)
+		}
+		return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+	}
 	return m.sendVideoResp, m.sendVideoErr
 }
 
 func (m *mockWhatsAppClient) SendDocumentWithSession(ctx context.Context, chatID, docPath, caption, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if m.hasExpectation("SendDocumentWithSession") {
+		args := m.Called(ctx, chatID, docPath, caption, replyTo, sessionName)
+		if args.Get(0) == nil {
+			return nil, args.Error(1)
+		}
+		return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+	}
 	return m.sendDocumentResp, m.sendDocumentErr
 }
 
 func (m *mockWhatsAppClient) SendVoiceWithSession(ctx context.Context, chatID, voicePath, replyTo, sessionName string) (*types.SendMessageResponse, error) {
+	if m.hasExpectation("SendVoiceWithSession") {
+		args := m.Called(ctx, chatID, voicePath, replyTo, sessionName)
+		if args.Get(0) == nil {
+			return nil, args.Error(1)
+		}
+		return args.Get(0).(*types.SendMessageResponse), args.Error(1)
+	}
 	return m.sendVoiceResp, m.sendVoiceErr
+}
+
+func (m *mockWhatsAppClient) hasExpectation(method string) bool {
+	for _, call := range m.ExpectedCalls {
+		if call.Method == method {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *mockWhatsAppClient) SendReactionWithSession(ctx context.Context, chatID, messageID, reaction, sessionName string) (*types.SendMessageResponse, error) {

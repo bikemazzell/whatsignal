@@ -168,6 +168,39 @@ func TestRegistry_SetGauge(t *testing.T) {
 	}
 }
 
+func TestRegistry_GetAllMetricsReturnsDeepCopy(t *testing.T) {
+	registry := NewRegistry()
+	labels := map[string]string{"status": "success"}
+
+	registry.IncrementCounter("test_counter", labels, "Test counter")
+	registry.RecordTimer("test_timer", 100*time.Millisecond, labels, "Test timer")
+	registry.SetGauge("test_gauge", 42, labels, "Test gauge")
+
+	snapshot := registry.GetAllMetrics()
+	snapshot.Counters["test_counter_status:success"].Value = 99
+	snapshot.Counters["test_counter_status:success"].Labels["status"] = "mutated"
+	snapshot.Timers["test_timer_status:success"].samples[0] = 999
+	snapshot.Gauges["test_gauge_status:success"].Value = 99
+	snapshot.Gauges["test_gauge_status:success"].Labels["status"] = "mutated"
+
+	fresh := registry.GetAllMetrics()
+	if got := fresh.Counters["test_counter_status:success"].Value; got != 1 {
+		t.Fatalf("counter snapshot mutation leaked into registry: got %f", got)
+	}
+	if got := fresh.Counters["test_counter_status:success"].Labels["status"]; got != "success" {
+		t.Fatalf("counter labels mutation leaked into registry: got %q", got)
+	}
+	if got := fresh.Timers["test_timer_status:success"].samples[0]; got != 100 {
+		t.Fatalf("timer samples mutation leaked into registry: got %f", got)
+	}
+	if got := fresh.Gauges["test_gauge_status:success"].Value; got != 42 {
+		t.Fatalf("gauge snapshot mutation leaked into registry: got %f", got)
+	}
+	if got := fresh.Gauges["test_gauge_status:success"].Labels["status"]; got != "success" {
+		t.Fatalf("gauge labels mutation leaked into registry: got %q", got)
+	}
+}
+
 func TestRegistry_MetricKey(t *testing.T) {
 	registry := NewRegistry()
 
@@ -234,6 +267,31 @@ func TestRegistry_PercentileCalculation(t *testing.T) {
 		if timer.P99 < timer.P95 {
 			t.Fatalf("Expected P99 (%f) to be >= P95 (%f)", timer.P99, timer.P95)
 		}
+	}
+}
+
+func TestRegistry_RecordTimerDefersPercentilesUntilSnapshot(t *testing.T) {
+	registry := NewRegistry()
+
+	for i := 1; i <= 10; i++ {
+		registry.RecordTimer("lazy_percentile_test", time.Duration(i)*time.Millisecond, nil, "Lazy percentile test")
+	}
+
+	registry.mu.RLock()
+	stored := registry.timers["lazy_percentile_test"]
+	if stored.P95 != 0 || stored.P99 != 0 {
+		registry.mu.RUnlock()
+		t.Fatalf("RecordTimer computed percentiles on the write path: P95=%f P99=%f", stored.P95, stored.P99)
+	}
+	registry.mu.RUnlock()
+
+	snapshot := registry.GetAllMetrics()
+	timer := snapshot.Timers["lazy_percentile_test"]
+	if timer.P95 <= 0 {
+		t.Fatal("Expected snapshot P95 to be calculated")
+	}
+	if timer.P99 <= 0 {
+		t.Fatal("Expected snapshot P99 to be calculated")
 	}
 }
 

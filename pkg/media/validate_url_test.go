@@ -35,7 +35,7 @@ func setupHandlerForURLValidationWithSignal(t *testing.T, wahaBaseURL, signalRPC
 }
 
 func TestValidateDownloadURL_NoWAHABase(t *testing.T) {
-	// When no WAHA base URL is configured, validation should be skipped
+	// Without a configured download service, remote URLs must fail closed.
 	h := setupHandlerForURLValidation(t, "") // Empty WAHA base URL
 
 	testURLs := []string{
@@ -48,11 +48,17 @@ func TestValidateDownloadURL_NoWAHABase(t *testing.T) {
 	}
 
 	for _, url := range testURLs {
-		t.Run("skip_validation_"+url, func(t *testing.T) {
+		t.Run("reject_without_service_"+url, func(t *testing.T) {
 			err := h.validateDownloadURL(url)
-			assert.NoError(t, err, "Should skip validation when no WAHA base URL is configured")
+			assert.Error(t, err, "Should reject remote URL when no WAHA or Signal service URL is configured")
 		})
 	}
+}
+
+func TestValidateDownloadURL_DNSLookupFailureFailsClosed(t *testing.T) {
+	err := rejectDisallowedResolvedIP("definitely-not-resolvable.invalid")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to resolve")
 }
 
 func TestValidateDownloadURL_SchemeValidation(t *testing.T) {
@@ -555,10 +561,11 @@ func TestValidateDownloadURL_ComprehensiveSecurity(t *testing.T) {
 func TestValidateDownloadURL_CodeCoverage(t *testing.T) {
 	// Test specific code paths for coverage
 
-	t.Run("empty_waha_base_skips_validation", func(t *testing.T) {
+	t.Run("empty_service_urls_fail_closed", func(t *testing.T) {
 		h := setupHandlerForURLValidation(t, "")
 		err := h.validateDownloadURL("file:///etc/passwd")
-		assert.NoError(t, err, "Should skip validation when no WAHA base URL")
+		assert.Error(t, err, "Should reject URL validation when no download service URL is configured")
+		assert.Contains(t, err.Error(), "download service URL not configured")
 	})
 
 	t.Run("invalid_url_parsing", func(t *testing.T) {

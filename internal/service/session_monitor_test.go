@@ -23,6 +23,16 @@ func TestNewSessionMonitor(t *testing.T) {
 	require.NotNil(t, monitor)
 }
 
+func waitForSessionMonitorRunning(t *testing.T, monitor *SessionMonitor) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		monitor.mu.Lock()
+		defer monitor.mu.Unlock()
+		return monitor.running && monitor.stopCh != nil
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestSessionMonitor_Start(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -89,8 +99,7 @@ func TestSessionMonitor_Start(t *testing.T) {
 			// Start monitoring
 			monitor.Start(ctx)
 
-			// Intentional: allow the monitor goroutine to enter its select loop before stopping
-			time.Sleep(50 * time.Millisecond)
+			waitForSessionMonitorRunning(t, monitor)
 
 			// Stop monitoring
 			monitor.Stop()
@@ -126,8 +135,7 @@ func TestSessionMonitor_Stop(t *testing.T) {
 
 	monitor.Start(ctx)
 
-	// Intentional: allow the monitor goroutine to enter its select loop before stopping
-	time.Sleep(100 * time.Millisecond)
+	waitForSessionMonitorRunning(t, monitor)
 
 	// Stop monitoring
 	monitor.Stop()
@@ -291,8 +299,7 @@ func TestSessionMonitor_StopMultipleTimes(t *testing.T) {
 	}, nil).Maybe()
 
 	monitor.Start(ctx)
-	// Intentional: allow the monitor goroutine to enter its select loop before stopping
-	time.Sleep(100 * time.Millisecond)
+	waitForSessionMonitorRunning(t, monitor)
 
 	// First stop
 	monitor.Stop()
@@ -325,8 +332,7 @@ func TestSessionMonitor_ConcurrentStop(t *testing.T) {
 	}, nil).Maybe()
 
 	monitor.Start(ctx)
-	// Intentional: allow the monitor goroutine to enter its select loop before stopping
-	time.Sleep(100 * time.Millisecond)
+	waitForSessionMonitorRunning(t, monitor)
 
 	// Launch multiple goroutines calling Stop() concurrently
 	var wg sync.WaitGroup
@@ -359,20 +365,19 @@ func TestSessionMonitor_StartStopStartStop(t *testing.T) {
 		Status: "WORKING",
 	}, nil).Maybe()
 
-	// Intentional: each sleep allows the monitor goroutine to enter its select loop before stopping.
 	// First cycle
 	monitor.Start(ctx)
-	time.Sleep(100 * time.Millisecond)
+	waitForSessionMonitorRunning(t, monitor)
 	monitor.Stop()
 
 	// Second cycle - ensure stopCh is recreated properly
 	monitor.Start(ctx)
-	time.Sleep(100 * time.Millisecond)
+	waitForSessionMonitorRunning(t, monitor)
 	monitor.Stop()
 
 	// Third cycle
 	monitor.Start(ctx)
-	time.Sleep(100 * time.Millisecond)
+	waitForSessionMonitorRunning(t, monitor)
 	monitor.Stop()
 
 	assert.True(t, true) // If we get here without issues, test passed

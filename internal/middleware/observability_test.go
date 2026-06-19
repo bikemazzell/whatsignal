@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -101,6 +102,74 @@ func TestObservabilityMiddleware(t *testing.T) {
 	if !strings.Contains(logOutput, "trace_id") {
 		t.Error("Expected 'trace_id' field in logs")
 	}
+}
+
+func TestObservabilityMiddlewareTracksActiveRequestsAsGauge(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard)
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	requestDone := make(chan struct{})
+
+	wrappedHandler := ObservabilityMiddleware(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-releaseRequest
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	before := metrics.GetAllMetrics()
+	beforeCounter := counterValue(before, "http_requests_active")
+
+	go func() {
+		req := httptest.NewRequest(http.MethodGet, "/active-gauge", nil)
+		wrappedHandler.ServeHTTP(httptest.NewRecorder(), req)
+		close(requestDone)
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("request handler did not start")
+	}
+
+	during := metrics.GetAllMetrics()
+	if got := counterValue(during, "http_requests_active"); got != beforeCounter {
+		close(releaseRequest)
+		<-requestDone
+		t.Fatalf("http_requests_active counter changed while request was active: before=%f during=%f", beforeCounter, got)
+	}
+	if got := gaugeValue(during, "http_requests_active"); got != 1 {
+		close(releaseRequest)
+		<-requestDone
+		t.Fatalf("expected http_requests_active gauge to be 1 during request, got %f", got)
+	}
+
+	close(releaseRequest)
+	select {
+	case <-requestDone:
+	case <-time.After(time.Second):
+		t.Fatal("request handler did not finish")
+	}
+
+	after := metrics.GetAllMetrics()
+	if got := gaugeValue(after, "http_requests_active"); got != 0 {
+		t.Fatalf("expected http_requests_active gauge to return to 0, got %f", got)
+	}
+}
+
+func counterValue(snapshot *metrics.MetricsSnapshot, name string) float64 {
+	if metric, ok := snapshot.Counters[name]; ok {
+		return metric.Value
+	}
+	return 0
+}
+
+func gaugeValue(snapshot *metrics.MetricsSnapshot, name string) float64 {
+	if metric, ok := snapshot.Gauges[name]; ok {
+		return metric.Value
+	}
+	return 0
 }
 
 func TestObservabilityMiddleware_ErrorStatus(t *testing.T) {
@@ -537,6 +606,36 @@ func TestDetailedLoggingMiddleware_FullLogging(t *testing.T) {
 	// Should include status code
 	if !strings.Contains(logOutput, "status_code") || !strings.Contains(logOutput, "201") {
 		t.Error("Expected status code 201 in log")
+	}
+}
+
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+	flushed bool
+}
+
+func (r *flushRecorder) Flush() {
+	r.flushed = true
+}
+
+func TestResponseCaptureWrapperPreservesFlusher(t *testing.T) {
+	recorder := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	capture := &responseCaptureWrapper{
+		ResponseWriter: recorder,
+		body:           &bytes.Buffer{},
+		headers:        http.Header{},
+		statusCode:     http.StatusOK,
+	}
+
+	flusher, ok := interface{}(capture).(http.Flusher)
+	if !ok {
+		t.Fatal("response capture wrapper should implement http.Flusher")
+	}
+
+	flusher.Flush()
+
+	if !recorder.flushed {
+		t.Fatal("Flush should delegate to the wrapped response writer")
 	}
 }
 

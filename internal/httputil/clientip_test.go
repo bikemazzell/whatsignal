@@ -109,8 +109,37 @@ func TestGetClientIP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := tt.setupReq()
-			got := GetClientIP(req)
+			if req.RemoteAddr == "" {
+				req.RemoteAddr = "10.0.0.5:4321"
+			}
+			got := GetClientIP(req, "10.0.0.0/24")
 			assert.Equal(t, tt.expectedIP, got)
 		})
 	}
+}
+
+func TestGetClientIPTrustsForwardedHeadersOnlyFromTrustedProxies(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req.RemoteAddr = "10.0.0.5:4321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.10, 10.0.0.5")
+	req.Header.Set("X-Real-IP", "198.51.100.20")
+
+	assert.Equal(t, "10.0.0.5", GetClientIP(req))
+	assert.Equal(t, "10.0.0.5", GetClientIP(req, "10.0.1.0/24"))
+	assert.Equal(t, "203.0.113.10", GetClientIP(req, "10.0.0.0/24"))
+}
+
+func TestGetClientIPTrustedProxyFallsBackToXRealIP(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req.RemoteAddr = "10.0.0.5:4321"
+	req.Header.Set("X-Real-IP", "198.51.100.20")
+
+	assert.Equal(t, "198.51.100.20", GetClientIP(req, "10.0.0.0/24"))
+}
+
+func TestValidateTrustedProxyCIDRs(t *testing.T) {
+	assert.NoError(t, ValidateTrustedProxyCIDRs(nil))
+	assert.NoError(t, ValidateTrustedProxyCIDRs([]string{"10.0.0.0/24", "2001:db8::/32"}))
+	assert.Error(t, ValidateTrustedProxyCIDRs([]string{"10.0.0.5"}))
+	assert.Error(t, ValidateTrustedProxyCIDRs([]string{"not-a-cidr"}))
 }

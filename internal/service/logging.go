@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/privacy"
+	"whatsignal/internal/validation"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,15 +32,10 @@ func SanitizePhoneNumber(phone string) string {
 	if phone == "" {
 		return ""
 	}
-
-	// Remove @c.us suffix if present
-	cleaned := strings.TrimSuffix(phone, "@c.us")
-
-	// For privacy, show only last N digits
-	if len(cleaned) > constants.DefaultPhoneMaskLength {
-		return "***" + cleaned[len(cleaned)-constants.DefaultPhoneMaskLength:]
+	if strings.Contains(phone, "@") {
+		return privacy.MaskChatID(phone)
 	}
-	return "***"
+	return privacy.MaskPhoneNumber(phone)
 }
 
 // SanitizeMessageID removes or shortens message IDs for privacy
@@ -96,82 +93,7 @@ func LogWithContext(ctx context.Context, logger *logrus.Logger) *logrus.Entry {
 // Accepts phone numbers with or without + prefix (WhatsApp API compatibility)
 // Also accepts WhatsApp group IDs (numeric with @g.us suffix, up to 25 digits)
 func ValidatePhoneNumber(phone string) error {
-	if phone == "" {
-		return fmt.Errorf("phone number cannot be empty")
-	}
-
-	// Check if this is a group ID first - groups have different validation rules
-	isGroup := strings.HasSuffix(phone, "@g.us") || strings.Contains(phone, "@g.us")
-
-	// Check if this is a LID (Linked ID) format used by WhatsApp
-	isLID := strings.HasSuffix(phone, "@lid")
-
-	// Remove @c.us, @g.us, or @lid suffix for validation
-	cleaned := strings.TrimSuffix(phone, "@c.us")
-	cleaned = strings.TrimSuffix(cleaned, "@g.us")
-	cleaned = strings.TrimSuffix(cleaned, "@lid")
-
-	// Handle group IDs with hyphens (some groups have format like "120363-1234567890@g.us")
-	if strings.Contains(cleaned, "-") {
-		// This is a compound group ID, not a phone number
-		parts := strings.Split(cleaned, "-")
-		if len(parts) >= 2 && len(parts[0]) > 0 {
-			// Basic validation for compound group ID - just check first part has digits
-			for _, char := range parts[0] {
-				if char < '0' || char > '9' {
-					return fmt.Errorf("invalid group ID format: non-numeric characters")
-				}
-			}
-			return nil
-		}
-		return fmt.Errorf("invalid group ID format")
-	}
-
-	var digits string
-	// Handle both formats: with + prefix (Signal) and without + prefix (WhatsApp)
-	if strings.HasPrefix(cleaned, "+") {
-		digits = cleaned[1:]
-	} else {
-		// WhatsApp format without + prefix
-		digits = cleaned
-	}
-
-	// Check if empty after prefix removal
-	if len(digits) == 0 {
-		return fmt.Errorf("phone number must contain digits")
-	}
-
-	// Different length validation for groups vs individual contacts vs LIDs
-	// Groups can have longer IDs (up to 25 digits observed in the wild)
-	// Individual phone numbers: 7-15 digits (E.164 standard)
-	// WhatsApp business/special accounts: up to 20 digits
-	// LIDs (Linked IDs): up to 25 digits (WhatsApp internal user identifiers)
-	maxLength := 20
-	if isGroup || isLID {
-		maxLength = 25 // Groups and LIDs can have longer numeric IDs
-	}
-
-	if len(digits) < 7 || len(digits) > maxLength {
-		if isGroup {
-			return fmt.Errorf("group ID must be between 7 and %d digits, got %d", maxLength, len(digits))
-		}
-		if isLID {
-			return fmt.Errorf("linked ID must be between 7 and %d digits, got %d", maxLength, len(digits))
-		}
-		return fmt.Errorf("phone number must be between 7 and %d digits, got %d", maxLength, len(digits))
-	}
-
-	// Check if all characters are digits
-	for _, char := range digits {
-		if char < '0' || char > '9' {
-			if isGroup {
-				return fmt.Errorf("group ID must contain only digits")
-			}
-			return fmt.Errorf("phone number must contain only digits")
-		}
-	}
-
-	return nil
+	return validation.ValidateChatID(phone)
 }
 
 // ValidateMessageID performs basic message ID validation

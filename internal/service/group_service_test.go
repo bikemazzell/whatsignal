@@ -10,6 +10,7 @@ import (
 	"whatsignal/internal/models"
 	"whatsignal/pkg/whatsapp/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -144,7 +145,7 @@ func TestGroupService_GetGroupName_APIFailure_UsesCache(t *testing.T) {
 	name := gs.GetGroupName(ctx, groupID, sessionName)
 
 	assert.Equal(t, "Cached Group", name)
-	assert.False(t, gs.degradedMode) // API error doesn't trigger degraded mode yet
+	assert.False(t, gs.degradedMode.Load()) // API error doesn't trigger degraded mode yet
 	mockDB.AssertExpectations(t)
 	mockWA.AssertExpectations(t)
 }
@@ -363,6 +364,18 @@ func TestGroupService_NewGroupServiceWithConfig(t *testing.T) {
 
 	gs = NewGroupServiceWithConfig(mockDB, mockWA, -5)
 	assert.Equal(t, 24, gs.cacheValidHours)
+}
+
+func TestNewGroupServiceWithConfigAndLoggerUsesProvidedLogger(t *testing.T) {
+	mockDB := new(mockGroupDatabase)
+	mockWA := new(mockWhatsAppClient)
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	service := NewGroupServiceWithConfigAndLogger(mockDB, mockWA, 24, logger)
+
+	assert.Same(t, logger, service.logger.Logger)
+	assert.Same(t, logger, service.circuitBreaker.logger())
 }
 
 // Mock implementations

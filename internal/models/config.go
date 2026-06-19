@@ -94,14 +94,15 @@ type RetryConfig struct {
 
 // ServerConfig holds server related configurations
 type ServerConfig struct {
-	ReadTimeoutSec          int `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
-	WriteTimeoutSec         int `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
-	IdleTimeoutSec          int `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
-	WebhookMaxSkewSec       int `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
-	WebhookMaxBytes         int `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
-	RateLimitPerMinute      int `json:"rateLimitPerMinute" mapstructure:"rateLimitPerMinute"`
-	RateLimitCleanupMinutes int `json:"rateLimitCleanupMinutes" mapstructure:"rateLimitCleanupMinutes"`
-	CleanupIntervalHours    int `json:"cleanupIntervalHours" mapstructure:"cleanupIntervalHours"`
+	ReadTimeoutSec          int      `json:"readTimeoutSec" mapstructure:"readTimeoutSec"`
+	WriteTimeoutSec         int      `json:"writeTimeoutSec" mapstructure:"writeTimeoutSec"`
+	IdleTimeoutSec          int      `json:"idleTimeoutSec" mapstructure:"idleTimeoutSec"`
+	WebhookMaxSkewSec       int      `json:"webhookMaxSkewSec" mapstructure:"webhookMaxSkewSec"`
+	WebhookMaxBytes         int      `json:"webhookMaxBytes" mapstructure:"webhookMaxBytes"`
+	RateLimitPerMinute      int      `json:"rateLimitPerMinute" mapstructure:"rateLimitPerMinute"`
+	RateLimitCleanupMinutes int      `json:"rateLimitCleanupMinutes" mapstructure:"rateLimitCleanupMinutes"`
+	CleanupIntervalHours    int      `json:"cleanupIntervalHours" mapstructure:"cleanupIntervalHours"`
+	TrustedProxies          []string `json:"trustedProxies" mapstructure:"trustedProxies"`
 }
 
 // TracingConfig holds OpenTelemetry tracing configurations
@@ -113,6 +114,7 @@ type TracingConfig struct {
 	SampleRate         float64 `json:"sample_rate" mapstructure:"sample_rate"`
 	Enabled            bool    `json:"enabled" mapstructure:"enabled"`
 	UseStdout          bool    `json:"use_stdout" mapstructure:"use_stdout"`
+	OTLPInsecure       bool    `json:"otlp_insecure" mapstructure:"otlp_insecure"`
 	ShutdownTimeoutSec int     `json:"shutdown_timeout_sec" mapstructure:"shutdown_timeout_sec"`
 }
 

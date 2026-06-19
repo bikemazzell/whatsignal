@@ -63,7 +63,7 @@ func main() {
 
 func runHealthCheck() int {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://localhost:8082/health") // #nosec G107 - localhost-only health check
+	resp, err := client.Get("http://localhost:8082/readyz") // #nosec G107 - localhost-only health check
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Health check failed: %v\n", err)
 		return 1
@@ -112,6 +112,7 @@ func run(ctx context.Context) error {
 		SampleRate:         cfg.Tracing.SampleRate,
 		Enabled:            cfg.Tracing.Enabled,
 		UseStdout:          cfg.Tracing.UseStdout,
+		OTLPInsecure:       cfg.Tracing.OTLPInsecure,
 		ShutdownTimeoutSec: cfg.Tracing.ShutdownTimeoutSec,
 	}, logger)
 
@@ -173,13 +174,13 @@ func run(ctx context.Context) error {
 	// (already validated in validateConfig)
 	defaultSessionName := cfg.Channels[0].WhatsAppSessionName
 
-	waClient := whatsapp.NewClient(types.ClientConfig{
+	waClient := whatsapp.NewClientWithLogger(types.ClientConfig{
 		BaseURL:     cfg.WhatsApp.APIBaseURL,
 		APIKey:      apiKey,
 		SessionName: defaultSessionName,
 		Timeout:     cfg.WhatsApp.Timeout,
 		RetryCount:  cfg.WhatsApp.RetryCount,
-	})
+	}, logger)
 
 	// Use configured Signal HTTP timeout or default
 	signalHTTPClient := &http.Client{
@@ -207,7 +208,7 @@ func run(ctx context.Context) error {
 	if cacheHours <= 0 {
 		cacheHours = constants.DefaultContactCacheHours
 	}
-	contactService := service.NewContactServiceWithConfig(db, waClient, cacheHours)
+	contactService := service.NewContactServiceWithConfigAndLogger(db, waClient, cacheHours, logger)
 
 	syncOnStartup := cfg.WhatsApp.ContactSyncOnStartup
 	if syncOnStartup {
@@ -222,7 +223,7 @@ func run(ctx context.Context) error {
 	if groupCacheHours <= 0 {
 		groupCacheHours = constants.DefaultContactCacheHours
 	}
-	groupService := service.NewGroupServiceWithConfig(db, waClient, groupCacheHours)
+	groupService := service.NewGroupServiceWithConfigAndLogger(db, waClient, groupCacheHours, logger)
 	logger.WithField("cache_hours", groupCacheHours).Info("GroupService initialized")
 
 	// Optionally sync all groups on startup if configured
@@ -241,7 +242,7 @@ func run(ctx context.Context) error {
 
 	logger.WithField("channels", len(cfg.Channels)).Info("Multi-channel bridge initialized")
 
-	messageService := service.NewMessageService(bridge, db, mediaHandler, sigClient, cfg.Signal, channelManager)
+	messageService := service.NewMessageServiceWithLogger(bridge, db, mediaHandler, sigClient, cfg.Signal, channelManager, logger)
 
 	scheduler := service.NewScheduler(bridge, cfg.RetentionDays, cfg.Server.CleanupIntervalHours, logger)
 	go scheduler.Start(ctx)
@@ -392,10 +393,6 @@ func setLogLevel(logger *logrus.Logger, configLevel string) {
 		return
 	}
 
-	// Cap at InfoLevel unless explicitly set to debug/trace (verbose flag handles debug)
-	if level > logrus.InfoLevel {
-		level = logrus.InfoLevel
-	}
 	logger.SetLevel(level)
 }
 
@@ -444,20 +441,20 @@ func syncSessionContacts(ctx context.Context, cfg *models.Config, db *database.D
 	sessionLogger.Info("Waiting for WhatsApp session to be ready...")
 
 	// Create a client for this specific session
-	sessionClient := whatsapp.NewClient(types.ClientConfig{
+	sessionClient := whatsapp.NewClientWithLogger(types.ClientConfig{
 		BaseURL:     cfg.WhatsApp.APIBaseURL,
 		APIKey:      apiKey,
 		SessionName: sessionName,
 		Timeout:     cfg.WhatsApp.Timeout,
 		RetryCount:  cfg.WhatsApp.RetryCount,
-	})
+	}, logger)
 
 	if !ensureSessionReadyForStartup(ctx, sessionClient, sessionName, "contact", cfg.WhatsApp.SessionAutoRestart, logger) {
 		return
 	}
 
 	// Create a contact service for this session
-	sessionContactService := service.NewContactServiceWithConfig(db, sessionClient, cacheHours)
+	sessionContactService := service.NewContactServiceWithConfigAndLogger(db, sessionClient, cacheHours, logger)
 	if err := sessionContactService.SyncAllContacts(ctx); err != nil {
 		sessionLogger.Warnf("Failed to sync contacts on startup: %v. Contact names may not be available immediately.", err)
 	} else {
@@ -510,20 +507,20 @@ func syncSessionGroups(ctx context.Context, cfg *models.Config, db *database.Dat
 	sessionLogger.Info("Waiting for WhatsApp session to be ready for group sync...")
 
 	// Create a client for this specific session
-	sessionClient := whatsapp.NewClient(types.ClientConfig{
+	sessionClient := whatsapp.NewClientWithLogger(types.ClientConfig{
 		BaseURL:     cfg.WhatsApp.APIBaseURL,
 		APIKey:      apiKey,
 		SessionName: sessionName,
 		Timeout:     cfg.WhatsApp.Timeout,
 		RetryCount:  cfg.WhatsApp.RetryCount,
-	})
+	}, logger)
 
 	if !ensureSessionReadyForStartup(ctx, sessionClient, sessionName, "group", cfg.WhatsApp.SessionAutoRestart, logger) {
 		return
 	}
 
 	// Create a group service for this session
-	sessionGroupService := service.NewGroupServiceWithConfig(db, sessionClient, cacheHours)
+	sessionGroupService := service.NewGroupServiceWithConfigAndLogger(db, sessionClient, cacheHours, logger)
 	if err := sessionGroupService.SyncAllGroups(ctx, sessionName); err != nil {
 		sessionLogger.Warnf("Failed to sync groups on startup: %v. Group names may not be available immediately.", err)
 	} else {

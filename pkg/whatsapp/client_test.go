@@ -14,6 +14,7 @@ import (
 	"whatsignal/pkg/circuitbreaker"
 	"whatsignal/pkg/whatsapp/types"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -254,6 +255,20 @@ func setupTestClient(t *testing.T) (*WhatsAppClient, *httptest.Server) {
 
 	client := NewClient(config).(*WhatsAppClient)
 	return client, server
+}
+
+func TestNewClientWithLoggerUsesProvidedLogger(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	client := NewClientWithLogger(types.ClientConfig{
+		BaseURL:     "http://localhost:3000",
+		APIKey:      "test-api-key",
+		SessionName: "test-session",
+		Timeout:     5 * time.Second,
+	}, logger).(*WhatsAppClient)
+
+	assert.Same(t, logger, client.logger)
 }
 
 func TestClient_Session(t *testing.T) {
@@ -1394,8 +1409,10 @@ func TestClient_ServerVersionError(t *testing.T) {
 			assert.Equal(t, tt.expectSupport, support)
 
 			// Should be cached even on error
+			client.supportsVideoMu.RLock()
 			assert.NotNil(t, client.supportsVideo)
 			assert.Equal(t, tt.expectSupport, *client.supportsVideo)
+			client.supportsVideoMu.RUnlock()
 		})
 	}
 }

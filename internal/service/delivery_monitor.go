@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"whatsignal/internal/metrics"
@@ -19,6 +20,9 @@ type DeliveryMonitor struct {
 	staleThreshold time.Duration
 	logger         *logrus.Logger
 	stopCh         chan struct{}
+	stopMu         sync.Mutex
+	stopOnce       sync.Once
+	stopWg         sync.WaitGroup
 	lastStaleCount int // track previous count to avoid repeating the same warning
 }
 
@@ -33,6 +37,11 @@ func NewDeliveryMonitor(db StaleMessageCounter, checkInterval, staleThreshold ti
 }
 
 func (m *DeliveryMonitor) Start(ctx context.Context) {
+	m.stopMu.Lock()
+	m.stopWg.Add(1)
+	m.stopMu.Unlock()
+	defer m.stopWg.Done()
+
 	ticker := time.NewTicker(m.checkInterval)
 	defer ticker.Stop()
 
@@ -54,7 +63,12 @@ func (m *DeliveryMonitor) Start(ctx context.Context) {
 }
 
 func (m *DeliveryMonitor) Stop() {
-	close(m.stopCh)
+	m.stopMu.Lock()
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
+	m.stopMu.Unlock()
+	m.stopWg.Wait()
 }
 
 func (m *DeliveryMonitor) checkStaleMessages(ctx context.Context) {

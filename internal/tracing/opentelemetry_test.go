@@ -22,6 +22,7 @@ func TestDefaultTracingConfig(t *testing.T) {
 	assert.Equal(t, 0.1, config.SampleRate)
 	assert.False(t, config.Enabled)
 	assert.True(t, config.UseStdout)
+	assert.False(t, config.OTLPInsecure)
 	assert.Equal(t, 5, config.ShutdownTimeoutSec)
 }
 
@@ -43,13 +44,25 @@ func TestTracingConfig_Validate(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "Valid config with OTLP",
+			name: "Valid config with secure OTLP",
+			config: TracingConfig{
+				ServiceName:  "test-service",
+				SampleRate:   1.0,
+				Enabled:      true,
+				UseStdout:    false,
+				OTLPEndpoint: "https://otel.example.com/v1/traces",
+			},
+			expectError: false,
+		},
+		{
+			name: "Valid config with explicitly insecure OTLP",
 			config: TracingConfig{
 				ServiceName:  "test-service",
 				SampleRate:   1.0,
 				Enabled:      true,
 				UseStdout:    false,
 				OTLPEndpoint: "http://localhost:4318/v1/traces",
+				OTLPInsecure: true,
 			},
 			expectError: false,
 		},
@@ -104,6 +117,18 @@ func TestTracingConfig_Validate(t *testing.T) {
 			expectError: true,
 			errorMsg:    "otlp_endpoint is required",
 		},
+		{
+			name: "HTTP OTLP endpoint requires explicit insecure opt-in",
+			config: TracingConfig{
+				ServiceName:  "test-service",
+				SampleRate:   0.5,
+				Enabled:      true,
+				UseStdout:    false,
+				OTLPEndpoint: "http://localhost:4318/v1/traces",
+			},
+			expectError: true,
+			errorMsg:    "otlp_insecure must be true",
+		},
 	}
 
 	for _, tt := range tests {
@@ -116,6 +141,35 @@ func TestTracingConfig_Validate(t *testing.T) {
 				assert.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestTracingManager_ConcurrentShutdownIsRaceFree(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+
+	tm := NewTracingManager(TracingConfig{
+		ServiceName:        "test-service",
+		ServiceVersion:     "1.0.0",
+		Environment:        "test",
+		SampleRate:         1.0,
+		Enabled:            true,
+		UseStdout:          true,
+		ShutdownTimeoutSec: 1,
+	}, logger)
+
+	ctx := context.Background()
+	require.NoError(t, tm.Initialize(ctx))
+
+	errCh := make(chan error, 16)
+	for i := 0; i < cap(errCh); i++ {
+		go func() {
+			errCh <- tm.Shutdown(ctx)
+		}()
+	}
+
+	for i := 0; i < cap(errCh); i++ {
+		assert.NoError(t, <-errCh)
 	}
 }
 

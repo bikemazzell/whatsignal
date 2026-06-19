@@ -4,13 +4,16 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"whatsignal/internal/constants"
 	"whatsignal/pkg/circuitbreaker"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWhatsAppClient_HealthCheck(t *testing.T) {
@@ -100,6 +103,32 @@ func TestWhatsAppClient_HealthCheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWhatsAppClient_HealthCheckCapsErrorResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(strings.Repeat("x", constants.DefaultWebhookMaxBytes+1)))
+	}))
+	defer server.Close()
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.FatalLevel)
+
+	client := &WhatsAppClient{
+		baseURL:        server.URL,
+		sessionName:    "test-session",
+		apiKey:         "test-api-key",
+		client:         &http.Client{Timeout: 10 * time.Second},
+		logger:         logger,
+		circuitBreaker: circuitbreaker.New("test", 5, time.Second),
+	}
+
+	err := client.HealthCheck(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response body exceeds maximum size")
+	assert.Less(t, len(err.Error()), 1024)
 }
 
 func TestWhatsAppClient_HealthCheck_ContextCancellation(t *testing.T) {

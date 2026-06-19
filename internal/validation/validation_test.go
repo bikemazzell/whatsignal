@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestValidatePhoneNumber(t *testing.T) {
+func TestValidateE164PhoneNumber(t *testing.T) {
 	tests := []struct {
 		name        string
 		phone       string
@@ -29,14 +29,16 @@ func TestValidatePhoneNumber(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "valid with WhatsApp suffix",
+			name:        "WhatsApp suffix is not E.164",
 			phone:       "+1234567890@c.us",
-			expectError: false,
+			expectError: true,
+			errorCode:   errors.ErrCodeInvalidInput,
 		},
 		{
-			name:        "valid with group suffix",
+			name:        "group suffix is not E.164",
 			phone:       "+1234567890@g.us",
-			expectError: false,
+			expectError: true,
+			errorCode:   errors.ErrCodeInvalidInput,
 		},
 		{
 			name:        "valid without prefix",
@@ -85,7 +87,7 @@ func TestValidatePhoneNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidatePhoneNumber(tt.phone)
+			err := ValidateE164PhoneNumber(tt.phone)
 			if tt.expectError {
 				assert.Error(t, err)
 				if tt.errorCode != "" {
@@ -96,6 +98,38 @@ func TestValidatePhoneNumber(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateChatID(t *testing.T) {
+	tests := []struct {
+		name        string
+		chatID      string
+		expectError bool
+	}{
+		{name: "phone number", chatID: "+1234567890"},
+		{name: "whatsapp contact", chatID: "1234567890@c.us"},
+		{name: "whatsapp group", chatID: "120363012345678901-1234567890123456@g.us"},
+		{name: "linked ID", chatID: "1234567890123456789012345@lid"},
+		{name: "empty", chatID: "", expectError: true},
+		{name: "letters", chatID: "+123abc7890", expectError: true},
+		{name: "too short", chatID: "123456", expectError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateChatID(tt.chatID)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidatePhoneNumberUsesStrictE164CompatibilityWrapper(t *testing.T) {
+	assert.NoError(t, ValidatePhoneNumber("+1234567890"))
+	assert.Error(t, ValidatePhoneNumber("1234567890@c.us"))
 }
 
 func TestValidateMessageID(t *testing.T) {

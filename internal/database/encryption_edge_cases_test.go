@@ -3,7 +3,6 @@ package database
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -15,8 +14,7 @@ import (
 
 // TestEncryptor_VeryLargeData tests encryption with very large data
 func TestEncryptor_VeryLargeData(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -34,8 +32,7 @@ func TestEncryptor_VeryLargeData(t *testing.T) {
 
 // TestEncryptor_BinaryData tests encryption with binary data
 func TestEncryptor_BinaryData(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -58,8 +55,7 @@ func TestEncryptor_BinaryData(t *testing.T) {
 
 // TestEncryptor_ConcurrentAccess tests thread safety
 func TestEncryptor_ConcurrentAccess(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -111,8 +107,7 @@ func TestEncryptor_ConcurrentAccess(t *testing.T) {
 // TestEncryptor_InvalidKeySize tests with invalid key sizes
 func TestEncryptor_InvalidKeySize(t *testing.T) {
 	// Test with key too short
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "short")
 
 	_, err := NewEncryptor()
 	require.Error(t, err)
@@ -121,8 +116,7 @@ func TestEncryptor_InvalidKeySize(t *testing.T) {
 
 // TestEncryptor_EncryptForLookupConsistency tests deterministic encryption
 func TestEncryptor_EncryptForLookupConsistency(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -145,8 +139,7 @@ func TestEncryptor_EncryptForLookupConsistency(t *testing.T) {
 
 // TestEncryptor_MalformedBase64 tests decryption with malformed base64
 func TestEncryptor_MalformedBase64(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -179,8 +172,7 @@ func TestEncryptor_MalformedBase64(t *testing.T) {
 
 // TestEncryptor_ModifiedCiphertext tests tamper detection
 func TestEncryptor_ModifiedCiphertext(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -207,8 +199,7 @@ func TestEncryptor_ModifiedCiphertext(t *testing.T) {
 
 // TestEncryptor_NullBytes tests handling of null bytes
 func TestEncryptor_NullBytes(t *testing.T) {
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", "this-is-a-very-long-test-secret-key-for-encryption-testing")
 
 	encryptor, err := NewEncryptor()
 	require.NoError(t, err)
@@ -227,8 +218,7 @@ func TestEncryptor_NullBytes(t *testing.T) {
 // TestEncryptor_KeyDerivationDeterminism tests key derivation consistency
 func TestEncryptor_KeyDerivationDeterminism(t *testing.T) {
 	secret := "this-is-a-very-long-test-secret-key-for-encryption-testing"
-	_ = os.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", secret)
-	defer func() { _ = os.Unsetenv("WHATSIGNAL_ENCRYPTION_SECRET") }()
+	t.Setenv("WHATSIGNAL_ENCRYPTION_SECRET", secret)
 
 	// Derive key multiple times
 	keys := make([][]byte, 5)

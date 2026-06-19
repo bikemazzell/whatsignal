@@ -132,11 +132,6 @@ func (r *Registry) RecordTimer(name string, duration time.Duration, labels map[s
 			timer.samples = newSamples
 		}
 
-		// Calculate percentiles if we have enough samples
-		if len(timer.samples) >= 10 {
-			timer.P95 = r.calculatePercentile(timer.samples, 0.95)
-			timer.P99 = r.calculatePercentile(timer.samples, 0.99)
-		}
 	} else {
 		r.timers[key] = &TimerMetric{
 			Count:   1,
@@ -180,20 +175,42 @@ func (r *Registry) GetAllMetrics() *MetricsSnapshot {
 
 	// Copy counters
 	for key, counter := range r.counters {
-		result.Counters[key] = counter
+		result.Counters[key] = copyMetric(counter)
 	}
 
 	// Copy timers
 	for key, timer := range r.timers {
-		result.Timers[key] = timer
+		result.Timers[key] = copyTimerMetric(timer)
 	}
 
 	// Copy gauges
 	for key, gauge := range r.gauges {
-		result.Gauges[key] = gauge
+		result.Gauges[key] = copyMetric(gauge)
 	}
 
 	return result
+}
+
+func copyMetric(metric *Metric) *Metric {
+	if metric == nil {
+		return nil
+	}
+	copied := *metric
+	copied.Labels = copyLabels(metric.Labels)
+	return &copied
+}
+
+func copyTimerMetric(timer *TimerMetric) *TimerMetric {
+	if timer == nil {
+		return nil
+	}
+	copied := *timer
+	copied.samples = append([]float64(nil), timer.samples...)
+	if len(copied.samples) >= 10 {
+		copied.P95 = calculatePercentile(copied.samples, 0.95)
+		copied.P99 = calculatePercentile(copied.samples, 0.99)
+	}
+	return &copied
 }
 
 // metricKey generates a unique key for a metric with labels
@@ -216,8 +233,7 @@ func (r *Registry) metricKey(name string, labels map[string]string) string {
 	return key
 }
 
-// calculatePercentile calculates the specified percentile from samples
-func (r *Registry) calculatePercentile(samples []float64, percentile float64) float64 {
+func calculatePercentile(samples []float64, percentile float64) float64 {
 	if len(samples) == 0 {
 		return 0
 	}

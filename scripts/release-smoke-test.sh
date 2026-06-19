@@ -55,19 +55,24 @@ docker run -d --name "$CONTAINER_NAME" \
     -e WHATSIGNAL_ENCRYPTION_SECRET=smoke-test-encryption-secret-not-for-production-use \
     -e WHATSIGNAL_ENCRYPTION_SALT=smoke-test-salt-32-bytes-fixed-padding-here-aa \
     -e WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=smoke-test-lookup-salt-32-bytes-fixed-padding \
+    -e WHATSIGNAL_ADMIN_TOKEN=smoke-test-admin-token-not-for-production-use-0123 \
     "$IMAGE"
 
-echo "Waiting for /health..."
+# Gate on /healthz (liveness, 200 once the process is up), not /health
+# (readiness, which stays 503 here because WhatsApp/Signal point at an
+# unreachable address). This test only needs the process serving to verify
+# the webhook HMAC contract.
+echo "Waiting for /healthz..."
 for _ in $(seq 1 60); do
-    if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
-        echo "healthy"
+    if curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
+        echo "live"
         break
     fi
     sleep 1
 done
 
-if ! curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
-    echo "ERROR: container never became healthy. Logs:" >&2
+if ! curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
+    echo "ERROR: container never became live. Logs:" >&2
     docker logs "$CONTAINER_NAME" 2>&1 | tail -50 >&2
     exit 1
 fi

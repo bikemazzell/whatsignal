@@ -1,5 +1,5 @@
 # Use latest Alpine Go image for smaller size
-FROM golang:1.26.3-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
+FROM golang:1.26.4-alpine@sha256:0648ddfa35769070197ba1cdf22a16dc452caf9315e66b91791308a543baf229 AS builder
 
 # Ensure Go can auto-install the required toolchain from go.mod
 ENV GOTOOLCHAIN=auto

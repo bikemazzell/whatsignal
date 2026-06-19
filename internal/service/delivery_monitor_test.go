@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -92,7 +93,9 @@ func TestDeliveryMonitor_StartStop(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	db.On("GetStaleMessageCount", mock.Anything, 5*time.Minute).Return(0, nil)
+	var callCount atomic.Int32
+	db.On("GetStaleMessageCount", mock.Anything, 5*time.Minute).Return(0, nil).
+		Run(func(mock.Arguments) { callCount.Add(1) })
 
 	monitor := NewDeliveryMonitor(db, 50*time.Millisecond, 5*time.Minute, logger)
 
@@ -106,7 +109,7 @@ func TestDeliveryMonitor_StartStop(t *testing.T) {
 	}()
 
 	require.Eventually(t, func() bool {
-		return len(db.Calls) > 0
+		return callCount.Load() > 0
 	}, 2*time.Second, 10*time.Millisecond)
 
 	monitor.Stop()
@@ -125,7 +128,9 @@ func TestDeliveryMonitor_StopViaContext(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
 
-	db.On("GetStaleMessageCount", mock.Anything, 5*time.Minute).Return(0, nil)
+	var callCount atomic.Int32
+	db.On("GetStaleMessageCount", mock.Anything, 5*time.Minute).Return(0, nil).
+		Run(func(mock.Arguments) { callCount.Add(1) })
 
 	monitor := NewDeliveryMonitor(db, 50*time.Millisecond, 5*time.Minute, logger)
 
@@ -138,7 +143,7 @@ func TestDeliveryMonitor_StopViaContext(t *testing.T) {
 	}()
 
 	require.Eventually(t, func() bool {
-		return len(db.Calls) > 0
+		return callCount.Load() > 0
 	}, 2*time.Second, 10*time.Millisecond)
 
 	cancel()

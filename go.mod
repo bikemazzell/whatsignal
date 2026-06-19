@@ -1,11 +1,11 @@
 module whatsignal
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/gorilla/mux v1.8.1
-	github.com/mattn/go-sqlite3 v2.0.3+incompatible
+	github.com/mattn/go-sqlite3 v1.14.46
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0

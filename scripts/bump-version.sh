@@ -148,7 +148,7 @@ UNEXPECTED=$(git status --porcelain | awk '{print $2}' | while read -r f; do
         [ "$f" = "$allowed" ] && keep=1 && break
     done
     [ $keep -eq 0 ] && echo "$f"
-done)
+done || true)
 if [ -n "$UNEXPECTED" ]; then
     echo "Unexpected changes in working tree (release was contaminated by an out-of-band edit):"
     echo "$UNEXPECTED"
@@ -166,7 +166,7 @@ STAGED_UNEXPECTED=$(git diff --cached --name-only | while read -r f; do
         [ "$f" = "$allowed" ] && keep=1 && break
     done
     [ $keep -eq 0 ] && echo "$f"
-done)
+done || true)
 if [ -n "$STAGED_UNEXPECTED" ]; then
     git reset HEAD -- $STAGED_UNEXPECTED >/dev/null 2>&1 || true
     fail "Refusing to commit unexpected staged files: $STAGED_UNEXPECTED"

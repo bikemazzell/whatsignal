@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.52] - 2026-06-19
+
+### Changed (breaking)
+- **Secure mode is now on by default.** Previously the strict security checks were opt-in via `WHATSIGNAL_ENV=production`. They now apply unless `WHATSIGNAL_ENV=development`. Set `WHATSIGNAL_ENV=development` for local testing only.
+- **`WHATSIGNAL_ADMIN_TOKEN` is now required at startup in secure mode** (minimum 32 characters). The process exits with `WHATSIGNAL_ADMIN_TOKEN is required in secure mode` if it is unset. `WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET`, `WHATSIGNAL_ENCRYPTION_SALT`, and `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT` are likewise enforced in secure mode.
+  - Upgrade note: if you never set the encryption salts before, you were using the built-in defaults `whatsignal-salt-v1` / `whatsignal-lookup-salt-v1`. Set them explicitly to those values to keep existing encrypted data readable, or accept that the message-mapping cache resets.
+
+### Added
+- **Split health endpoints**: `/healthz` is a liveness probe (200 once the process is up); `/health` (and `/readyz`) is a readiness probe that returns 503 while WhatsApp/Signal dependencies are unreachable. Use `/healthz` for container liveness checks.
+
 ## [1.2.48] - 2026-05-04
 
 ### Fixed

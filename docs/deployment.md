@@ -57,7 +57,7 @@ whatsignal-deploy/
    docker compose logs -f
    
    # Test health endpoint
-   curl http://localhost:8083/health
+   curl http://localhost:8083/healthz
    ```
 
 ## Service Endpoints

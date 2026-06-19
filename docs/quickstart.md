@@ -35,7 +35,7 @@ docker compose up -d
 
 ### 5. Verify Deployment
 - [ ] Check services are running: `docker compose ps`
-- [ ] Test health endpoint: `curl http://localhost:8082/health`
+- [ ] Test health endpoint: `curl http://localhost:8082/healthz`
 - [ ] Check logs for errors: `docker compose logs`
 
 ### 6. Set Up WhatsApp (WAHA)
@@ -92,7 +92,7 @@ docker compose pull && docker compose up -d
 **Messages not bridging:**
 - Check WhatSignal logs: `docker compose logs whatsignal`
 - Verify webhook configuration in WAHA
-- Test health endpoint: `curl http://localhost:8082/health`
+- Test health endpoint: `curl http://localhost:8082/healthz`
 
 ## Need Help?
 

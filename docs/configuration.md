@@ -4,6 +4,35 @@ This document describes all configuration options available in `config.json`.
 
 WhatSignal supports multiple WhatsApp-Signal channel pairs, allowing you to route messages between specific WhatsApp sessions and Signal destination numbers with complete isolation between channels.
 
+## Secure mode
+
+WhatSignal runs in **secure mode by default**. Secure mode is active whenever
+`WHATSIGNAL_ENV` is anything other than `development` (including unset). Set
+`WHATSIGNAL_ENV=development` to relax these checks for local testing only — do
+not run an internet-reachable deployment in development mode.
+
+In secure mode the process **refuses to start** unless all of the following are
+set, exiting with a message such as
+`failed to load config: WHATSIGNAL_ADMIN_TOKEN is required in secure mode`:
+
+| Variable | Minimum | Notes |
+|----------|---------|-------|
+| `WHATSIGNAL_ADMIN_TOKEN` | 32 chars | Gates `/metrics` and `/session/status` |
+| `WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET` | 32 chars | WAHA webhook HMAC secret |
+| `WHATSIGNAL_ENCRYPTION_SECRET` | 32 chars | Required when encryption is enabled |
+| `WHATSIGNAL_ENCRYPTION_SALT` | 16 chars | See salt note below |
+| `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT` | 16 chars | See salt note below |
+
+Generate strong values with `openssl rand -hex 32`.
+
+> **Upgrading from < 1.2.52:** secure mode was previously opt-in via
+> `WHATSIGNAL_ENV=production`; it is now on by default, and `WHATSIGNAL_ADMIN_TOKEN`
+> became mandatory at startup. If you never set `WHATSIGNAL_ENCRYPTION_SALT` /
+> `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT` before, you were using the built-in defaults
+> `whatsignal-salt-v1` / `whatsignal-lookup-salt-v1`; set them to those exact
+> values to keep existing encrypted data readable (changing a salt re-derives the
+> key and orphans previously-encrypted rows).
+
 ## Required Environment Variables
 
 Before starting whatsignal, ensure these environment variables are set:
@@ -229,10 +258,11 @@ Signal-CLI Internal Timeout (10s, fixed)
 
 ## Diagnostics Authentication
 
-- **`WHATSIGNAL_ADMIN_TOKEN`**: Bearer token for production diagnostics endpoints
-  - Required to access `/metrics` and `/session/status` when `WHATSIGNAL_ENV=production`
+- **`WHATSIGNAL_ADMIN_TOKEN`**: Bearer token for diagnostics endpoints
+  - **Required at startup in [secure mode](#secure-mode)** (the default), minimum 32 characters
+  - Gates access to `/metrics` and `/session/status`
   - Send as `Authorization: Bearer <token>`
-  - Generate a strong random value and keep it separate from webhook and encryption secrets
+  - Generate a strong random value (`openssl rand -hex 32`) and keep it separate from webhook and encryption secrets
 
 ## Channels Configuration
 
@@ -524,12 +554,12 @@ WhatSignal supports encryption at rest for sensitive data in the database. This 
   - **CRITICAL**: Never change this after initial setup - doing so will make existing encrypted data unreadable
 
 - **`WHATSIGNAL_ENCRYPTION_SALT`**: Unique salt for deriving the encryption key
-  - **Required in production**
+  - **Required in [secure mode](#secure-mode)** (the default)
   - Must be at least 16 characters long
   - Generate once before first startup and keep stable for the lifetime of the database
 
 - **`WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`**: Unique salt for deriving lookup HMAC keys
-  - **Required in production**
+  - **Required in [secure mode](#secure-mode)** (the default)
   - Must be at least 16 characters long
   - Generate once before first startup and keep stable for lookup compatibility
 

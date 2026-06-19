@@ -14,7 +14,10 @@ Encryption is always enabled. You must set this environment variable:
 # Encryption secret (required, minimum 32 characters)
 WHATSIGNAL_ENCRYPTION_SECRET=your-very-secure-encryption-secret-change-this
 
-# Unique salts (required in production, minimum 16 characters each)
+# Unique salts (required in secure mode — the default; minimum 16 characters each)
+# See Configuration → Secure mode. If upgrading from < 1.2.52 and you never set
+# these, you were on defaults whatsignal-salt-v1 / whatsignal-lookup-salt-v1; set
+# those exact values to keep existing encrypted data readable.
 WHATSIGNAL_ENCRYPTION_SALT=your-unique-encryption-salt
 WHATSIGNAL_ENCRYPTION_LOOKUP_SALT=your-unique-lookup-salt
 ```

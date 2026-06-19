@@ -53,12 +53,45 @@ nano config.json   # Signal/WhatsApp phone numbers
 # Start services
 docker compose up -d
 
-# Check status
+# Check status (use /healthz for "is it running"; /health is readiness and
+# returns 503 until WAHA and Signal are reachable)
 docker compose ps
-curl http://localhost:8082/health
+curl http://localhost:8082/healthz
 ```
 
 **For detailed deployment instructions, see:** [Deployment Guide](docs/deployment.md)
+
+### Required environment variables (secure mode)
+
+WhatSignal runs in **secure mode by default** — it refuses to start unless the
+following are set. Secure mode is active for any value of `WHATSIGNAL_ENV`
+except `development`.
+
+| Variable | Requirement |
+|----------|-------------|
+| `WHATSIGNAL_ADMIN_TOKEN` | Required, **≥ 32 chars**. Generate: `openssl rand -hex 32` |
+| `WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET` | Required, **≥ 32 chars**. Generate: `openssl rand -hex 32` |
+| `WHATSIGNAL_ENCRYPTION_SECRET` | Required when encryption is enabled, **≥ 32 chars** |
+| `WHATSIGNAL_ENCRYPTION_SALT` | Required, **≥ 16 chars** |
+| `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT` | Required, **≥ 16 chars** |
+
+If any is missing the process exits with, e.g.,
+`failed to load config: WHATSIGNAL_ADMIN_TOKEN is required in secure mode`.
+Setting `WHATSIGNAL_ENV=development` disables these checks but is **not**
+recommended for any internet-reachable deployment. See
+[Configuration → Secure mode](docs/configuration.md#secure-mode).
+
+> **Upgrading from < 1.2.52:** secure mode changed from opt-in
+> (`WHATSIGNAL_ENV=production`) to **on by default**, and `WHATSIGNAL_ADMIN_TOKEN`
+> is now mandatory at startup. If you previously relied on the built-in default
+> salts (i.e. you never set `WHATSIGNAL_ENCRYPTION_SALT` /
+> `WHATSIGNAL_ENCRYPTION_LOOKUP_SALT`), set them explicitly to
+> `whatsignal-salt-v1` and `whatsignal-lookup-salt-v1` to keep existing encrypted
+> data readable, or accept that the message-mapping cache resets.
+
+The health endpoint also split in 1.2.52: `/healthz` is liveness (200 once the
+process is up) and `/health` is readiness (503 while WhatsApp/Signal are
+unreachable). Use `/healthz` for container/orchestrator liveness probes.
 
 ### Build from Source (Developers)
 

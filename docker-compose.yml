@@ -4,7 +4,12 @@ services:
   # Signal CLI REST API - handles Signal messaging
   # Note: change /mnt/data/ to your desired storage folder
   signal-cli-rest-api:
-    image: bbernhard/signal-cli-rest-api:latest
+    # Pin >= 0.100 (signal-cli v0.14.5). Earlier builds throw
+    # NullPointerException "getServerGuid ... must not be null" on every inbound
+    # sealed-sender message after the Signal server change of ~2026-06-10,
+    # silently dropping ALL receives while send keeps working
+    # (AsamK/signal-cli#2059). Pinned by multi-arch index digest.
+    image: bbernhard/signal-cli-rest-api:0.100@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8
     container_name: signal-cli-rest-api
     restart: unless-stopped
     read_only: false

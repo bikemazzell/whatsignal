@@ -69,6 +69,21 @@ func ReadMessage(ctx context.Context, conn *websocket.Conn, logger *logrus.Logge
 		return nil, fmt.Errorf("failed to unmarshal WebSocket message: %w", err)
 	}
 
+	// signal-cli's json-rpc daemon reports a failed receive as an exception frame
+	// with an empty envelope. Log it loudly (a single dropped message can mean a
+	// total receive outage, e.g. AsamK/signal-cli#2059) but do not return an error:
+	// the connection is healthy, so reconnecting would only churn.
+	if msg.Exception != nil {
+		if logger != nil {
+			logger.WithFields(logrus.Fields{
+				"exception_type":    msg.Exception.Type,
+				"exception_message": msg.Exception.Message,
+				"account":           msg.Account,
+			}).Error("signal-cli failed to process an inbound message (message dropped by signal-cli)")
+		}
+		return nil, nil
+	}
+
 	// Skip non-actionable messages such as typing indicators.
 	if msg.Envelope.DataMessage == nil && msg.Envelope.SyncMessage == nil && msg.Envelope.ReceiptMessage == nil {
 		return nil, nil

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.53] - 2026-06-22
+
+### Fixed
+- **Signal→WhatsApp receive outage (signal-cli `getServerGuid` NPE)**: After the Signal server stopped including `serverGuid` in sealed-sender envelopes (~2026-06-10), signal-cli <= v0.14.4.1 threw `NullPointerException: getServerGuid(...) must not be null` on **every** inbound message, dropping all receives while sending kept working ([AsamK/signal-cli#2059](https://github.com/AsamK/signal-cli/issues/2059)). `docker-compose.yml` now pins `bbernhard/signal-cli-rest-api:0.100` (signal-cli v0.14.5) by multi-arch index digest instead of the unpinned `:latest`. **Require signal-cli-rest-api >= 0.100.** Note: a `:latest` tag already present on the host is not re-pulled by Docker, so a stale broken image can keep running silently — pinning the digest forces the correct version on recreate.
+
+### Added
+- **signal-cli json-rpc exception frames are now logged**: When signal-cli's json-rpc daemon fails to process an inbound message it emits an exception frame with an empty envelope. The WebSocket receiver previously discarded these silently, making a total receive outage invisible in WhatSignal's own logs. The receiver now logs the exception type and message at error level (without forcing a pointless reconnect, since the connection itself is healthy).
+
 ## [1.2.52] - 2026-06-19
 
 ### Changed (breaking)

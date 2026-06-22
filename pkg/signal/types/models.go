@@ -202,6 +202,16 @@ type RestMessage struct {
 		TypingMessage  interface{}      `json:"typingMessage,omitempty"`
 	} `json:"envelope"`
 	Account string `json:"account"`
+	// Exception is populated when signal-cli's json-rpc daemon fails to process
+	// an inbound message (e.g. the getServerGuid NPE of AsamK/signal-cli#2059).
+	// The envelope is empty in that case; the frame must be logged, not dropped.
+	Exception *RestException `json:"exception,omitempty"`
+}
+
+// RestException is the signal-cli json-rpc error payload for a failed receive.
+type RestException struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
 }
 
 // RestReceiptMessage represents the signal-cli receipt envelope payload.

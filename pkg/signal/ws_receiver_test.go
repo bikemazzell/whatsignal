@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -180,6 +181,54 @@ func TestReadMessage_ConnectionClosed(t *testing.T) {
 
 	_, err = ReadMessage(ctx, conn, testLogger())
 	assert.Error(t, err, "Should return error on closed connection")
+}
+
+func TestReadMessage_ExceptionEnvelopeLogged(t *testing.T) {
+	// signal-cli's json-rpc daemon emits this frame when it fails to process an
+	// inbound message (e.g. the getServerGuid NPE of AsamK/signal-cli#2059 after
+	// the 2026-06-10 Signal server change). The envelope is empty, so the frame
+	// is non-actionable — but before it was logged, every such frame was silently
+	// dropped, making a total receive outage invisible in whatsignal's own logs.
+	rawFrame := `{"account":"+15550000002","exception":{"message":"getServerGuid(...) must not be null","type":"java.lang.NullPointerException"}}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow() //nolint:errcheck
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(rawFrame))
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.InfoLevel)
+
+	receiver := NewWSReceiver(server.URL, "+15550000002", logger)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	conn, err := receiver.Connect(ctx)
+	require.NoError(t, err)
+	defer conn.CloseNow() //nolint:errcheck
+
+	result, err := ReadMessage(ctx, conn, logger)
+	require.NoError(t, err, "an exception frame must not be treated as a read error (would cause pointless reconnect churn)")
+	assert.Nil(t, result, "exception frame carries no actionable envelope")
+
+	var found *logrus.Entry
+	for _, e := range hook.AllEntries() {
+		if e.Data["exception_type"] != nil {
+			entry := e
+			found = entry
+			break
+		}
+	}
+	require.NotNil(t, found, "signal-cli exception frame must be logged so receive outages are visible")
+	assert.Equal(t, logrus.ErrorLevel, found.Level, "a daemon-side receive failure is an error")
+	assert.Equal(t, "java.lang.NullPointerException", found.Data["exception_type"])
+	assert.Contains(t, found.Data["exception_message"], "getServerGuid")
 }
 
 func TestHttpToWS(t *testing.T) {

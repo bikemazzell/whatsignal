@@ -2,9 +2,13 @@
 # Optional external dependencies for comprehensive integration testing
 
 services:
-  # Signal-CLI service for real Signal integration testing
+  # Signal-CLI service for real Signal integration testing.
+  # Pinned >= 0.100 (signal-cli v0.14.5): earlier builds throw the getServerGuid
+  # NPE on every inbound message and silently drop all receives
+  # (AsamK/signal-cli#2059), which would make a real-Signal test mysteriously
+  # see zero inbound traffic.
   signal-cli:
-    image: bbernhard/signal-cli-rest-api:latest
+    image: bbernhard/signal-cli-rest-api:0.100@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8
     ports:
       - "8080:8080"
     environment:

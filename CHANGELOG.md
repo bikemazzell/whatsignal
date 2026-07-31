@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.54] - 2026-07-31
+
+### Security
+- **Go upgraded to 1.26.5 and `google.golang.org/grpc` to 1.83.0, clearing all reachable vulnerabilities.** A Dependabot alert flagged only `google.golang.org/grpc < 1.82.1`, but `govulncheck` found four further advisories, two of them reachable from application code:
+  - [GO-2026-6061](https://pkg.go.dev/vuln/GO-2026-6061) — grpc xDS RBAC authorization engine and HTTP/2 server transport (grpc 1.81.1 → 1.83.0). **Reachable.**
+  - [GO-2026-5856](https://pkg.go.dev/vuln/GO-2026-5856) — Encrypted Client Hello privacy leak in `crypto/tls` (go1.26.4 → go1.26.5). **Reachable.** Dependabot does not raise Go toolchain advisories at all, so this one was invisible to it.
+  - [GO-2026-5970](https://pkg.go.dev/vuln/GO-2026-5970) — `golang.org/x/text` 0.38.0 → 0.40.0.
+  - [GO-2026-4970](https://pkg.go.dev/vuln/GO-2026-4970) — `os` (go1.26.4 → go1.26.5).
+
+  `govulncheck ./...` now reports no reachable vulnerabilities. All remaining modules in `go.mod` were verified to be at their latest version.
+
+  [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) (`golang.org/x/crypto/openpgp`) will continue to appear under "modules you require" in scan output. It has no fix because the package is permanently deprecated upstream, and WhatSignal never imports it. It is not actionable.
+
+### Fixed
+- **Dockerfile installed Alpine 3.22 packages onto an Alpine 3.24 base.** The build stage overwrote `/etc/apk/repositories` with hardcoded `v3.22` URLs while the `golang:*-alpine` base image had already moved to alpine3.24, mixing package sets across musl versions. The override is removed; apk now uses the base image's own repositories.
+
+### Changed
+- **`TestToolchainPatchVersionIsConsistent` no longer hardcodes the Go version.** It previously asserted against a literal `1.26.4` plus a stale `NotContains("1.26.3")`, so it required a hand edit on every toolchain bump and silently rotted between them. It now reads the `go` directive from `go.mod` as the single source of truth and asserts that the Dockerfile and both GitHub Actions workflows agree.
+- `tasks/` is gitignored, alongside the other local planning notes.
+
 ## [1.2.53] - 2026-06-22
 
 ### Fixed

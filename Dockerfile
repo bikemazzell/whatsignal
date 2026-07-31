@@ -1,15 +1,13 @@
 # Use latest Alpine Go image for smaller size
-FROM golang:1.26.4-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS builder
+FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 # Ensure Go can auto-install the required toolchain from go.mod
 ENV GOTOOLCHAIN=auto
 
 # Install build dependencies with proper error handling
 RUN set -eux; \
-    # Add community repository for additional packages
-    echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/main" > /etc/apk/repositories; \
-    echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/community" >> /etc/apk/repositories; \
-    # Update package index
+    # Use the base image's own repositories; overriding them pins a different
+    # Alpine release than the base and mismatches musl/toolchain versions.
     apk update; \
     # Install required packages
     apk add --no-cache \

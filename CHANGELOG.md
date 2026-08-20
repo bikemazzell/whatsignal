@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.55] - 2026-08-20
+
+### Security
+- **Go upgraded to 1.26.7 and `google.golang.org/grpc` to 1.83.1, clearing all reachable vulnerabilities.** A GitHub security alert flagged the grpc xDS RBAC and HTTP/2 vulnerabilities (high severity). `govulncheck` showed grpc itself was not reachable from application code (indirect dependency via OpenTelemetry), but found six **reachable** standard-library advisories that the alert did not mention, all fixed in go1.26.6:
+  - [GO-2026-6218](https://pkg.go.dev/vuln/GO-2026-6218) — quadratic complexity in `net/url` `resolvePath`.
+  - [GO-2026-6091](https://pkg.go.dev/vuln/GO-2026-6091) — Javascript regexp context tracking in `html/template`.
+  - [GO-2026-6090](https://pkg.go.dev/vuln/GO-2026-6090) — unbounded post-handshake messages in `crypto/tls`.
+  - [GO-2026-6089](https://pkg.go.dev/vuln/GO-2026-6089) — `ReadHeaderTimeout` not applied to the unencrypted HTTP/2 check in `net/http`.
+  - [GO-2026-5972](https://pkg.go.dev/vuln/GO-2026-5972) — missing recursion depth limit in `encoding/asn1`.
+  - [GO-2026-5026](https://pkg.go.dev/vuln/GO-2026-5026) — ASCII-only Punycode labels accepted in `net/http` (x/net/idna).
+
+  Go was bumped to 1.26.7 (newest patch at time of release, includes the 1.26.6 security fixes) across `go.mod`, the `Dockerfile` base image (multi-arch index digest pinned), and both GitHub Actions workflows.
+
+### Changed
+- All other direct dependencies upgraded to latest: `go-sqlite3` 1.14.50, `logrus` 1.10.1, `testify` 1.12.1, OpenTelemetry suite 1.45.0, `x/crypto` 0.55.0, plus transitive updates (`x/text`, `genproto`). testify 1.12.1 replaces its `go-spew`/`go-difflib` indirects with `go.yaml.in/yaml/v3`.
+
+  `govulncheck ./...` now reports no reachable vulnerabilities. [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) (`golang.org/x/crypto/openpgp`) remains a known, non-actionable "modules you require" entry — permanently deprecated upstream, never imported by WhatSignal (see 1.2.54).
+
 ## [1.2.54] - 2026-07-31
 
 ### Security

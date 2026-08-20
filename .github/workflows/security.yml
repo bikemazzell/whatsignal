@@ -12,7 +12,7 @@ on:
 
 # Required for uploading SARIF to the Code Scanning API
 env:
-  GO_VERSION: '1.26.5'
+  GO_VERSION: '1.26.7'
   GO_SCAN_PACKAGES: $(go list ./... | grep -v '/.worktrees/')
   GO_TEST_PACKAGES: $(go list ./... | grep -v '/integration_test' | grep -v '/.worktrees/')
 

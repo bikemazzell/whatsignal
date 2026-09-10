@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.56] - 2026-09-10
+
+### Security
+- **`google.golang.org/grpc` upgraded to 1.83.2 and `golang.org/x/crypto` to 0.57.0, clearing all actionable Dependabot alerts.** Dependabot flagged the gRPC-Go xDS DoS: a crafted request missing both `:authority` and `Host` headers crashes any server built with `xds.NewGRPCServer()` via an out-of-bounds panic in the xDS routing interceptor. grpc is an indirect dependency (via OpenTelemetry) and the vulnerable code is not reachable from WhatSignal, but the module-level alert is cleared by 1.83.2. `govulncheck` additionally flagged two `x/crypto/ssh` DoS advisories (also unreachable from application code), fixed upstream in 0.56.0.
+  - [GHSA-2v4p-qf9q-27wj](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj) / CVE-2026-84445 — gRPC-Go xDS server crash via missing `:authority`/`Host` headers (grpc 1.83.1 → 1.83.2).
+  - [GO-2026-6355](https://pkg.go.dev/vuln/GO-2026-6355) — DoS on deadlocked established channel in `golang.org/x/crypto/ssh` (fixed in 0.56.0).
+  - [GO-2026-6354](https://pkg.go.dev/vuln/GO-2026-6354) — DoS on deadlocked undecided channel in `golang.org/x/crypto/ssh` (fixed in 0.56.0).
+
+  `govulncheck ./...` reports no reachable vulnerabilities. [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) (`golang.org/x/crypto/openpgp`) remains the known non-actionable "modules you require" entry — permanently deprecated upstream and never imported by WhatSignal (see 1.2.54).
+
+### Changed
+- Remaining direct dependencies upgraded to latest: `go-sqlite3` 1.14.52, `logrus` 1.10.2, OpenTelemetry suite 1.46.0; transitive updates: `grpc-gateway` 2.30.0, `x/net` 0.59.0, `x/sys` 0.48.0, `x/text` 0.42.0, `protobuf` 1.36.12, `genproto`.
+- Integration test compose: the nginx host port is now configurable via `NGINX_HOST_PORT` (default 8081) so the Docker integration suite can run alongside local services that occupy 8081.
+
 ## [1.2.55] - 2026-08-20
 
 ### Security

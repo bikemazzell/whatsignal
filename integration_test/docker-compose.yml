@@ -140,7 +140,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "8081:80"
+      - "${NGINX_HOST_PORT:-8081}:80"
     volumes:
       - ./test-data/nginx.conf:/etc/nginx/nginx.conf
     depends_on:

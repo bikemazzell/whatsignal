@@ -106,6 +106,10 @@ echo "🐳 Building the patched WAHA image..."
 docker compose build --pull waha
 
 echo
+echo "🔐 Giving the WAHA session directory to the non-root service user..."
+docker compose run --rm --no-deps --user 0:0 --cap-add CHOWN --entrypoint chown waha -R 1000:1000 /app/.sessions
+
+echo
 echo "📥 Pulling the other Docker images..."
 docker compose pull whatsignal signal-cli-rest-api
 

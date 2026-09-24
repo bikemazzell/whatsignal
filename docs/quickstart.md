@@ -71,8 +71,11 @@ docker compose restart whatsignal
 # Stop everything
 docker compose down
 
-# Update to latest version
-docker compose build --pull waha && docker compose pull whatsignal signal-cli-rest-api && docker compose up -d
+# Update the WAHA image and its session permissions
+docker compose build --pull waha
+docker compose run --rm --no-deps --user 0:0 --cap-add CHOWN --entrypoint chown waha -R 1000:1000 /app/.sessions
+docker compose pull whatsignal signal-cli-rest-api
+docker compose up -d
 ```
 
 ## Common Issues

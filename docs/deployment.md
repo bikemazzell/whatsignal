@@ -45,7 +45,7 @@ whatsignal-deploy/
 
 3. **Start Services**:
    ```bash
-   docker compose up -d
+   docker compose up --build -d
    ```
 
 4. **Verify Deployment**:
@@ -68,9 +68,24 @@ whatsignal-deploy/
 
 ## Management Commands
 
+### Upgrade WAHA permissions
+
+The patched WAHA image runs as user ID 1000. Before you start it, give that user ownership of the existing WAHA session directory. This one-shot command runs `chown` as root. The WAHA service itself runs as `node`.
+
+```bash
+docker compose build --pull waha
+docker compose run --rm --no-deps --user 0:0 --cap-add CHOWN --entrypoint chown waha -R 1000:1000 /app/.sessions
+```
+
+Compose mounts the configured session directory at `/app/.sessions`. It keeps the same host path, `./data/waha/sessions`. If `WHATSIGNAL_DATA_DIR` points elsewhere, Compose uses its `waha/sessions` subdirectory. Compose maps `WHATSAPP_API_KEY` to WAHA's `WAHA_API_KEY` setting.
+
+```bash
+docker compose up -d
+```
+
 ```bash
 # Start services
-docker compose up -d
+docker compose up --build -d
 
 # Stop services
 docker compose down
@@ -81,8 +96,9 @@ docker compose logs -f
 # Restart a specific service
 docker compose restart whatsignal
 
-# Update to latest images
-docker compose pull && docker compose up -d
+# Update images after completing the WAHA permissions step above
+docker compose pull whatsignal signal-cli-rest-api
+docker compose up -d
 ```
 
 ## Troubleshooting

@@ -30,7 +30,7 @@ Edit `config.json` file:
 
 ### 4. Start Services
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
 ### 5. Verify Deployment
@@ -71,8 +71,11 @@ docker compose restart whatsignal
 # Stop everything
 docker compose down
 
-# Update to latest version
-docker compose pull && docker compose up -d
+# Update the WAHA image and its session permissions
+docker compose build --pull waha
+docker compose run --rm --no-deps --user 0:0 --cap-add CHOWN --entrypoint chown waha -R 1000:1000 /app/.sessions
+docker compose pull whatsignal signal-cli-rest-api
+docker compose up -d
 ```
 
 ## Common Issues

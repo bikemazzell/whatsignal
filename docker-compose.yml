@@ -36,7 +36,12 @@ services:
   # WAHA - WhatsApp HTTP API
   # Note: change /mnt/data/ to your desired storage folder
   waha:
-    image: devlikeapro/whatsapp-http-api:latest
+    image: whatsignal-waha:patched
+    build:
+      context: .
+      dockerfile: Dockerfile.waha
+      args:
+        WAHA_BASE_IMAGE: ${WAHA_BASE_IMAGE:-devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533}
     container_name: waha
     restart: unless-stopped
     read_only: true
@@ -47,7 +52,7 @@ services:
     expose:
       - "3000"
     volumes:
-      - ${WHATSIGNAL_DATA_DIR:-./data}/waha/sessions:/app/data
+      - ${WHATSIGNAL_DATA_DIR:-./data}/waha/sessions:/app/.sessions
     tmpfs:
       - /tmp:size=200M,mode=1777
       - /var/tmp:size=50M,mode=1777
@@ -62,10 +67,10 @@ services:
       - WHATSAPP_HOOK_URL=http://whatsignal:8082/webhook/whatsapp
       - WHATSAPP_HOOK_EVENTS=message,message.reaction,message.edited,message.ack,message.waiting
       - WHATSAPP_HOOK_HMAC_KEY=${WHATSIGNAL_WHATSAPP_WEBHOOK_SECRET}
-      - WHATSAPP_API_KEY=${WHATSAPP_API_KEY}
+      - WAHA_API_KEY=${WHATSAPP_API_KEY}
       - PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --crash-dumps-dir=/var/crashes
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -H \"X-Api-Key: $$WHATSAPP_API_KEY\" http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f -H \"X-Api-Key: $$WAHA_API_KEY\" http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

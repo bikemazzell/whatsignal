@@ -1,0 +1,10 @@
+ARG WAHA_BASE_IMAGE=devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533
+FROM ${WAHA_BASE_IMAGE}
+
+COPY scripts/patch-waha-utils.js /tmp/patch-waha-utils.js
+RUN node /tmp/patch-waha-utils.js && rm /tmp/patch-waha-utils.js
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
+  CMD curl -fsS -H "X-Api-Key: $WAHA_API_KEY" http://localhost:3000/health || exit 1
+
+USER node

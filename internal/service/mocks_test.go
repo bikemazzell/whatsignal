@@ -249,6 +249,11 @@ func (m *mockSignalClient) SendMessage(ctx context.Context, recipient, message s
 	return args.Get(0).(*signaltypes.SendMessageResponse), args.Error(1)
 }
 
+func (m *mockSignalClient) SendReaction(ctx context.Context, recipient, reaction, targetAuthor string, targetTimestamp int64, remove bool) error {
+	args := m.Called(ctx, recipient, reaction, targetAuthor, targetTimestamp, remove)
+	return args.Error(0)
+}
+
 func (m *mockSignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]signaltypes.SignalMessage, error) {
 	args := m.Called(ctx, timeoutSeconds)
 	if args.Get(0) == nil {

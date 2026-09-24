@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,7 @@ type MessageService interface {
 	PollSignalMessages(ctx context.Context) error
 	DispatchSingleSignalMessage(ctx context.Context, msg signaltypes.SignalMessage) error
 	SendSignalNotification(ctx context.Context, sessionName, message string) error
+	SendSignalReaction(ctx context.Context, sessionName string, mapping *models.MessageMapping, reaction string) error
 	GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error)
 	ProcessPendingMessages(ctx context.Context) error
 }
@@ -719,6 +721,31 @@ func (s *messageService) SendSignalNotification(ctx context.Context, sessionName
 	// Use the bridge to send a Signal notification for the given session
 	// This will handle session-to-destination mapping automatically
 	return s.bridge.SendSignalNotificationForSession(ctx, sessionName, message)
+}
+
+func (s *messageService) SendSignalReaction(ctx context.Context, sessionName string, mapping *models.MessageMapping, reaction string) error {
+	if mapping == nil {
+		return fmt.Errorf("message mapping is required to send a Signal reaction")
+	}
+	if mapping.SignalMsgID == "" || strings.HasPrefix(mapping.SignalMsgID, "pending:") {
+		return fmt.Errorf("message mapping has no completed Signal message ID")
+	}
+
+	targetTimestamp, err := strconv.ParseInt(mapping.SignalMsgID, 10, 64)
+	if err != nil || targetTimestamp <= 0 {
+		return fmt.Errorf("message mapping has an invalid Signal message ID %q", mapping.SignalMsgID)
+	}
+
+	destination, err := s.channelManager.GetSignalDestination(sessionName)
+	if err != nil {
+		return fmt.Errorf("failed to get Signal destination for session %s: %w", sessionName, err)
+	}
+
+	account := s.signalConfig.IntermediaryPhoneNumber
+	if err := s.signalClient.SendReaction(ctx, destination, reaction, account, targetTimestamp, reaction == ""); err != nil {
+		return fmt.Errorf("failed to send Signal reaction: %w", err)
+	}
+	return nil
 }
 
 func (s *messageService) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {

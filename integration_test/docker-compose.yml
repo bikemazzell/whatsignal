@@ -10,7 +10,7 @@ services:
   signal-cli:
     image: bbernhard/signal-cli-rest-api:0.100@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8
     ports:
-      - "8080:8080"
+      - "${SIGNAL_CLI_HOST_PORT:-8080}:8080"
     environment:
       - MODE=json-rpc
       - SIGNAL_CLI_CONFIG_DIR=/home/.local/share/signal-cli
@@ -118,13 +118,14 @@ services:
 
   # MinIO for S3-compatible storage testing
   minio:
-    image: minio/minio:latest
+    profiles: ["s3"]
+    image: quay.io/minio/minio:latest
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
-      - MINIO_ACCESS_KEY=whatsignal
-      - MINIO_SECRET_KEY=test_password
+      - MINIO_ROOT_USER=whatsignal
+      - MINIO_ROOT_PASSWORD=test_password
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"

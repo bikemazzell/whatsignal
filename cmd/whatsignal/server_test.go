@@ -302,6 +302,11 @@ func (m *mockMessageService) SendSignalNotification(ctx context.Context, session
 	return args.Error(0)
 }
 
+func (m *mockMessageService) SendSignalReaction(ctx context.Context, sessionName string, mapping *models.MessageMapping, reaction string) error {
+	args := m.Called(ctx, sessionName, mapping, reaction)
+	return args.Error(0)
+}
+
 func (m *mockMessageService) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, whatsappID)
 	if args.Get(0) == nil {
@@ -1569,7 +1574,9 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 					}, nil).Once()
 
 				// Mock sending reaction notification to Signal
-				msgService.On("SendSignalNotification", mock.Anything, "default", "+0987654321 reacted with 👍").Return(nil).Once()
+				msgService.On("SendSignalReaction", mock.Anything, "default", mock.MatchedBy(func(mapping *models.MessageMapping) bool {
+					return mapping.SignalMsgID == "sig_123"
+				}), "👍").Return(nil).Once()
 			},
 		},
 		{
@@ -1737,7 +1744,9 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:    "",
 						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
-				msgService.On("SendSignalNotification", mock.Anything, "default", "+0987654321 reacted with ❤️").Return(nil).Once()
+				msgService.On("SendSignalReaction", mock.Anything, "default", mock.MatchedBy(func(mapping *models.MessageMapping) bool {
+					return mapping.SignalMsgID == "sig_empty"
+				}), "❤️").Return(nil).Once()
 			},
 		},
 		{
@@ -1793,7 +1802,9 @@ func TestServer_WhatsAppEventHandlers(t *testing.T) {
 						SessionName:    "default",
 						DeliveryStatus: models.DeliveryStatusSent,
 					}, nil).Once()
-				msgService.On("SendSignalNotification", mock.Anything, "default", "+0987654321 reacted with 🔥").Return(nil).Once()
+				msgService.On("SendSignalReaction", mock.Anything, "default", mock.MatchedBy(func(mapping *models.MessageMapping) bool {
+					return mapping.SignalMsgID == "sig_with_session"
+				}), "🔥").Return(nil).Once()
 			},
 		},
 	}
@@ -1842,7 +1853,9 @@ func TestHandleWhatsAppReaction_Direct(t *testing.T) {
 						WhatsAppChatID: "+15551234567@c.us",
 						SessionName:    "default",
 					}, nil).Once()
-				ms.On("SendSignalNotification", mock.Anything, "default", "+15551234567 reacted with 👍").Return(nil).Once()
+				ms.On("SendSignalReaction", mock.Anything, "default", mock.MatchedBy(func(mapping *models.MessageMapping) bool {
+					return mapping.SignalMsgID == "sig-original"
+				}), "👍").Return(nil).Once()
 			},
 		},
 		{

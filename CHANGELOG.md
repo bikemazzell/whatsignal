@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- WhatsApp reactions now appear as native Signal reactions instead of separate text messages.
+
 ## [1.2.57] - 2026-09-24
 
 ### Fixed

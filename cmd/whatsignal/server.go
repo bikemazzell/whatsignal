@@ -630,26 +630,6 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 		return nil // Don't error out, just log and continue
 	}
 
-	// Forward reaction to Signal as a text message (since Signal CLI doesn't support reactions yet)
-	senderName := payload.Payload.NotifyName
-	if senderName == "" && payload.Payload.Data != nil {
-		if payload.Payload.Data.NotifyName != "" {
-			senderName = payload.Payload.Data.NotifyName
-		} else if payload.Payload.Data.PushName != "" {
-			senderName = payload.Payload.Data.PushName
-		}
-	}
-	if senderName == "" {
-		senderName = payload.Payload.From
-	}
-
-	var reactionText string
-	if payload.Payload.Reaction.Text == "" {
-		reactionText = fmt.Sprintf("%s removed reaction from message", senderName)
-	} else {
-		reactionText = fmt.Sprintf("%s reacted with %s", senderName, payload.Payload.Reaction.Text)
-	}
-
 	// Use the session from the mapping, falling back to the webhook session
 	reactionSessionName := mapping.SessionName
 	if reactionSessionName == "" {
@@ -657,7 +637,7 @@ func (s *Server) handleWhatsAppReaction(ctx context.Context, payload *models.Wha
 	}
 
 	// Use the message service to send via the bridge with session context
-	err = s.msgService.SendSignalNotification(ctx, reactionSessionName, reactionText)
+	err = s.msgService.SendSignalReaction(ctx, reactionSessionName, mapping, payload.Payload.Reaction.Text)
 	if err != nil {
 		s.logger.WithError(err).Error("Failed to forward reaction to Signal")
 		return err

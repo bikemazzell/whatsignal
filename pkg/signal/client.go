@@ -28,6 +28,7 @@ import (
 
 type Client interface {
 	SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error)
+	SendReaction(ctx context.Context, recipient, reaction, targetAuthor string, targetTimestamp int64, remove bool) error
 	ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]types.SignalMessage, error)
 	InitializeDevice(ctx context.Context) error
 	DownloadAttachment(ctx context.Context, attachmentID string) ([]byte, error)
@@ -178,6 +179,57 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}).Info("Signal message sent successfully")
 
 	return response, nil
+}
+
+// SendReaction adds or removes a reaction on a previously sent Signal message.
+func (c *SignalClient) SendReaction(ctx context.Context, recipient, reaction, targetAuthor string, targetTimestamp int64, remove bool) error {
+	payload := types.SendReactionRequest{
+		Recipient:    recipient,
+		Reaction:     reaction,
+		TargetAuthor: targetAuthor,
+		Timestamp:    targetTimestamp,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal reaction request: %w", err)
+	}
+
+	method := http.MethodPost
+	if remove {
+		method = http.MethodDelete
+	}
+	endpoint := fmt.Sprintf("%s/v1/reactions/%s", c.baseURL, url.PathEscape(c.phoneNumber))
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create reaction request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequestWithCircuitBreaker(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to send Signal reaction: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close reaction response body")
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if readErr != nil {
+			return fmt.Errorf("signal reaction API error: status %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
+		return fmt.Errorf("signal reaction API error: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"recipient":        maskPhone(recipient),
+		"target_author":    maskPhone(targetAuthor),
+		"target_timestamp": targetTimestamp,
+		"removed":          remove,
+	}).Info("Signal reaction sent successfully")
+	return nil
 }
 
 func (c *SignalClient) ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]types.SignalMessage, error) {

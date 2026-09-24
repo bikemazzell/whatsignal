@@ -42,6 +42,14 @@ type SendMessageRequest struct {
 	TextMode          string   `json:"text_mode,omitempty"` // "normal" or "styled"
 }
 
+// SendReactionRequest represents the signal-cli-rest-api reaction payload.
+type SendReactionRequest struct {
+	Recipient    string `json:"recipient"`
+	Reaction     string `json:"reaction,omitempty"`
+	TargetAuthor string `json:"target_author"`
+	Timestamp    int64  `json:"timestamp"`
+}
+
 type SendMessageResponse struct {
 	Timestamp int64  `json:"timestamp"`
 	MessageID string `json:"messageId"`

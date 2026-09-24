@@ -126,6 +126,11 @@ func (m *mockMessageService) SendSignalNotification(ctx context.Context, session
 	return args.Error(0)
 }
 
+func (m *mockMessageService) SendSignalReaction(ctx context.Context, sessionName string, mapping *models.MessageMapping, reaction string) error {
+	args := m.Called(ctx, sessionName, mapping, reaction)
+	return args.Error(0)
+}
+
 func (m *mockMessageService) GetMessageMappingByWhatsAppID(ctx context.Context, whatsappID string) (*models.MessageMapping, error) {
 	args := m.Called(ctx, whatsappID)
 	if args.Get(0) == nil {

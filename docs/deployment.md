@@ -45,7 +45,7 @@ whatsignal-deploy/
 
 3. **Start Services**:
    ```bash
-   docker compose up -d
+   docker compose up --build -d
    ```
 
 4. **Verify Deployment**:
@@ -70,7 +70,7 @@ whatsignal-deploy/
 
 ```bash
 # Start services
-docker compose up -d
+docker compose up --build -d
 
 # Stop services
 docker compose down
@@ -82,7 +82,7 @@ docker compose logs -f
 docker compose restart whatsignal
 
 # Update to latest images
-docker compose pull && docker compose up -d
+docker compose build --pull waha && docker compose pull whatsignal signal-cli-rest-api && docker compose up -d
 ```
 
 ## Troubleshooting

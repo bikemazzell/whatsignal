@@ -36,7 +36,12 @@ services:
   # WAHA - WhatsApp HTTP API
   # Note: change /mnt/data/ to your desired storage folder
   waha:
-    image: devlikeapro/whatsapp-http-api:latest
+    image: whatsignal-waha:patched
+    build:
+      context: .
+      dockerfile: Dockerfile.waha
+      args:
+        WAHA_BASE_IMAGE: ${WAHA_BASE_IMAGE:-devlikeapro/whatsapp-http-api:latest}
     container_name: waha
     restart: unless-stopped
     read_only: true

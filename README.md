@@ -51,7 +51,7 @@ nano .env          # API keys and secrets
 nano config.json   # Signal/WhatsApp phone numbers
 
 # Start services
-docker compose up -d
+docker compose up --build -d
 
 # Check status (use /healthz for "is it running"; /health is readiness and
 # returns 503 until WAHA and Signal are reachable)

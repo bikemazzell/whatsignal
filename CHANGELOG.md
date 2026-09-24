@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- WAHA media sends failed when `MediaData.__x_id` replaced the outgoing WhatsApp message ID ([wwebjs/whatsapp-web.js#201922](https://github.com/wwebjs/whatsapp-web.js/issues/201922)). The WAHA image now removes this private field during its build.
+
 ## [1.2.56] - 2026-09-10
 
 ### Security

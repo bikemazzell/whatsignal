@@ -30,7 +30,7 @@ Edit `config.json` file:
 
 ### 4. Start Services
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
 ### 5. Verify Deployment
@@ -72,7 +72,7 @@ docker compose restart whatsignal
 docker compose down
 
 # Update to latest version
-docker compose pull && docker compose up -d
+docker compose build --pull waha && docker compose pull whatsignal signal-cli-rest-api && docker compose up -d
 ```
 
 ## Common Issues

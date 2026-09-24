@@ -1,0 +1,5 @@
+ARG WAHA_BASE_IMAGE=devlikeapro/whatsapp-http-api:latest
+FROM ${WAHA_BASE_IMAGE}
+
+COPY scripts/patch-waha-utils.js /tmp/patch-waha-utils.js
+RUN node /tmp/patch-waha-utils.js && rm /tmp/patch-waha-utils.js

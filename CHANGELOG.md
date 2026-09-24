@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.57] - 2026-09-24
+
 ### Fixed
 - WAHA media sends failed when `MediaData.__x_id` replaced the outgoing WhatsApp message ID ([wwebjs/whatsapp-web.js#201922](https://github.com/wwebjs/whatsapp-web.js/issues/201922)). The WAHA image now removes this private field during its build.
 - WAHA now uses the pinned `devlikeapro/waha:latest-2026.8.2` image and runs as the non-root `node` user. Compose keeps the existing session directory and API key while mapping them to the current WAHA paths and variable names. Existing session files need ownership `1000:1000` before upgrade.

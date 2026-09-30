@@ -8,7 +8,7 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DOCKER_COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+DOCKER_COMPOSE_FILE="${WHATSIGNAL_TEST_COMPOSE_FILE:-$SCRIPT_DIR/docker-compose.yml}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -160,28 +160,10 @@ setup_docker() {
         DOCKER_COMPOSE_CMD="docker compose"
     fi
     
-    # Start services
-    $DOCKER_COMPOSE_CMD -f "$DOCKER_COMPOSE_FILE" up -d
-    
-    # Wait for services to be healthy
-    log_info "Waiting for services to be healthy..."
-    
-    local max_wait=120
-    local wait_time=0
-    
-    while [[ $wait_time -lt $max_wait ]]; do
-        if $DOCKER_COMPOSE_CMD -f "$DOCKER_COMPOSE_FILE" ps | grep -q "Up (healthy)"; then
-            log_success "Docker services are ready"
-            return 0
-        fi
-        
-        log_info "Waiting for services... ($wait_time/$max_wait seconds)"
-        sleep 5
-        wait_time=$((wait_time + 5))
-    done
-    
-    log_warning "Some services may not be fully ready, continuing anyway..."
-    
+    # Fail before tests if any service cannot start or become healthy.
+    $DOCKER_COMPOSE_CMD -f "$DOCKER_COMPOSE_FILE" up -d --wait --wait-timeout 180
+    log_success "Docker services are ready"
+
     # Show service status
     if [[ "$VERBOSE" == true ]]; then
         log_info "Service status:"
@@ -220,6 +202,7 @@ setup_test_environment() {
     
     if [[ "$USE_DOCKER" == true ]]; then
         # Set environment variables to use Docker services
+        export WHATSAPP_API_KEY="whatsignal-test-key"
         export WHATSIGNAL_WHATSAPP_API_BASE_URL="http://localhost:3000"
         export WHATSIGNAL_SIGNAL_RPC_URL="http://localhost:8080"
         export WHATSIGNAL_DATABASE_PATH="/tmp/whatsignal-integration-test.db"

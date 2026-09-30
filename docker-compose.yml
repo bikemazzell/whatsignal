@@ -9,7 +9,7 @@ services:
     # sealed-sender message after the Signal server change of ~2026-06-10,
     # silently dropping ALL receives while send keeps working
     # (AsamK/signal-cli#2059). Pinned by multi-arch index digest.
-    image: bbernhard/signal-cli-rest-api:0.100@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8
+    image: bbernhard/signal-cli-rest-api:0.101@sha256:2cf09d66a86fdd210e42ee91662216364acc27da1163a8c44167a77ea3a6559a
     container_name: signal-cli-rest-api
     restart: unless-stopped
     read_only: false
@@ -23,7 +23,8 @@ services:
       - ${WHATSIGNAL_DATA_DIR:-./data}/signal-cli-waha:/home/.local/share/signal-cli
       - signal_attachments:/var/lib/signal-cli-rest-api/attachments:rw
     tmpfs:
-      - /tmp:size=100M,mode=1777
+      - /run:exec,size=64M,uid=1000,gid=1000,mode=0755
+      - /tmp:exec,size=512M,mode=1777
     environment:
       - MODE=json-rpc
     healthcheck:
@@ -41,7 +42,7 @@ services:
       context: .
       dockerfile: Dockerfile.waha
       args:
-        WAHA_BASE_IMAGE: ${WAHA_BASE_IMAGE:-devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533}
+        WAHA_BASE_IMAGE: ${WAHA_BASE_IMAGE:-devlikeapro/waha:latest-2026.9.1@sha256:41283bd89922ec3f722e5a772b844c451634d4aa72e9c34043c3480184f970fe}
     container_name: waha
     restart: unless-stopped
     read_only: true

@@ -7,6 +7,7 @@
 #
 # Required env: IMAGE — full image ref including tag (e.g. ghcr.io/foo/bar:1.2.48)
 #
+# Optional env: SKIP_PULL=true uses an image built locally.
 set -euo pipefail
 
 if [ -z "${IMAGE:-}" ]; then
@@ -38,8 +39,10 @@ cat > "$WORK_DIR/config.json" <<EOF
 }
 EOF
 
-echo "Pulling $IMAGE"
-docker pull "$IMAGE"
+if [ "${SKIP_PULL:-false}" != true ]; then
+    echo "Pulling $IMAGE"
+    docker pull "$IMAGE"
+fi
 
 PORT=$(comm -23 <(seq 30000 40000 | sort) <(ss -tan 2>/dev/null | awk 'NR>1 {sub(/.*:/, "", $4); print $4}' | sort -u) | shuf -n 1)
 echo "Using port $PORT"

@@ -1,5 +1,5 @@
 # Use latest Alpine Go image for smaller size
-FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS builder
+FROM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS builder
 
 # Ensure Go can auto-install the required toolchain from go.mod
 ENV GOTOOLCHAIN=auto
@@ -39,7 +39,7 @@ RUN VERSION=${VERSION:-$(cat VERSION)} \
     -o whatsignal ./cmd/whatsignal
 
 # Final stage - use distroless image for security
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9f88e0d99c1ceedbce565fad7d3f96744d15e6919c19c7dafe84a6dd9a80c61
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 
 # Add security labels
 LABEL org.opencontainers.image.title="WhatsSignal" \

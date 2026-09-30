@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestDeploymentExamplesDeclareEncryptionSalts(t *testing.T) {
@@ -82,7 +82,7 @@ func TestDockerfileSecurityStructure(t *testing.T) {
 	}
 
 	finalStage := dockerfile[strings.LastIndex(dockerfile, "\nFROM ")+1:]
-	assert.Contains(t, finalStage, "FROM gcr.io/distroless/static-debian12:nonroot@sha256:")
+	assert.Contains(t, finalStage, "FROM gcr.io/distroless/static-debian13:nonroot@sha256:")
 	assert.Contains(t, finalStage, "\nUSER nonroot:nonroot\n")
 	assert.NotContains(t, finalStage, "\nRUN ", "final stage should not install packages or use a shell")
 	assert.NotContains(t, finalStage, " apk ")
@@ -141,6 +141,17 @@ func TestDeploymentAllowsWhatSignalImageOverride(t *testing.T) {
 	envExample, err := os.ReadFile(filepath.Join(repoRoot, ".env.example"))
 	require.NoError(t, err)
 	assert.Contains(t, string(envExample), "WHATSIGNAL_IMAGE=ghcr.io/bikemazzell/whatsignal:latest")
+}
+
+func TestSignalRootlessRuntimeDirectory(t *testing.T) {
+	compose := loadComposeFile(t)
+	services := compose["services"].(map[string]interface{})
+	signalService := services["signal-cli-rest-api"].(map[string]interface{})
+
+	assert.Contains(t, asStringSlice(signalService["tmpfs"]), "/run:exec,size=64M,uid=1000,gid=1000,mode=0755")
+	assert.Contains(t, asStringSlice(signalService["tmpfs"]), "/tmp:exec,size=512M,mode=1777")
+	assert.Contains(t, asStringSlice(signalService["cap_drop"]), "ALL")
+	assert.Contains(t, asStringSlice(signalService["security_opt"]), "no-new-privileges:true")
 }
 
 func loadComposeFile(t *testing.T) map[string]interface{} {

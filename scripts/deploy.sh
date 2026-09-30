@@ -114,6 +114,10 @@ echo "📥 Pulling the other Docker images..."
 docker compose pull whatsignal signal-cli-rest-api
 
 echo
+echo "Preparing Signal directories for user ID 1000..."
+docker compose run --rm --no-deps --user 0:0 --cap-add CHOWN --cap-add DAC_OVERRIDE --entrypoint chown signal-cli-rest-api -R 1000:1000 /home/.local/share/signal-cli /var/lib/signal-cli-rest-api/attachments
+
+echo
 echo "✅ Deployment files ready!"
 echo
 echo "📋 Next steps:"

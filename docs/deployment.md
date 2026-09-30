@@ -66,6 +66,23 @@ whatsignal-deploy/
 - **WAHA (WhatsApp)**: Compose network only by default
 - **Signal-CLI**: Compose network only by default
 
+## Signal directory ownership
+
+Signal REST API 0.101 runs as user ID 1000. Its configuration directory and attachment directory need that owner.
+Compose mounts a writable `/run` directory for startup.
+It gives `/tmp` a 512 MB limit and permits Java to load its native library there.
+If you upgrade an existing installation, stop the Signal service before you change ownership.
+
+```bash
+docker compose stop signal-cli-rest-api
+docker compose pull signal-cli-rest-api
+docker compose run --rm --no-deps --user 0:0 --cap-add CHOWN --cap-add DAC_OVERRIDE --entrypoint chown signal-cli-rest-api -R 1000:1000 /home/.local/share/signal-cli /var/lib/signal-cli-rest-api/attachments
+docker compose up -d signal-cli-rest-api
+```
+
+On ARM64, set `WAHA_BASE_IMAGE` to the commented ARM64 image in `.env.example` before you build WAHA.
+WAHA publishes separate AMD64 and ARM64 images for version 2026.9.1.
+
 ## Management Commands
 
 ### Upgrade WAHA permissions

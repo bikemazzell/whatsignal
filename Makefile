@@ -254,7 +254,7 @@ lint:
 	elif command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run --timeout=5m ./...; \
 	else \
-		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"; \
 		exit 1; \
 	fi
 
@@ -267,7 +267,7 @@ lint-fix:
 	elif command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run --fix --timeout=5m ./...; \
 	else \
-		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		echo "golangci-lint not found. Install it with: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"; \
 		exit 1; \
 	fi
 
@@ -303,22 +303,22 @@ security:
 	elif command -v gosec >/dev/null 2>&1; then \
 		gosec -quiet -exclude-dir=.worktrees ./...; \
 	else \
-		echo "gosec not installed. Install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"; \
+		echo "gosec not installed. Install with: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0"; \
 		exit 1; \
 	fi
 	@echo "Running govulncheck..."
 	@go build -o /tmp/whatsignal-vulncheck ./cmd/whatsignal && \
-		go run golang.org/x/vuln/cmd/govulncheck@latest -mode=binary /tmp/whatsignal-vulncheck && \
+		go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -mode=binary /tmp/whatsignal-vulncheck && \
 		rm -f /tmp/whatsignal-vulncheck
 
 # Install CI/CD tools
 .PHONY: install-tools
 install-tools:
 	@echo "Installing development and CI tools..."
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@go install honnef.co/go/tools/cmd/staticcheck@latest
-	@go install github.com/securego/gosec/v2/cmd/gosec@latest
-	@go install golang.org/x/vuln/cmd/govulncheck@latest
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+	@go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+	@go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+	@go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
 # Run staticcheck
 .PHONY: staticcheck
@@ -329,7 +329,7 @@ staticcheck:
 	elif command -v staticcheck >/dev/null 2>&1; then \
 		staticcheck $(GO_SCAN_PACKAGES); \
 	else \
-		echo "staticcheck not installed. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"; \
+		echo "staticcheck not installed. Install with: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1"; \
 		exit 1; \
 	fi
 
@@ -522,7 +522,7 @@ pre-push:
 	@if command -v govulncheck >/dev/null 2>&1; then \
 		govulncheck $(GO_SCAN_PACKAGES); \
 	else \
-		go run golang.org/x/vuln/cmd/govulncheck@latest $(GO_SCAN_PACKAGES); \
+		go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 $(GO_SCAN_PACKAGES); \
 	fi
 	@echo "All pre-push checks passed."
 

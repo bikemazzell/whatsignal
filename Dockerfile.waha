@@ -1,4 +1,4 @@
-ARG WAHA_BASE_IMAGE=devlikeapro/waha:latest-2026.8.2@sha256:527ff3d634925adb26d596883d7b3ca502c080f737af3c2af2be0c973c511533
+ARG WAHA_BASE_IMAGE=devlikeapro/waha:latest-2026.9.1@sha256:41283bd89922ec3f722e5a772b844c451634d4aa72e9c34043c3480184f970fe
 FROM ${WAHA_BASE_IMAGE}
 
 COPY scripts/patch-waha-utils.js /tmp/patch-waha-utils.js

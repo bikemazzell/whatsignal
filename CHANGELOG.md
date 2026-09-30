@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.59] - 2026-09-30
+
+### Changed
+
+- Update Go to 1.27.1 and refresh compatible Go modules and analysis tools.
+- Update WAHA to 2026.9.1 and Signal REST API to 0.101. Signal directories need ownership by user ID 1000.
+- Add the writable runtime directory and temporary space that Signal API 0.101 needs for startup.
+- Document the matching WAHA image for ARM64.
+- Update Docker test images and GitHub Actions to current versions.
+- Build the optional MinIO test image from its latest release source.
+- Require Docker test services to become ready before tests start.
+
+### Fixed
+
+- Restore WhatsApp reactions as separate Signal messages with the available sender name. Native reactions share the bridge account and replace each other.
+
 ## [1.2.58] - 2026-09-24
 
 ### Fixed

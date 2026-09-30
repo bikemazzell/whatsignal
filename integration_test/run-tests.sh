@@ -134,7 +134,7 @@ check_dependencies() {
             exit 1
         fi
         
-        if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+        if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
             log_error "Docker Compose is not available"
             exit 1
         fi
@@ -154,12 +154,17 @@ setup_docker() {
     cd "$SCRIPT_DIR"
     
     # Check if docker-compose or docker compose should be used
-    if command -v docker-compose &> /dev/null; then
-        DOCKER_COMPOSE_CMD="docker-compose"
-    else
+    if docker compose version &> /dev/null; then
         DOCKER_COMPOSE_CMD="docker compose"
+    else
+        DOCKER_COMPOSE_CMD="docker-compose"
     fi
     
+    if ! $DOCKER_COMPOSE_CMD up --help | grep -q -- "--wait-timeout"; then
+        log_error "Docker Compose with --wait-timeout support is required. Update Docker Compose before you run these tests."
+        return 1
+    fi
+
     # Fail before tests if any service cannot start or become healthy.
     $DOCKER_COMPOSE_CMD -f "$DOCKER_COMPOSE_FILE" up -d --wait --wait-timeout 180
     log_success "Docker services are ready"
@@ -182,10 +187,10 @@ cleanup_docker() {
     cd "$SCRIPT_DIR"
 
     # Use the same detection logic as in setup_docker
-    if command -v docker-compose &> /dev/null; then
-        DOCKER_COMPOSE_CMD="docker-compose"
-    else
+    if docker compose version &> /dev/null; then
         DOCKER_COMPOSE_CMD="docker compose"
+    else
+        DOCKER_COMPOSE_CMD="docker-compose"
     fi
 
     $DOCKER_COMPOSE_CMD -f "$DOCKER_COMPOSE_FILE" down -v

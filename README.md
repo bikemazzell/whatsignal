@@ -1,7 +1,7 @@
 # WhatSignal
 
-[![Version](https://img.shields.io/badge/version-1.2.58-blue.svg)](CHANGELOG.md)
-[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](go.mod)
+[![Version](https://img.shields.io/badge/version-1.2.59-blue.svg)](CHANGELOG.md)
+[![Go Version](https://img.shields.io/badge/go-1.27+-blue.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 WhatSignal is a self-hosted bridge between WhatsApp and Signal. Messages go both ways — text, images, videos, voice notes, reactions — and reply threading is preserved across protocols. You read and reply from Signal; the person on WhatsApp doesn't know the difference.

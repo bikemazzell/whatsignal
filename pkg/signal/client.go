@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 	"whatsignal/internal/constants"
+	appErrors "whatsignal/internal/errors"
 	"whatsignal/internal/httputil"
 	"whatsignal/internal/metrics"
 	"whatsignal/internal/privacy"
@@ -161,7 +162,8 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 
 	var result types.SendResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		// The message is already sent; a typed non-retryable error stops the caller from sending it again.
+		return nil, appErrors.Wrap(err, appErrors.ErrCodeSignalAPI, "failed to decode response after message was accepted")
 	}
 
 	timestamp := result.Timestamp.Int64()

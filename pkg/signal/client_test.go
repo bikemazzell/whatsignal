@@ -10,10 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"whatsignal/internal/constants"
+	"whatsignal/internal/retry"
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
@@ -454,6 +456,44 @@ func TestSendMessage(t *testing.T) {
 				assert.NotZero(t, response.Timestamp)
 				assert.NotEmpty(t, response.MessageID)
 			}
+		})
+	}
+}
+
+func TestSendMessage_UnparsableSuccessBodyIsNotRetried(t *testing.T) {
+	bodies := map[string]string{
+		"unknown shape": `"sent"`,
+		"truncated":     `{"timestamp":`,
+		"empty":         ``,
+	}
+
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			var requestCount atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestCount.Add(1)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "+0987654321", "test-device", "", nil)
+			backoff := retry.NewBackoff(retry.BackoffConfig{
+				InitialDelay: time.Millisecond,
+				MaxDelay:     time.Millisecond,
+				Multiplier:   1.0,
+				MaxAttempts:  3,
+			})
+
+			err := backoff.RetryWithPredicate(context.Background(), func() error {
+				_, sendErr := client.SendMessage(context.Background(), "+1234567890", "Hello", nil)
+				return sendErr
+			}, retry.IsRetryableSignalError)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "failed to decode response")
+			assert.False(t, retry.IsRetryableSignalError(err))
+			assert.EqualValues(t, 1, requestCount.Load(), "message was accepted by signal-cli-rest-api; resending would duplicate it")
 		})
 	}
 }

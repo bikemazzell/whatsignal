@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"sort"
 	"strconv"
 )
 
@@ -54,7 +55,33 @@ type Attachment struct {
 }
 
 type SendResponse struct {
-	Timestamp FlexibleInt64 `json:"timestamp"`
+	Timestamp FlexibleInt64       `json:"timestamp"`
+	Errors    *SendResponseErrors `json:"errors,omitempty"`
+}
+
+// SendResponseErrors lists the recipients that signal-cli-rest-api could not reach.
+// Recipient identifiers are not decoded so that they cannot leak into logs or errors.
+type SendResponseErrors struct {
+	Recipients []struct {
+		Reason string `json:"reason"`
+	} `json:"recipients"`
+}
+
+// FailureReasons returns the distinct failure reasons in sorted order.
+func (e *SendResponseErrors) FailureReasons() []string {
+	if e == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(e.Recipients))
+	for _, recipient := range e.Recipients {
+		seen[recipient.Reason] = struct{}{}
+	}
+	reasons := make([]string, 0, len(seen))
+	for reason := range seen {
+		reasons = append(reasons, reason)
+	}
+	sort.Strings(reasons)
+	return reasons
 }
 
 type AboutResponse struct {

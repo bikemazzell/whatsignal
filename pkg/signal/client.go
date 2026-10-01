@@ -27,6 +27,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const groupRecipientPrefix = "group."
+
 type Client interface {
 	SendMessage(ctx context.Context, recipient, message string, attachments []string) (*types.SendMessageResponse, error)
 	ReceiveMessages(ctx context.Context, timeoutSeconds int) ([]types.SignalMessage, error)
@@ -173,6 +175,18 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 	}
 	if len(results) == 0 {
 		return nil, appErrors.New(appErrors.ErrCodeSignalAPI, "failed to decode response: empty result list after message was accepted")
+	}
+
+	if failed := results[0].Errors; failed != nil && len(failed.Recipients) > 0 {
+		reasons := strings.Join(failed.FailureReasons(), ", ")
+		if !strings.HasPrefix(recipient, groupRecipientPrefix) {
+			return nil, appErrors.New(appErrors.ErrCodeSignalAPI, "message was not delivered: "+reasons)
+		}
+		c.logger.WithFields(logrus.Fields{
+			"recipient":        maskPhone(recipient),
+			"failedRecipients": len(failed.Recipients),
+			"reasons":          reasons,
+		}).Warn("Signal message was not delivered to some group members")
 	}
 
 	timestamp := results[0].Timestamp.Int64()

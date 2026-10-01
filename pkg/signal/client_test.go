@@ -19,6 +19,7 @@ import (
 	"whatsignal/pkg/signal/types"
 
 	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -504,6 +505,99 @@ func TestSendMessage_UnparsableSuccessBodyIsNotRetried(t *testing.T) {
 			assert.Contains(t, err.Error(), "failed to decode response")
 			assert.False(t, retry.IsRetryableSignalError(err))
 			assert.EqualValues(t, 1, requestCount.Load(), "message was accepted by signal-cli-rest-api; resending would duplicate it")
+		})
+	}
+}
+
+// signal-cli-rest-api 0.101 reports per-recipient delivery failures in the "errors" field of the /v2/send response.
+func TestSendMessage_RecipientDeliveryErrors(t *testing.T) {
+	const failedRecipient = `{"number": "+15550001111", "reason": "UNREGISTERED_FAILURE"}`
+
+	tests := []struct {
+		name            string
+		recipient       string
+		serverResponse  string
+		expectedError   string
+		expectedWarning bool
+	}{
+		{
+			name:           "direct recipient failure fails the send",
+			recipient:      "+15550001111",
+			serverResponse: `[{"timestamp": "1234567890", "errors": {"recipients": [` + failedRecipient + `]}}]`,
+			expectedError:  "UNREGISTERED_FAILURE",
+		},
+		{
+			name:            "group partial failure is logged and the send succeeds",
+			recipient:       "group.Zm9vYmFy",
+			serverResponse:  `[{"timestamp": "1234567890", "errors": {"recipients": [` + failedRecipient + `, {"uuid": "6f1c0a52-6f4d-4f0c-9d6c-0a1b2c3d4e5f", "reason": "NETWORK_FAILURE"}]}}]`,
+			expectedWarning: true,
+		},
+		{
+			name:           "empty errors list is a success",
+			recipient:      "+15550001111",
+			serverResponse: `[{"timestamp": "1234567890", "errors": {"recipients": []}}]`,
+		},
+		{
+			name:           "missing errors field is a success",
+			recipient:      "+15550001111",
+			serverResponse: `[{"timestamp": "1234567890"}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requestCount atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestCount.Add(1)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(tt.serverResponse))
+			}))
+			defer server.Close()
+
+			logger, logHook := logrustest.NewNullLogger()
+			client := NewClientWithLogger(server.URL, "+0987654321", "test-device", "", nil, logger)
+			backoff := retry.NewBackoff(retry.BackoffConfig{
+				InitialDelay: time.Millisecond,
+				MaxDelay:     time.Millisecond,
+				Multiplier:   1.0,
+				MaxAttempts:  3,
+			})
+
+			var response *types.SendMessageResponse
+			err := backoff.RetryWithPredicate(context.Background(), func() error {
+				var sendErr error
+				response, sendErr = client.SendMessage(context.Background(), tt.recipient, "Hello", nil)
+				return sendErr
+			}, retry.IsRetryableSignalError)
+
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.NotContains(t, err.Error(), "5550001111", "recipient numbers must not leak into errors")
+				assert.False(t, retry.IsRetryableSignalError(err))
+				assert.EqualValues(t, 1, requestCount.Load(), "a failed delivery must not be resent")
+				return
+			}
+
+			require.NoError(t, err)
+			assert.EqualValues(t, 1234567890, response.Timestamp)
+
+			var warnings []*logrus.Entry
+			for _, entry := range logHook.AllEntries() {
+				if entry.Level == logrus.WarnLevel {
+					warnings = append(warnings, entry)
+				}
+			}
+			if !tt.expectedWarning {
+				assert.Empty(t, warnings)
+				return
+			}
+			require.Len(t, warnings, 1)
+			assert.EqualValues(t, 2, warnings[0].Data["failedRecipients"])
+			assert.Contains(t, warnings[0].Data["reasons"], "UNREGISTERED_FAILURE")
+			assert.Contains(t, warnings[0].Data["reasons"], "NETWORK_FAILURE")
+			assert.NotContains(t, fmt.Sprint(warnings[0].Data), "5550001111", "recipient numbers must not be logged")
+			assert.NotContains(t, fmt.Sprint(warnings[0].Data), "6f1c0a52", "recipient identifiers must not be logged")
 		})
 	}
 }

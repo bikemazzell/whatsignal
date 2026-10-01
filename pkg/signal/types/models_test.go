@@ -134,6 +134,21 @@ func TestSendResponse_WithFlexibleInt64(t *testing.T) {
 	assert.Equal(t, int64(1234567890), resp.Timestamp.Int64())
 }
 
+func TestSendResponseErrors_FailureReasons(t *testing.T) {
+	var nilErrors *SendResponseErrors
+	assert.Empty(t, nilErrors.FailureReasons())
+
+	var resp SendResponse
+	body := `{"timestamp": "1", "errors": {"recipients": [
+		{"number": "+15550001111", "reason": "NETWORK_FAILURE"},
+		{"uuid": "6f1c0a52-6f4d-4f0c-9d6c-0a1b2c3d4e5f", "reason": "IDENTITY_FAILURE"},
+		{"username": "alice.01", "reason": "NETWORK_FAILURE"}]}}`
+	require.NoError(t, json.Unmarshal([]byte(body), &resp))
+
+	assert.Len(t, resp.Errors.Recipients, 3)
+	assert.Equal(t, []string{"IDENTITY_FAILURE", "NETWORK_FAILURE"}, resp.Errors.FailureReasons())
+}
+
 func TestSendMessageRequest(t *testing.T) {
 	tests := []struct {
 		name    string

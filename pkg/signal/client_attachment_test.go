@@ -554,13 +554,10 @@ func TestSendMessage_AttachmentIntegration(t *testing.T) {
 		invalidAttachment bool
 	}{
 		{
-			name:        "successful send with multiple attachments",
-			attachments: attachmentPaths,
-			serverResponse: `{
-				"timestamp": 1234567890,
-				"messageId": "msg123"
-			}`,
-			serverStatus: http.StatusOK,
+			name:           "successful send with multiple attachments",
+			attachments:    attachmentPaths,
+			serverResponse: `[{"timestamp": "1234567890"}]`,
+			serverStatus:   http.StatusCreated,
 			validateRequest: func(t *testing.T, requestBody []byte) {
 				var req types.SendMessageRequest
 				err := json.Unmarshal(requestBody, &req)
@@ -578,13 +575,10 @@ func TestSendMessage_AttachmentIntegration(t *testing.T) {
 			},
 		},
 		{
-			name:        "single attachment send",
-			attachments: attachmentPaths[:1], // Just one attachment
-			serverResponse: `{
-				"timestamp": 1234567890,
-				"messageId": "msg456"
-			}`,
-			serverStatus: http.StatusOK,
+			name:           "single attachment send",
+			attachments:    attachmentPaths[:1], // Just one attachment
+			serverResponse: `[{"timestamp": "1234567890"}]`,
+			serverStatus:   http.StatusCreated,
 			validateRequest: func(t *testing.T, requestBody []byte) {
 				var req types.SendMessageRequest
 				err := json.Unmarshal(requestBody, &req)

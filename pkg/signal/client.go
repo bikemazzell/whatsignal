@@ -160,13 +160,22 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var result types.SendResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		// The message is already sent; a typed non-retryable error stops the caller from sending it again.
-		return nil, appErrors.Wrap(err, appErrors.ErrCodeSignalAPI, "failed to decode response after message was accepted")
+	// The message is already sent; typed non-retryable errors stop the caller from sending it again.
+	bodyBytes, err := httputil.ReadLimitedBody(resp.Body, int64(constants.DefaultWebhookMaxBytes))
+	if err != nil {
+		return nil, appErrors.Wrap(err, appErrors.ErrCodeSignalAPI, "failed to read response after message was accepted")
 	}
 
-	timestamp := result.Timestamp.Int64()
+	// signal-cli-rest-api 0.101 and later return a list with one entry per recipient kind
+	var results []types.SendResponse
+	if err := json.Unmarshal(bodyBytes, &results); err != nil {
+		return nil, appErrors.Wrap(err, appErrors.ErrCodeSignalAPI, "failed to decode response after message was accepted")
+	}
+	if len(results) == 0 {
+		return nil, appErrors.New(appErrors.ErrCodeSignalAPI, "failed to decode response: empty result list after message was accepted")
+	}
+
+	timestamp := results[0].Timestamp.Int64()
 	response := &types.SendMessageResponse{
 		Timestamp: timestamp,
 		MessageID: fmt.Sprintf("%d", timestamp),

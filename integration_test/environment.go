@@ -739,7 +739,7 @@ func (env *TestEnvironment) StartMessageFlowServer() {
 			ts := env.signalTimestampCounter.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprintf(w, `{"timestamp": %d}`, ts)
+			_, _ = fmt.Fprintf(w, `[{"timestamp": "%d"}]`, ts)
 
 		case strings.Contains(r.URL.Path, "/about"):
 			w.Header().Set("Content-Type", "application/json")

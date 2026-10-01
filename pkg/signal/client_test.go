@@ -356,28 +356,33 @@ func TestSendMessage(t *testing.T) {
 		serverStatus   int
 		expectedError  string
 		setupServer    func(*httptest.Server) string
+
+		expectedTimestamp int64
 	}{
 		{
-			name:        "successful text message",
-			recipient:   "+1234567890",
-			message:     "Hello, World!",
-			attachments: nil,
-			serverResponse: `{
-				"timestamp": 1234567890,
-				"messageId": "msg123"
-			}`,
-			serverStatus: http.StatusOK,
+			name:           "successful text message",
+			recipient:      "+1234567890",
+			message:        "Hello, World!",
+			attachments:    nil,
+			serverResponse: `[{"timestamp": "1234567890"}]`,
+			serverStatus:   http.StatusCreated,
 		},
 		{
-			name:        "successful message with attachments",
-			recipient:   "+1234567890",
-			message:     "Check this out!",
-			attachments: []string{"/tmp/test.jpg"},
-			serverResponse: `{
-				"timestamp": 1234567890,
-				"messageId": "msg456"
-			}`,
-			serverStatus: http.StatusOK,
+			name:              "uses the first entry when the list has several",
+			recipient:         "+1234567890",
+			message:           "Hello, World!",
+			attachments:       nil,
+			serverResponse:    `[{"timestamp": "1234567890"}, {"timestamp": "9999999999"}]`,
+			serverStatus:      http.StatusCreated,
+			expectedTimestamp: 1234567890,
+		},
+		{
+			name:           "successful message with attachments",
+			recipient:      "+1234567890",
+			message:        "Check this out!",
+			attachments:    []string{"/tmp/test.jpg"},
+			serverResponse: `[{"timestamp": "1234567890"}]`,
+			serverStatus:   http.StatusCreated,
 			setupServer: func(server *httptest.Server) string {
 				// Create test attachment file
 				tmpDir, err := os.MkdirTemp("", "signal-test")
@@ -455,6 +460,9 @@ func TestSendMessage(t *testing.T) {
 				assert.NotNil(t, response)
 				assert.NotZero(t, response.Timestamp)
 				assert.NotEmpty(t, response.MessageID)
+				if tt.expectedTimestamp != 0 {
+					assert.Equal(t, tt.expectedTimestamp, response.Timestamp)
+				}
 			}
 		})
 	}
@@ -462,9 +470,11 @@ func TestSendMessage(t *testing.T) {
 
 func TestSendMessage_UnparsableSuccessBodyIsNotRetried(t *testing.T) {
 	bodies := map[string]string{
-		"unknown shape": `"sent"`,
-		"truncated":     `{"timestamp":`,
-		"empty":         ``,
+		"unknown shape":                  `"sent"`,
+		"truncated":                      `[{"timestamp":`,
+		"empty body":                     ``,
+		"empty list":                     `[]`,
+		"pre-0.101 object (unsupported)": `{"timestamp": "1234567890"}`,
 	}
 
 	for name, body := range bodies {

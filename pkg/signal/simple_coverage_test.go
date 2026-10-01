@@ -17,7 +17,7 @@ func TestSendMessage_Coverage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Return the expected structure
-		if _, err := w.Write([]byte(`{"timestamp": 123456789, "messageId": "msg123"}`)); err != nil {
+		if _, err := w.Write([]byte(`[{"timestamp": "123456789"}]`)); err != nil {
 			panic(err)
 		}
 	}))

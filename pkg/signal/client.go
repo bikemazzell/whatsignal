@@ -159,11 +159,17 @@ func (c *SignalClient) SendMessage(ctx context.Context, recipient, message strin
 		return nil, fmt.Errorf("signal API error: status %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var result types.SendResponse
 	var results []types.SendResponse
-	if err := json.Unmarshal(resp.Body, &results); err == nil && len(results) > 0 {
+	if err := json.Unmarshal(bodyBytes, &results); err == nil && len(results) > 0 {
 		// Try list format (return format changed in signal-cli-rest-api 0.101)
 		result = results[0]
-	} else if err := json.Unmarshal(resp.Body, &result); err != nil {
+	} else if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 

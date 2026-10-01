@@ -266,19 +266,11 @@ func TestRateLimiter_MemoryGrowth(t *testing.T) {
 		}
 	}
 
-	// Intentional: waiting for the 100ms cleanup window to expire
-	time.Sleep(110 * time.Millisecond)
-
-	// Trigger cleanup
-	rl.Allow("1.1.1.1")
-
-	// Check final size
-	rl.mu.RLock()
-	finalSize := len(rl.requests)
-	rl.mu.RUnlock()
-
-	// Should have cleaned up at least some old entries (be more lenient)
-	assert.Less(t, finalSize, numIPs, "Should clean up at least some expired entries")
+	assert.Eventually(t, func() bool {
+		rl.mu.RLock()
+		defer rl.mu.RUnlock()
+		return len(rl.requests) == 0
+	}, 5*time.Second, 10*time.Millisecond, "background cleanup should remove every expired entry")
 }
 
 // TestRateLimiter_RaceCondition tests for race conditions

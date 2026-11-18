@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.62] - 2026-11-18
+
+### Security
+
+- Update OpenTelemetry to 1.47.0 to fix CVE-2026-128085 in `go.opentelemetry.io/otel/sdk` and `go.opentelemetry.io/otel/trace`.
+
+### Changed
+
+- Update Go to 1.27.4 and refresh Go modules and analysis tools.
+- Update WAHA to 2026.10.1. The WAHA reply patch applies without changes.
+- Update Docker test images and GitHub Actions to current versions.
+
 ## [1.2.59] - 2026-09-30
 
 ### Changed

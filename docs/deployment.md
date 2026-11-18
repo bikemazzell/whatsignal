@@ -81,7 +81,7 @@ docker compose up -d signal-cli-rest-api
 ```
 
 On ARM64, set `WAHA_BASE_IMAGE` to the commented ARM64 image in `.env.example` before you build WAHA.
-WAHA publishes separate AMD64 and ARM64 images for version 2026.9.1.
+WAHA publishes separate AMD64 and ARM64 images for version 2026.10.1.
 
 ## Management Commands
 

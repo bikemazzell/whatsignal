@@ -42,7 +42,7 @@ services:
       context: .
       dockerfile: Dockerfile.waha
       args:
-        WAHA_BASE_IMAGE: ${WAHA_BASE_IMAGE:-devlikeapro/waha:latest-2026.9.1@sha256:41283bd89922ec3f722e5a772b844c451634d4aa72e9c34043c3480184f970fe}
+        WAHA_BASE_IMAGE: ${WAHA_BASE_IMAGE:-devlikeapro/waha:latest-2026.10.1@sha256:2fc1787ddbd343ed2e7d59482846d1b22aa5ca134e29aa8d42d0e88c54e24779}
     container_name: waha
     restart: unless-stopped
     read_only: true

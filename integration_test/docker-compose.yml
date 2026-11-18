@@ -32,7 +32,7 @@ services:
 
   # WAHA (WhatsApp HTTP API) for real WhatsApp integration testing
   waha:
-    image: devlikeapro/waha:latest-2026.9.1@sha256:41283bd89922ec3f722e5a772b844c451634d4aa72e9c34043c3480184f970fe
+    image: devlikeapro/waha:latest-2026.10.1@sha256:2fc1787ddbd343ed2e7d59482846d1b22aa5ca134e29aa8d42d0e88c54e24779
     ports:
       - "3000:3000"
     environment:
@@ -53,7 +53,7 @@ services:
 
   # PostgreSQL for database integration testing (alternative to SQLite)
   postgres:
-    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
     ports:
       - "5432:5432"
     environment:
@@ -73,7 +73,7 @@ services:
 
   # Redis for caching and session management testing
   redis:
-    image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    image: redis:8-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
     ports:
       - "6379:6379"
     command: redis-server --requirepass test_password
@@ -89,7 +89,7 @@ services:
 
   # Prometheus for metrics testing
   prometheus:
-    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     ports:
       - "9090:9090"
     volumes:
@@ -111,7 +111,7 @@ services:
 
   # Jaeger for tracing testing
   jaeger:
-    image: jaegertracing/jaeger:2.21.0@sha256:3d0ac795ff98aa04d1be04311d2dac6c25b4bfc8322dc02e53bc5b170c5018c3
+    image: jaegertracing/jaeger:2.23.0@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e
     ports:
       - "16686:16686"
       - "14250:14250"
@@ -143,7 +143,7 @@ services:
 
   # Nginx for reverse proxy and load balancing testing
   nginx:
-    image: nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
+    image: nginx:alpine@sha256:fed7e14be83cbd2661a75cdc5b872d936cf155d46c327084d30b8df19ae88d72
     ports:
       - "${NGINX_HOST_PORT:-8081}:80"
     volumes:
